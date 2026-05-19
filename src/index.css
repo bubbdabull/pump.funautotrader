@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-background: #0a0b0f;
+  --color-surface: #111318;
+  --color-surface-elevated: #161922;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-glow: rgba(139, 92, 246, 0.25);
+
+  --color-neon-purple: #a855f7;
+  --color-neon-blue: #3b82f6;
+  --color-neon-teal: #14b8a6;
+  --color-neon-pink: #ec4899;
+
+  --color-profit: #22c55e;
+  --color-loss: #ef4444;
+  --color-warning: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-background);
+  color: #e8eaef;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(168, 85, 247, 0.12), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(59, 130, 246, 0.08), transparent),
+    radial-gradient(ellipse 40% 30% at 50% 50%, rgba(20, 184, 166, 0.04), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* Glass card utility */
+.glass {
+  background: rgba(17, 19, 24, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border);
+}
+
+.glass-hover:hover {
+  border-color: var(--color-border-glow);
+  box-shadow: 0 0 24px rgba(168, 85, 247, 0.08);
+}
+
+/* Neon glow */
+.glow-purple {
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.35), 0 0 40px rgba(168, 85, 247, 0.1);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.35);
+}
+
+.glow-teal {
+  box-shadow: 0 0 20px rgba(20, 184, 166, 0.35);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.3);
+}
+
+/* Wallet adapter overrides */
+.wallet-adapter-button {
+  background: linear-gradient(135deg, #7c3aed, #3b82f6) !important;
+  border-radius: 10px !important;
+  font-family: var(--font-sans) !important;
+  height: 38px !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background: rgba(10, 11, 15, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+}

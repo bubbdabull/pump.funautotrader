@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Token {
+  id                  String   @id @default(cuid())
+  mint                String   @unique
+  name                String
+  symbol              String
+  image               String?
+  marketCap           Float    @default(0)
+  bondingCurvePercent Float    @default(0)
+  holders             Int      @default(0)
+  volume24h           Float    @default(0)
+  aiRiskScore         Int      @default(50)
+  momentumScore       Int      @default(0)
+  whaleActivity       String   @default("low")
+  priceUsd            Float    @default(0)
+  priceChange24h      Float    @default(0)
+  liquidity           Float    @default(0)
+  launchedAt          DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  trades              Trade[]
+  alerts              Alert[]
+}
+
+model SmartWallet {
+  id          String   @id @default(cuid())
+  address     String   @unique
+  label       String
+  pnl24h      Float    @default(0)
+  pnl7d       Float    @default(0)
+  roi30d      Float    @default(0)
+  winRate     Float    @default(0)
+  tier        String   @default("rising")
+  followers   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+  trades      Trade[]
+}
+
+model Trade {
+  id        String   @id @default(cuid())
+  mint      String
+  wallet    String
+  side      String
+  amountSol Float
+  txSig     String?
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  token     Token?   @relation(fields: [mint], references: [mint])
+  smartWallet SmartWallet? @relation(fields: [wallet], references: [address])
+}
+
+model Alert {
+  id          String   @id @default(cuid())
+  userId      String?
+  type        String
+  title       String
+  message     String
+  mint        String?
+  read        Boolean  @default(false)
+  triggeredAt DateTime @default(now())
+  token       Token?   @relation(fields: [mint], references: [mint])
+}
+
+model CopilotLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+}
