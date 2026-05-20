@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core'
-import { ValidationPipe } from '@nestjs/common'
+import { RequestMethod, ValidationPipe } from '@nestjs/common'
 import { AppModule } from './app.module'
 
 function logBootConfig() {
@@ -19,7 +19,9 @@ function logBootConfig() {
 async function bootstrap() {
   logBootConfig()
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] })
-  app.setGlobalPrefix('api')
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: '/', method: RequestMethod.GET }],
+  })
   app.enableCors({ origin: true, credentials: true })
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
   const port = Number(process.env.PORT) || 3001

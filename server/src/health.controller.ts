@@ -5,6 +5,18 @@ import { ConfigService } from '@nestjs/config'
 export class HealthController {
   constructor(private config: ConfigService) {}
 
+  /** Outside /api prefix — see main.ts setGlobalPrefix exclude */
+  @Get()
+  root() {
+    return {
+      service: 'phronis-api',
+      ok: true,
+      health: '/api/health',
+      pumpportalStatus: '/api/pumpportal/status',
+      note: 'React UI is on Vercel; all API routes live under /api',
+    }
+  }
+
   @Get('health')
   health() {
     return {
