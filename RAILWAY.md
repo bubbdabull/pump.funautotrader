@@ -80,12 +80,38 @@ VITE_API_URL=https://YOUR-SERVICE.up.railway.app/api
 VITE_WS_URL=https://YOUR-SERVICE.up.railway.app
 ```
 
-## Troubleshooting
+## Troubleshooting — "Application failed to respond"
+
+### Railway checklist (do all of these)
+
+1. **Settings → Root Directory** = **empty** (if set to `server`, delete it)
+2. **Settings → Builder** = Dockerfile (from `railway.toml`)
+3. **Variables** — all required vars from section 2 above
+4. **Networking → Public domain → Target port** = **8080**
+5. Push latest code:
+   ```bash
+   git add Dockerfile railway.toml
+   git commit -m "Fix Railway Docker production stage"
+   git push origin main
+   ```
+6. **Deployments** → wait for **Success** (not Failed)
+7. Test: `https://pumpfunautotrader-production.up.railway.app/api/health`
+
+### Read deploy logs
+
+Railway → **Deployments** → latest → **View logs**
+
+| Log message | Meaning |
+|-------------|---------|
+| `Cannot find module '../quant'` | Build failed — push latest Dockerfile |
+| `prisma generate` failed | Fixed in latest Dockerfile |
+| `Nest application successfully started` | Good — check port 8080 on domain |
+| `Failed to start` | Missing env var or crash — read line above |
 
 | Issue | Fix |
 |-------|-----|
-| Application failed to respond / 502 | Push latest `Dockerfile` + `railway.toml`; Root Directory **empty**; port **8080** |
+| Application failed to respond / 502 | Checklist above |
 | Build fails on `build:quant` | Root Directory must be **repo root**, not `server` |
-| Health check fails | Open `/api/health` first; then check `PUMPPORTAL` vars |
-| Netlify blank / no data | Set `VITE_WS_URL` to Railway URL (not Netlify domain) |
-| CORS errors | Server allows all origins; check `VITE_API_URL` ends with `/api` |
+| Health check fails | `/api/health` must return JSON before deploy goes green |
+| Vercel 404 | Separate issue — frontend on Vercel, not Railway |
+| CORS errors | `VITE_API_URL` must end with `/api` |

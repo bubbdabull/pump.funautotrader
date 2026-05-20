@@ -1,4 +1,4 @@
-# Railway / Docker — build API from repo root (needs trading/ + server/)
+# Railway API — build from repo root (needs trading/ + server/)
 FROM node:20-alpine AS build
 
 RUN apk add --no-cache openssl
@@ -22,14 +22,17 @@ FROM node:20-alpine AS run
 RUN apk add --no-cache openssl
 
 WORKDIR /app/server
-ENV NODE_ENV=production
 
-COPY --from=build /app/server/package.json /app/server/package-lock.json ./
-RUN npm ci --omit=dev && npx prisma generate
-
+# Copy full build output (avoids prisma CLI missing in production install)
+COPY --from=build /app/server/node_modules ./node_modules
 COPY --from=build /app/server/dist ./dist
+COPY --from=build /app/server/package.json ./
+COPY --from=build /app/server/prisma ./prisma
 
+ENV NODE_ENV=production
 ENV PORT=8080
+ENV HOST=0.0.0.0
+
 EXPOSE 8080
 
 CMD ["node", "dist/main.js"]

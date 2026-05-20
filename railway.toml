@@ -1,5 +1,5 @@
-# Repo root deploy — needs trading/ + server/ (see Dockerfile)
-# https://docs.railway.com/reference/config-as-code
+# Deploy from repo root — Dockerfile builds trading + server
+# Settings → Root Directory: MUST be empty (not "server")
 
 [build]
 builder = "DOCKERFILE"
@@ -9,3 +9,4 @@ dockerfilePath = "Dockerfile"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
+numReplicas = 1
