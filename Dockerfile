@@ -1,4 +1,4 @@
-# Railway API — build from repo root (needs trading/ + server/)
+# Fly.io / Railway / Docker — build API from repo root (needs trading/ + server/)
 FROM node:20-alpine AS build
 
 RUN apk add --no-cache openssl

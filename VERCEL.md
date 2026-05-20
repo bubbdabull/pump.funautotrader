@@ -1,11 +1,11 @@
 # Deploy frontend to Vercel
 
-**Backend stays on Railway** — Vercel only hosts the React UI.
+**Backend on Fly.io** (or Railway) — Vercel only hosts the React UI.
 
 | Service | Host |
 |---------|------|
 | Frontend | Vercel |
-| API + live feed | `https://pumpfunautotrader-production.up.railway.app` |
+| API + live feed | `https://pumpfunautotrader-api.fly.dev` (see **FLY.md**) |
 
 ## 1. Import project
 
@@ -25,18 +25,18 @@ That is a **Vercel** error (not Railway). Usually:
 | No successful deploy yet | Deployments tab → fix build errors → redeploy |
 | Wrong Root Directory (`server`) | Set Root Directory to **repo root** |
 | Wrong URL / old preview link | Use the **Production** domain from Vercel dashboard |
-| Opening `/api/...` on Vercel | API lives on **Railway** — use full URL in env vars, not Vercel `/api` |
+| Opening `/api/...` on Vercel | API lives on **Fly.io** — use full URL in env vars, not Vercel `/api` |
 
 **Do not** open `https://your-app.vercel.app/api/tokens/feed` — that path does not exist on Vercel.  
-The app calls `https://pumpfunautotrader-production.up.railway.app/api/...` via `VITE_API_URL`.
+The app calls `https://pumpfunautotrader-api.fly.dev/api/...` via `VITE_API_URL`.
 
 ## 2. Environment variables
 
 Vercel → Project → **Settings** → **Environment Variables** → add for **Production** (and Preview if you want):
 
 ```env
-VITE_API_URL=https://pumpfunautotrader-production.up.railway.app/api
-VITE_WS_URL=https://pumpfunautotrader-production.up.railway.app
+VITE_API_URL=https://pumpfunautotrader-api.fly.dev/api
+VITE_WS_URL=https://pumpfunautotrader-api.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 VITE_SUPABASE_URL=https://ypzgxjdnllwoohybayus.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -54,20 +54,20 @@ Click **Deploy**. Each push to `main` redeploys automatically.
 
 1. Open your Vercel URL (e.g. `https://pump.funautotrader.vercel.app`)
 2. Dashboard should load with sidebar (dark UI)
-3. DevTools → **Network** → requests go to `pumpfunautotrader-production.up.railway.app`
+3. DevTools → **Network** → requests go to `pumpfunautotrader-api.fly.dev`
 4. **WS** tab → Socket.IO connects to Railway (not vercel.app)
 
 Railway health check (must work first):
 
-`https://pumpfunautotrader-production.up.railway.app/api/pumpportal/status`
+`https://pumpfunautotrader-api.fly.dev/api/pumpportal/status`
 
 ## Local dev without local API
 
 Root `.env`:
 
 ```env
-VITE_API_URL=https://pumpfunautotrader-production.up.railway.app/api
-VITE_WS_URL=https://pumpfunautotrader-production.up.railway.app
+VITE_API_URL=https://pumpfunautotrader-api.fly.dev/api
+VITE_WS_URL=https://pumpfunautotrader-api.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 ```
 
