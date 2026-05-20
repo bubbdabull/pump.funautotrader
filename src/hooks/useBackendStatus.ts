@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { pumpportalApi } from '@/services/api'
 import { wsService } from '@/services/websocket'
-import { API_BASE, backendLabel } from '@/lib/apiConfig'
+import { API_BASE, apiConfigMisconfigured, backendLabel } from '@/lib/apiConfig'
 
 export function useBackendStatus() {
   const statusQuery = useQuery({
@@ -41,10 +41,10 @@ export function useBackendStatus() {
     statusLine = `Cannot reach API (${backendLabel()})`
   } else if (apiReachable && pumpportalConnected) {
     statusTone = 'ok'
-    statusLine = 'PumpPortal connected'
+    statusLine = feedTokensOnServer > 0 ? 'Live · receiving tokens' : 'Live · waiting for tokens'
   } else if (apiReachable) {
     statusTone = 'warn'
-    statusLine = 'API online · PumpPortal starting…'
+    statusLine = 'API connected · live stream warming up'
   }
 
   return {
@@ -57,6 +57,7 @@ export function useBackendStatus() {
     statusTone,
     apiBase: API_BASE,
     backendHost: backendLabel(),
+    configMisconfigured: apiConfigMisconfigured(),
     error: statusQuery.error,
     isLoading: statusQuery.isLoading,
   }

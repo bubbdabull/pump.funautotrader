@@ -56,16 +56,28 @@ export function LiveFeedPage() {
             {backend.statusLine}
           </div>
           <span className="text-zinc-500">
-            API: {backend.backendHost}
-            {backend.socketConnected ? ' · socket ok' : ' · socket…'}
+            {backend.backendHost}
+            {backend.socketConnected ? ' · realtime on' : ' · realtime connecting'}
             {' · '}
-            {tokens.length} shown · {backend.status?.messagesReceived ?? 0} PumpPortal msgs
+            {tokens.length} in UI
+            {backend.feedTokensOnServer > 0 ? ` · ${backend.feedTokensOnServer} on server` : ''}
           </span>
-          {(backend.statusTone === 'error' || feedError) && (
+          {backend.configMisconfigured && (
+            <span className="max-w-sm text-right text-amber-400/90">
+              Vercel env typo: value must be only the URL (not{' '}
+              <code className="text-[10px]">VITE_API_URL=...</code>). Redeploy after fix.
+            </span>
+          )}
+          {(backend.statusTone === 'error' || feedError) && !backend.configMisconfigured && (
             <span className="max-w-xs text-right text-red-400/90">
               {feedError
-                ? `Feed request failed — redeploy Vercel after setting VITE_API_URL (current: ${backend.apiBase})`
-                : `Set Vercel VITE_API_URL=https://pump-funautotrader.fly.dev/api and redeploy`}
+                ? 'Feed request failed — check Fly API and redeploy Vercel'
+                : 'Cannot reach API — set VITE_API_URL on Vercel and redeploy'}
+            </span>
+          )}
+          {backend.apiReachable && tokens.length === 0 && !feedError && !isLoading && (
+            <span className="max-w-xs text-right text-zinc-500">
+              Stream is up; new launches appear in a few seconds.
             </span>
           )}
         </div>
