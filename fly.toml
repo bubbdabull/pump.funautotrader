@@ -1,7 +1,7 @@
 # Fly.io API — deploy from repo root (uses ./Dockerfile)
 # Docs: https://fly.io/docs/reference/configuration/
 
-app = 'pumpfunautotrader-api'
+app = 'app-holy-dream-3607'
 primary_region = 'iad'
 
 [build]

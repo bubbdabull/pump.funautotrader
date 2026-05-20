@@ -5,7 +5,7 @@ Use this instead of Railway when your trial is maxed out.
 | Service | Host |
 |---------|------|
 | **Frontend** | Vercel |
-| **API + live feed** | Fly.io (`https://pumpfunautotrader-api.fly.dev`) |
+| **API + live feed** | Fly.io (`https://app-holy-dream-3607.fly.dev`) |
 
 ## 1. Install Fly CLI
 
@@ -27,11 +27,11 @@ From repo root:
 ```bash
 cd /Volumes/Macintosh2/pump
 
-# Creates app if needed (name in fly.toml: pumpfunautotrader-api)
-fly apps create pumpfunautotrader-api
+# App name must match fly.toml (GitHub deploy uses this name)
+fly apps create app-holy-dream-3607
 ```
 
-If the name is taken, edit `app = '...'` in `fly.toml` to something unique.
+If you see **app not found**, run the command above first, then deploy again.
 
 ## 3. Set secrets (from server/.env)
 
@@ -76,8 +76,8 @@ fly open /api/health
 
 Or in browser:
 
-- https://pumpfunautotrader-api.fly.dev/api/health
-- https://pumpfunautotrader-api.fly.dev/api/pumpportal/status
+- https://app-holy-dream-3607.fly.dev/api/health
+- https://app-holy-dream-3607.fly.dev/api/pumpportal/status
 
 Expected health response:
 
@@ -96,8 +96,8 @@ fly info
 Vercel → **Environment variables**:
 
 ```env
-VITE_API_URL=https://pumpfunautotrader-api.fly.dev/api
-VITE_WS_URL=https://pumpfunautotrader-api.fly.dev
+VITE_API_URL=https://app-holy-dream-3607.fly.dev/api
+VITE_WS_URL=https://app-holy-dream-3607.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 VITE_SUPABASE_URL=https://ypzgxjdnllwoohybayus.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key
@@ -110,8 +110,8 @@ Redeploy Vercel after saving.
 Root `.env`:
 
 ```env
-VITE_API_URL=https://pumpfunautotrader-api.fly.dev/api
-VITE_WS_URL=https://pumpfunautotrader-api.fly.dev
+VITE_API_URL=https://app-holy-dream-3607.fly.dev/api
+VITE_WS_URL=https://app-holy-dream-3607.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 ```
 
@@ -128,7 +128,7 @@ npm run dev
 | `fly status` | Machine health |
 | `fly secrets set KEY=value` | Update env |
 | `fly scale count 1` | Keep one machine running |
-| `fly apps restart pumpfunautotrader-api` | Restart |
+| `fly apps restart app-holy-dream-3607` | Restart |
 
 ## Cost note
 

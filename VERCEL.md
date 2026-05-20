@@ -5,7 +5,7 @@
 | Service | Host |
 |---------|------|
 | Frontend | Vercel |
-| API + live feed | `https://pumpfunautotrader-api.fly.dev` (see **FLY.md**) |
+| API + live feed | `https://app-holy-dream-3607.fly.dev` (see **FLY.md**) |
 
 ## 1. Import project
 
@@ -28,15 +28,15 @@ That is a **Vercel** error (not Railway). Usually:
 | Opening `/api/...` on Vercel | API lives on **Fly.io** — use full URL in env vars, not Vercel `/api` |
 
 **Do not** open `https://your-app.vercel.app/api/tokens/feed` — that path does not exist on Vercel.  
-The app calls `https://pumpfunautotrader-api.fly.dev/api/...` via `VITE_API_URL`.
+The app calls `https://app-holy-dream-3607.fly.dev/api/...` via `VITE_API_URL`.
 
 ## 2. Environment variables
 
 Vercel → Project → **Settings** → **Environment Variables** → add for **Production** (and Preview if you want):
 
 ```env
-VITE_API_URL=https://pumpfunautotrader-api.fly.dev/api
-VITE_WS_URL=https://pumpfunautotrader-api.fly.dev
+VITE_API_URL=https://app-holy-dream-3607.fly.dev/api
+VITE_WS_URL=https://app-holy-dream-3607.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 VITE_SUPABASE_URL=https://ypzgxjdnllwoohybayus.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -54,20 +54,20 @@ Click **Deploy**. Each push to `main` redeploys automatically.
 
 1. Open your Vercel URL (e.g. `https://pump.funautotrader.vercel.app`)
 2. Dashboard should load with sidebar (dark UI)
-3. DevTools → **Network** → requests go to `pumpfunautotrader-api.fly.dev`
+3. DevTools → **Network** → requests go to `app-holy-dream-3607.fly.dev`
 4. **WS** tab → Socket.IO connects to Railway (not vercel.app)
 
 Railway health check (must work first):
 
-`https://pumpfunautotrader-api.fly.dev/api/pumpportal/status`
+`https://app-holy-dream-3607.fly.dev/api/pumpportal/status`
 
 ## Local dev without local API
 
 Root `.env`:
 
 ```env
-VITE_API_URL=https://pumpfunautotrader-api.fly.dev/api
-VITE_WS_URL=https://pumpfunautotrader-api.fly.dev
+VITE_API_URL=https://app-holy-dream-3607.fly.dev/api
+VITE_WS_URL=https://app-holy-dream-3607.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 ```
 
