@@ -8,6 +8,7 @@
     "start": "npm run build:quant && nest start",
     "start:dev": "npm run build:quant && nest start --watch",
     "start:prod": "node dist/main",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
