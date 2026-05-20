@@ -36,10 +36,13 @@ async function bootstrap() {
     })
   })
 
-  const port = Number(process.env.PORT) || 3001
+  const port = Number(process.env.PORT) || 8080
   const host = process.env.HOST || '0.0.0.0'
+  if (!Number.isFinite(port) || port < 1) {
+    throw new Error(`Invalid PORT env: ${process.env.PORT}`)
+  }
   await app.listen(port, host)
-  console.log(`Phronis API listening on ${host}:${port}`)
+  console.log(`[ready] Phronis API listening on http://${host}:${port}`)
 }
 
 process.on('unhandledRejection', (reason) => {

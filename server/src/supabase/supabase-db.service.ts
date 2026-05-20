@@ -13,7 +13,7 @@ export class SupabaseDbService implements OnModuleInit {
 
   constructor(private config: ConfigService) {}
 
-  async onModuleInit() {
+  onModuleInit() {
     const url = this.config.get<string>('SUPABASE_URL')?.trim()
     const key = this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY')?.trim()
     if (!url || !key) {
@@ -26,21 +26,33 @@ export class SupabaseDbService implements OnModuleInit {
       )
       return
     }
-    // Node 20 (Fly Docker) has no native WebSocket — @supabase/realtime-js requires `ws`
-    const client = createClient(url, key, {
-      auth: { persistSession: false },
-      realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
-    })
-    const { error } = await client.from('Token').select('id').limit(1)
-    if (error) {
-      this.logger.error(
-        `Supabase key rejected (${error.message}). On Fly, set SUPABASE_SERVICE_ROLE_KEY to the service_role secret — not anon/publishable.`,
+    // Do not await network here — Fly health checks need the HTTP port open immediately
+    void this.connectInBackground(url, key)
+  }
+
+  private async connectInBackground(url: string, key: string) {
+    try {
+      const client = createClient(url, key, {
+        auth: { persistSession: false },
+        realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
+      })
+      const probe = client.from('Token').select('id').limit(1)
+      const timeout = new Promise<{ error: { message: string } }>((resolve) =>
+        setTimeout(() => resolve({ error: { message: 'Supabase probe timeout (8s)' } }), 8000),
       )
-      return
+      const { error } = await Promise.race([probe, timeout])
+      if (error) {
+        this.logger.error(
+          `Supabase key rejected (${error.message}). Use service_role from Supabase → Settings → API`,
+        )
+        return
+      }
+      this.client = client
+      this.enabled = true
+      this.logger.log('Supabase REST database connected (service role)')
+    } catch (err) {
+      this.logger.error(`Supabase init failed: ${(err as Error).message}`)
     }
-    this.client = client
-    this.enabled = true
-    this.logger.log('Supabase REST database connected (service role)')
   }
 
   async upsertToken(token: FeedToken) {

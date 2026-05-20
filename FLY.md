@@ -5,7 +5,7 @@ Use this instead of Railway when your trial is maxed out.
 | Service | Host |
 |---------|------|
 | **Frontend** | Vercel |
-| **API + live feed** | Fly.io (`https://app-holy-dream-3607.fly.dev`) |
+| **API + live feed** | Fly.io (`https://pump-funautotrader.fly.dev`) |
 
 ## 1. Install Fly CLI
 
@@ -28,7 +28,7 @@ From repo root:
 cd /Volumes/Macintosh2/pump
 
 # App name must match fly.toml (GitHub deploy uses this name)
-fly apps create app-holy-dream-3607
+fly apps create pump-funautotrader
 ```
 
 If you see **app not found**, run the command above first, then deploy again.
@@ -78,8 +78,8 @@ fly open /api/health
 
 Or in browser:
 
-- https://app-holy-dream-3607.fly.dev/api/health
-- https://app-holy-dream-3607.fly.dev/api/pumpportal/status
+- https://pump-funautotrader.fly.dev/api/health
+- https://pump-funautotrader.fly.dev/api/pumpportal/status
 
 Expected health response:
 
@@ -98,8 +98,8 @@ fly info
 Vercel → **Environment variables**:
 
 ```env
-VITE_API_URL=https://app-holy-dream-3607.fly.dev/api
-VITE_WS_URL=https://app-holy-dream-3607.fly.dev
+VITE_API_URL=https://pump-funautotrader.fly.dev/api
+VITE_WS_URL=https://pump-funautotrader.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 VITE_SUPABASE_URL=https://ypzgxjdnllwoohybayus.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key
@@ -112,8 +112,8 @@ Redeploy Vercel after saving.
 Root `.env`:
 
 ```env
-VITE_API_URL=https://app-holy-dream-3607.fly.dev/api
-VITE_WS_URL=https://app-holy-dream-3607.fly.dev
+VITE_API_URL=https://pump-funautotrader.fly.dev/api
+VITE_WS_URL=https://pump-funautotrader.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 ```
 
@@ -130,7 +130,7 @@ npm run dev
 | `fly status` | Machine health |
 | `fly secrets set KEY=value` | Update env |
 | `fly scale count 1` | Keep one machine running |
-| `fly apps restart app-holy-dream-3607` | Restart |
+| `fly apps restart pump-funautotrader` | Restart |
 
 ## Cost note
 
@@ -150,6 +150,7 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 | Health check failing | `fly logs` — app needs ~5–10s to boot; grace period is 60s in `fly.toml` |
 | Vercel still blank | Set `VITE_WS_URL` to `*.fly.dev`, not Vercel domain |
 | App name taken | Change `app` in `fly.toml` and redeploy |
+| **502 / not listening on 8080** | App must bind `0.0.0.0:8080` — see logs for `Failed to start` or missing `[ready]`. Supabase/DB must not block boot (fixed in latest deploy). |
 | 502 / not responding | `fly status` + `fly logs`; ensure secrets are set |
 
 ### Crash loop (machines restarting)
@@ -157,7 +158,7 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 1. **Read previous-start logs** (Fly dashboard → machine → **Logs from Previous Starts**), or:
 
    ```bash
-   fly logs -a app-holy-dream-3607
+   fly logs -a pump-funautotrader
    ```
 
 2. **Look for these lines:**
@@ -169,7 +170,7 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 3. **Set required secrets** (values from `server/.env`, never commit them):
 
    ```bash
-   fly secrets set -a app-holy-dream-3607 \
+   fly secrets set -a pump-funautotrader \
      SUPABASE_URL="https://YOUR_PROJECT.supabase.co" \
      SUPABASE_SERVICE_ROLE_KEY="your_service_role_key" \
      PUMPPORTAL_API_KEY="your_pumpportal_key"
@@ -186,14 +187,14 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
    If you previously set a broken `DATABASE_URL` on Fly, remove it:
 
    ```bash
-   fly secrets unset -a app-holy-dream-3607 DATABASE_URL
+   fly secrets unset -a pump-funautotrader DATABASE_URL
    ```
 
 5. **Redeploy and verify:**
 
    ```bash
-   fly deploy -a app-holy-dream-3607
-   fly open /api/health -a app-holy-dream-3607
+   fly deploy -a pump-funautotrader
+   fly open /api/health -a pump-funautotrader
    ```
 
    Health should return `"supabase":true` and `"pumpportalKey":true` when secrets are set.
@@ -201,7 +202,7 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 6. **Keep one machine** (two machines = two PumpPortal connections):
 
    ```bash
-   fly scale count 1 -a app-holy-dream-3607
+   fly scale count 1 -a pump-funautotrader
    ```
 
 ## Architecture

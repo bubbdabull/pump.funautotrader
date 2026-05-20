@@ -29,8 +29,8 @@ primary_region = 'dfw'
   processes = ['app']
 
   [[http_service.checks]]
-    grace_period = '60s'
-    interval = '30s'
+    grace_period = '90s'
+    interval = '15s'
     method = 'GET'
     path = '/api/health'
     timeout = '10s'
