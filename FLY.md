@@ -144,10 +144,63 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 | Issue | Fix |
 |-------|-----|
 | Deploy build fails | Run `fly deploy --local-only` or check `fly logs` during build |
-| Health check failing | `fly logs` — usually missing `SUPABASE_SERVICE_ROLE_KEY` |
+| **Machines restarting a lot** | See [Crash loop](#crash-loop-machines-restarting) below |
+| Health check failing | `fly logs` — app needs ~5–10s to boot; grace period is 60s in `fly.toml` |
 | Vercel still blank | Set `VITE_WS_URL` to `*.fly.dev`, not Vercel domain |
 | App name taken | Change `app` in `fly.toml` and redeploy |
 | 502 / not responding | `fly status` + `fly logs`; ensure secrets are set |
+
+### Crash loop (machines restarting)
+
+1. **Read previous-start logs** (Fly dashboard → machine → **Logs from Previous Starts**), or:
+
+   ```bash
+   fly logs -a app-holy-dream-3607
+   ```
+
+2. **Look for these lines:**
+   - `Failed to start:` — Nest bootstrap error (paste into an issue / fix code)
+   - `Cannot find module '../quant'` — broken Docker build; redeploy after latest `Dockerfile`
+   - `P1000` / `Can't reach database` — bad `DATABASE_URL` secret; use REST mode instead (see below)
+   - `[boot]` JSON — shows which secrets Fly actually has at runtime
+
+3. **Set required secrets** (values from `server/.env`, never commit them):
+
+   ```bash
+   fly secrets set -a app-holy-dream-3607 \
+     SUPABASE_URL="https://YOUR_PROJECT.supabase.co" \
+     SUPABASE_SERVICE_ROLE_KEY="your_service_role_key" \
+     PUMPPORTAL_API_KEY="your_pumpportal_key"
+   ```
+
+4. **Avoid conflicting secrets** — these override `fly.toml` and can crash the app:
+
+   | Secret | Safe value |
+   |--------|------------|
+   | `USE_SUPABASE_REST_DB` | `true` (or omit — `fly.toml` sets it) |
+   | `REDIS_DISABLED` | `true` (or omit) |
+   | `DATABASE_URL` | **Do not set** unless you use Prisma Postgres with a **working** password |
+
+   If you previously set a broken `DATABASE_URL` on Fly, remove it:
+
+   ```bash
+   fly secrets unset -a app-holy-dream-3607 DATABASE_URL
+   ```
+
+5. **Redeploy and verify:**
+
+   ```bash
+   fly deploy -a app-holy-dream-3607
+   fly open /api/health -a app-holy-dream-3607
+   ```
+
+   Health should return `"supabase":true` and `"pumpportalKey":true` when secrets are set.
+
+6. **Keep one machine** (two machines = two PumpPortal connections):
+
+   ```bash
+   fly scale count 1 -a app-holy-dream-3607
+   ```
 
 ## Architecture
 

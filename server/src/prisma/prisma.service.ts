@@ -14,12 +14,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       return
     }
 
+    const dbUrl = process.env.DATABASE_URL?.trim()
+    if (!dbUrl || dbUrl.includes('@127.0.0.1:5432/noop')) {
+      this.enabled = false
+      this.logger.warn('DATABASE_URL not configured — Prisma disabled (set USE_SUPABASE_REST_DB=true or DATABASE_URL)')
+      return
+    }
+
     try {
       await this.$connect()
       this.logger.log('Database connected (Prisma)')
     } catch (err) {
       const message = (err as Error).message
-      if (process.env.DATABASE_OPTIONAL === 'true') {
+      const optional =
+        process.env.DATABASE_OPTIONAL === 'true' || process.env.NODE_ENV === 'production'
+      if (optional) {
         this.enabled = false
         this.logger.warn(
           `Database offline — live feed works; alerts/history persistence disabled. ${message}`,

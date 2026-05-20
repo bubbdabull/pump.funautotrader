@@ -13,9 +13,11 @@ COPY server/scripts ./server/scripts/
 COPY server/src ./server/src/
 
 WORKDIR /app/server
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 RUN npm ci
 RUN npx prisma generate
 RUN npm run build
+RUN test -f dist/main.js && test -f dist/quant/index.js
 
 FROM node:20-alpine AS run
 
