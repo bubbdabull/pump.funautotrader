@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core'
-import { RequestMethod, ValidationPipe } from '@nestjs/common'
+import { ValidationPipe } from '@nestjs/common'
+import type { Response } from 'express'
 import { AppModule } from './app.module'
 
 function logBootConfig() {
@@ -19,11 +20,22 @@ function logBootConfig() {
 async function bootstrap() {
   logBootConfig()
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] })
-  app.setGlobalPrefix('api', {
-    exclude: [{ path: '/', method: RequestMethod.GET }],
-  })
+  app.setGlobalPrefix('api')
   app.enableCors({ origin: true, credentials: true })
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
+
+  // GET / — not under /api (Nest global prefix exclude is unreliable for root)
+  const express = app.getHttpAdapter().getInstance()
+  express.get('/', (_req: unknown, res: Response) => {
+    res.json({
+      service: 'phronis-api',
+      ok: true,
+      health: '/api/health',
+      pumpportalStatus: '/api/pumpportal/status',
+      note: 'React UI is on Vercel; all API routes live under /api',
+    })
+  })
+
   const port = Number(process.env.PORT) || 3001
   const host = process.env.HOST || '0.0.0.0'
   await app.listen(port, host)
