@@ -5,22 +5,25 @@ import { wsService } from '@/services/websocket'
 import { pumpPortalWs } from '@/services/pumpportal-ws'
 import { useDirectPumpPortalWs } from '@/lib/pumpportalConfig'
 import type { PumpToken } from '@/types'
+import { ensureArray } from '@/lib/ensureArray'
 
-function mergeTokenIntoFeed(feed: PumpToken[], token: PumpToken): PumpToken[] {
-  const idx = feed.findIndex((t) => t.mint === token.mint)
+function mergeTokenIntoFeed(feed: PumpToken[] | unknown, token: PumpToken): PumpToken[] {
+  const list = ensureArray<PumpToken>(feed)
+  const idx = list.findIndex((t) => t.mint === token.mint)
   if (idx >= 0) {
-    const next = [...feed]
+    const next = [...list]
     next[idx] = { ...next[idx], ...token }
     return next
   }
-  return [token, ...feed].slice(0, 120)
+  return [token, ...list].slice(0, 120)
 }
 
-function prependToken(feed: PumpToken[], token: PumpToken): PumpToken[] {
-  if (feed.some((t) => t.mint === token.mint)) {
-    return mergeTokenIntoFeed(feed, token)
+function prependToken(feed: PumpToken[] | unknown, token: PumpToken): PumpToken[] {
+  const list = ensureArray<PumpToken>(feed)
+  if (list.some((t) => t.mint === token.mint)) {
+    return mergeTokenIntoFeed(list, token)
   }
-  return [token, ...feed].slice(0, 120)
+  return [token, ...list].slice(0, 120)
 }
 
 export function useTokenFeed() {
@@ -55,7 +58,7 @@ export function useTokenFeed() {
     }
 
     const unsubFeed = wsService.onFeedUpdate((tokens) => {
-      queryClient.setQueryData(['tokens', 'feed'], tokens)
+      queryClient.setQueryData(['tokens', 'feed'], ensureArray<PumpToken>(tokens))
     })
     const unsubPrepend = wsService.onFeedPrepend(prepend)
     const unsubPatch = wsService.onFeedPatch(patchFeed)

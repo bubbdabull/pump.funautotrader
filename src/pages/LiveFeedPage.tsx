@@ -4,11 +4,14 @@ import { LiveFeedTable } from '@/components/feed/LiveFeedTable'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useTokenFeed, sortTokens } from '@/hooks/useTokens'
+import { ensureArray } from '@/lib/ensureArray'
+import type { PumpToken } from '@/types'
 import { useBackendStatus } from '@/hooks/useBackendStatus'
 import { Filter } from 'lucide-react'
 
 export function LiveFeedPage() {
-  const { data: tokens = [], isLoading, isError: feedError } = useTokenFeed()
+  const { data: feedData, isLoading, isError: feedError } = useTokenFeed()
+  const tokens = ensureArray<PumpToken>(feedData)
   const backend = useBackendStatus()
   const [sort, setSort] = useState('newest')
   const [filter, setFilter] = useState('')

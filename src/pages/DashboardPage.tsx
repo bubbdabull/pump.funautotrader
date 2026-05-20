@@ -6,7 +6,9 @@ import { TokenCard } from '@/components/shared/TokenCard'
 import { LiveFeedTable } from '@/components/feed/LiveFeedTable'
 import { TradingPanel } from '@/components/trading/TradingPanel'
 import { useTokenFeed, useFeedStats } from '@/hooks/useTokens'
+import type { PumpToken } from '@/types'
 import { tokenVolumeSol } from '@/lib/utils'
+import { ensureArray } from '@/lib/ensureArray'
 
 function formatVolumeDisplay(sol: number): { value: number; suffix: string } {
   if (sol >= 1000) return { value: Number((sol / 1000).toFixed(1)), suffix: 'K SOL' }
@@ -14,7 +16,8 @@ function formatVolumeDisplay(sol: number): { value: number; suffix: string } {
 }
 
 export function DashboardPage() {
-  const { data: tokens = [], isLoading } = useTokenFeed()
+  const { data: feedData, isLoading } = useTokenFeed()
+  const tokens = ensureArray<PumpToken>(feedData)
   const { data: stats } = useFeedStats()
   const top = [...tokens].sort((a, b) => b.momentumScore - a.momentumScore).slice(0, 3)
 

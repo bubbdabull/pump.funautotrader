@@ -96,7 +96,9 @@ export function pumpTokenFromMint(
     marketCap,
     bondingCurvePercent: curve,
     holders: state?.walletBalances.size ?? 0,
-    volume24h: state?.trades.reduce((a, t) => a + t.solAmount, 0) ?? 0,
+    volume24h: Array.isArray(state?.trades)
+      ? state.trades.reduce((a, t) => a + t.solAmount, 0)
+      : 0,
     signalScore,
     momentumScore,
     whaleActivity: 'low',

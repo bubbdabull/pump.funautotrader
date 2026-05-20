@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { PumpToken, SmartWallet, AutoTradeRules, AutoTradeSignal, Alert } from '@/types'
-
+import { ensureArray } from '@/lib/ensureArray'
 import { API_BASE } from '@/lib/apiConfig'
 
 export const api = axios.create({
@@ -40,22 +40,22 @@ export const pumpportalApi = {
 }
 
 export const tokenApi = {
-  list: () => api.get<PumpToken[]>('/tokens/feed').then((r) => r.data),
+  list: () => api.get('/tokens/feed').then((r) => ensureArray<PumpToken>(r.data)),
   get: (mint: string) => api.get<PumpToken>(`/tokens/${mint}`).then((r) => r.data),
-  feed: () => api.get<PumpToken[]>('/tokens/feed').then((r) => r.data),
+  feed: () => api.get('/tokens/feed').then((r) => ensureArray<PumpToken>(r.data)),
   stats: () => api.get<FeedStats>('/tokens/stats').then((r) => r.data),
-  trades: (mint: string) => api.get<FeedTrade[]>(`/tokens/${mint}/trades`).then((r) => r.data),
+  trades: (mint: string) => api.get(`/tokens/${mint}/trades`).then((r) => ensureArray<FeedTrade>(r.data)),
 }
 
 export const walletApi = {
-  list: () => api.get<SmartWallet[]>('/wallets/smart').then((r) => r.data),
+  list: () => api.get('/wallets/smart').then((r) => ensureArray<SmartWallet>(r.data)),
 }
 
 export const autoTraderApi = {
   getRules: () => api.get<AutoTradeRules>('/autotrader/rules').then((r) => r.data),
   setRules: (rules: Partial<AutoTradeRules>) =>
     api.put<AutoTradeRules>('/autotrader/rules', rules).then((r) => r.data),
-  getSignals: () => api.get<AutoTradeSignal[]>('/autotrader/signals').then((r) => r.data),
+  getSignals: () => api.get('/autotrader/signals').then((r) => ensureArray<AutoTradeSignal>(r.data)),
 }
 
 export const tradeApi = {
@@ -70,8 +70,8 @@ export const tradeApi = {
 
 export const alertApi = {
   list: () =>
-    api.get<Alert[]>('/alerts').then((r) =>
-      r.data.map((a) => ({
+    api.get('/alerts').then((r) =>
+      ensureArray<Alert>(r.data).map((a) => ({
         ...a,
         triggeredAt:
           typeof a.triggeredAt === 'string' ? a.triggeredAt : new Date(a.triggeredAt).toISOString(),
