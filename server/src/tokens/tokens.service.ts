@@ -29,6 +29,17 @@ export class TokensService {
   ) {}
 
   async getFeed(): Promise<FeedToken[]> {
+    const cached = this.liveFeed.getAll(80)
+    if (cached.length > 0) {
+      void this.bootstrapFeedFromPump().catch((err) =>
+        this.logger.debug(`Pump.fun bootstrap skipped: ${(err as Error).message}`),
+      )
+      return cached
+    }
+    return this.bootstrapFeedFromPump()
+  }
+
+  private async bootstrapFeedFromPump(): Promise<FeedToken[]> {
     const coins = await this.pump.fetchLatestCoins(50)
     const mapped = await Promise.all(coins.map((c) => this.mapCoin(c)))
     this.liveFeed.mergeBootstrap(mapped)

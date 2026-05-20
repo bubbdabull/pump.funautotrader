@@ -5,7 +5,7 @@
 | Service | Host |
 |---------|------|
 | Frontend | Vercel |
-| API + live feed | `https://app-holy-dream-3607.fly.dev` (see **FLY.md**) |
+| API + live feed | `https://pump-funautotrader.fly.dev` (see **FLY.md**) |
 
 ## 1. Import project
 
@@ -35,8 +35,8 @@ The app calls `https://app-holy-dream-3607.fly.dev/api/...` via `VITE_API_URL`.
 Vercel → Project → **Settings** → **Environment Variables** → add for **Production** (and Preview if you want):
 
 ```env
-VITE_API_URL=https://app-holy-dream-3607.fly.dev/api
-VITE_WS_URL=https://app-holy-dream-3607.fly.dev
+VITE_API_URL=https://pump-funautotrader.fly.dev/api
+VITE_WS_URL=https://pump-funautotrader.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 VITE_SUPABASE_URL=https://ypzgxjdnllwoohybayus.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -44,7 +44,9 @@ VITE_SOLANA_RPC=https://api.mainnet-beta.solana.com
 VITE_SOLANA_NETWORK=mainnet-beta
 ```
 
-Do **not** put `PUMPPORTAL_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY` on Vercel — those belong only on Railway (`server/.env`).
+Do **not** put `PUMPPORTAL_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY` on Vercel — those belong only on Fly secrets.
+
+**Critical:** Vite embeds `VITE_*` at **build time**. After changing env vars you must **Redeploy** (Deployments → ⋯ → Redeploy). Saving env vars alone does not update a live deployment.
 
 ## 3. Deploy
 
@@ -54,20 +56,20 @@ Click **Deploy**. Each push to `main` redeploys automatically.
 
 1. Open your Vercel URL (e.g. `https://pump.funautotrader.vercel.app`)
 2. Dashboard should load with sidebar (dark UI)
-3. DevTools → **Network** → requests go to `app-holy-dream-3607.fly.dev`
+3. DevTools → **Network** → requests go to `pump-funautotrader.fly.dev`
 4. **WS** tab → Socket.IO connects to Railway (not vercel.app)
 
 Railway health check (must work first):
 
-`https://app-holy-dream-3607.fly.dev/api/pumpportal/status`
+`https://pump-funautotrader.fly.dev/api/pumpportal/status`
 
 ## Local dev without local API
 
 Root `.env`:
 
 ```env
-VITE_API_URL=https://app-holy-dream-3607.fly.dev/api
-VITE_WS_URL=https://app-holy-dream-3607.fly.dev
+VITE_API_URL=https://pump-funautotrader.fly.dev/api
+VITE_WS_URL=https://pump-funautotrader.fly.dev
 VITE_PUMPPORTAL_DIRECT=false
 ```
 
@@ -80,6 +82,6 @@ npm run dev
 | Issue | Fix |
 |-------|-----|
 | White / blank page | Check Vercel build logs; open browser Console |
-| No tokens | Railway 502 — fix API deploy first |
+| No tokens / "Cannot reach API" | Fix Fly API first; **redeploy Vercel** after env changes (Vite bakes `VITE_*` at build time) |
 | CORS errors | Railway already allows CORS; check `VITE_API_URL` ends with `/api` |
-| Socket.IO fails | Set `VITE_WS_URL` to Railway URL (no `/api`) |
+| Socket.IO fails | Set `VITE_WS_URL` to Fly URL (no `/api` suffix) and redeploy |

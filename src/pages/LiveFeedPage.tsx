@@ -1,21 +1,15 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { LiveFeedTable } from '@/components/feed/LiveFeedTable'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useTokenFeed, sortTokens } from '@/hooks/useTokens'
-import { pumpportalApi } from '@/services/api'
+import { useBackendStatus } from '@/hooks/useBackendStatus'
 import { Filter } from 'lucide-react'
 
 export function LiveFeedPage() {
-  const { data: tokens = [], isLoading } = useTokenFeed()
-  const { data: stream } = useQuery({
-    queryKey: ['pumpportal-status'],
-    queryFn: () => pumpportalApi.status(),
-    refetchInterval: 5000,
-    retry: false,
-  })
+  const { data: tokens = [], isLoading, isError: feedError } = useTokenFeed()
+  const backend = useBackendStatus()
   const [sort, setSort] = useState('newest')
   const [filter, setFilter] = useState('')
   const [riskMax, setRiskMax] = useState(100)
@@ -37,23 +31,40 @@ export function LiveFeedPage() {
           <p className="text-sm text-zinc-500">Real-time Pump.fun token discovery</p>
         </div>
         <div
-          className={`flex flex-col items-end gap-0.5 text-xs ${stream?.connected ? 'text-emerald-400' : 'text-amber-400'}`}
+          className={`flex flex-col items-end gap-0.5 text-xs ${
+            backend.statusTone === 'ok'
+              ? 'text-emerald-400'
+              : backend.statusTone === 'error'
+                ? 'text-red-400'
+                : 'text-amber-400'
+          }`}
         >
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              {stream?.connected && (
+              {backend.statusTone === 'ok' && (
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               )}
               <span
-                className={`relative inline-flex h-2 w-2 rounded-full ${stream?.connected ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                className={`relative inline-flex h-2 w-2 rounded-full ${
+                  backend.statusTone === 'ok' ? 'bg-emerald-500' : backend.statusTone === 'error' ? 'bg-red-500' : 'bg-amber-500'
+                }`}
               />
             </span>
-            {stream?.connected ? 'PumpPortal connected' : 'Start API server (npm run start:dev)'}
+            {backend.statusLine}
           </div>
           <span className="text-zinc-500">
-            {tokens.length} tokens · {stream?.messagesReceived ?? 0} WS msgs
-            {stream?.apiKeyConfigured ? ' · trades on' : ''}
+            API: {backend.backendHost}
+            {backend.socketConnected ? ' · socket ok' : ' · socket…'}
+            {' · '}
+            {tokens.length} shown · {backend.status?.messagesReceived ?? 0} PumpPortal msgs
           </span>
+          {(backend.statusTone === 'error' || feedError) && (
+            <span className="max-w-xs text-right text-red-400/90">
+              {feedError
+                ? `Feed request failed — redeploy Vercel after setting VITE_API_URL (current: ${backend.apiBase})`
+                : `Set Vercel VITE_API_URL=https://pump-funautotrader.fly.dev/api and redeploy`}
+            </span>
+          )}
         </div>
       </div>
 

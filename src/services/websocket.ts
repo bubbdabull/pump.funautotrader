@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client'
 import type { PumpToken, AutoTradeSignal } from '@/types'
 
-const WS_URL = import.meta.env.VITE_WS_URL || ''
+import { WS_URL } from '@/lib/apiConfig'
 
 type TokenUpdateHandler = (token: PumpToken) => void
 type FeedHandler = (tokens: PumpToken[]) => void
@@ -53,7 +53,15 @@ class WebSocketService {
       this.socket?.emit('subscribe:feed')
     })
 
+    this.socket.on('connect_error', (err) => {
+      console.warn('[socket.io] connect_error', err.message, 'url=', WS_URL || window.location.origin)
+    })
+
     return this.socket
+  }
+
+  get connected() {
+    return Boolean(this.socket?.connected)
   }
 
   subscribeToken(mint: string) {

@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type { PumpToken, SmartWallet, AutoTradeRules, AutoTradeSignal, Alert } from '@/types'
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+import { API_BASE } from '@/lib/apiConfig'
 
 export const api = axios.create({
   baseURL: API_BASE,
