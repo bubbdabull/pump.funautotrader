@@ -44,6 +44,8 @@ fly secrets set \
   PUMPPORTAL_API_KEY="your_pumpportal_key"
 ```
 
+`SUPABASE_SERVICE_ROLE_KEY` must be the **service_role** secret from Supabase → **Settings → API** (Reveal under `service_role`). Do **not** use the `anon` or `sb_publishable_` key — logs will show `Invalid API key`.
+
 Optional — override defaults from `fly.toml`:
 
 ```bash

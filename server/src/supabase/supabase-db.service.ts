@@ -13,18 +13,32 @@ export class SupabaseDbService implements OnModuleInit {
 
   constructor(private config: ConfigService) {}
 
-  onModuleInit() {
+  async onModuleInit() {
     const url = this.config.get<string>('SUPABASE_URL')?.trim()
     const key = this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY')?.trim()
     if (!url || !key) {
       this.logger.warn('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — REST DB disabled')
       return
     }
+    if (key.startsWith('sb_publishable_')) {
+      this.logger.error(
+        'SUPABASE_SERVICE_ROLE_KEY looks like a publishable key — use service_role from Supabase → Settings → API',
+      )
+      return
+    }
     // Node 20 (Fly Docker) has no native WebSocket — @supabase/realtime-js requires `ws`
-    this.client = createClient(url, key, {
+    const client = createClient(url, key, {
       auth: { persistSession: false },
       realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
     })
+    const { error } = await client.from('Token').select('id').limit(1)
+    if (error) {
+      this.logger.error(
+        `Supabase key rejected (${error.message}). On Fly, set SUPABASE_SERVICE_ROLE_KEY to the service_role secret — not anon/publishable.`,
+      )
+      return
+    }
+    this.client = client
     this.enabled = true
     this.logger.log('Supabase REST database connected (service role)')
   }
