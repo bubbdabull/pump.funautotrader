@@ -95,7 +95,10 @@ export function pumpTokenFromMint(
     }),
     marketCap,
     bondingCurvePercent: curve,
-    holders: state?.walletBalances.size ?? 0,
+    holders: state
+      ? [...state.walletBalances.values()].filter((b) => b > 0).length ||
+        Math.max(1, new Set(state.trades.map((t) => t.wallet)).size)
+      : 0,
     volume24h: Array.isArray(state?.trades)
       ? state.trades.reduce((a, t) => a + t.solAmount, 0)
       : 0,

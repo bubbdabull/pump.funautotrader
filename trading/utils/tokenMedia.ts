@@ -44,6 +44,13 @@ export function resolveTokenImageCandidates(
   push(`https://imagedelivery.net/WL1JOIJiM_NAChp6rtB6Q/coin-image/${mint}/600x600`)
   push(`https://pump.fun/coin/${mint}.png`)
   push(`https://pump.fun/coin/${mint}/image`)
+  push(`https://assets.pump.fun/coins/${mint}.png`)
+
+  if (uri?.startsWith('ipfs://')) {
+    const cid = uri.slice(7).split('/')[0]
+    push(`https://cloudflare-ipfs.com/ipfs/${cid}`)
+    push(`https://gateway.pinata.cloud/ipfs/${cid}`)
+  }
 
   return out
 }

@@ -9,6 +9,7 @@ import {
   evScoreToSignalScore,
   momentumScoreFromMetrics,
   evaluateEntry,
+  countUniqueHolders,
 } from '@phronis/trading'
 import { marketCapUsdFromSol, normalizeVirtualSol, resolveTokenImage } from '@phronis/trading'
 import { TokenMetadataService } from './token-metadata.service'
@@ -272,7 +273,7 @@ export class TokensService {
 
     const metrics = evaluateEntry(state).metrics
     const volume24h = state.trades.reduce((a, t) => a + t.solAmount, 0)
-    const holders = state.walletBalances.size
+    const holders = countUniqueHolders(state)
 
     const mcaps = state.liquidityHistory.map((h) => h.marketCapSol).filter((m) => m > 0)
     let priceChange24h = coin?.price_change_24h ?? 0
@@ -316,6 +317,9 @@ export class TokensService {
       name: fromState.name !== 'Unknown' ? fromState.name : token.name,
       symbol: fromState.symbol || token.symbol,
       image: token.image || fromState.image,
+      metadataUri: token.metadataUri ?? fromState.metadataUri,
+      holders: Math.max(token.holders ?? 0, fromState.holders),
+      volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,
     }
   }

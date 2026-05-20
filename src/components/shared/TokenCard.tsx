@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { TrendingUp, Users, Activity } from 'lucide-react'
 import { GlassCard } from './GlassCard'
 import { Badge } from '@/components/ui/badge'
-import { formatUsd, formatSol, tokenVolumeSol, riskBg, riskColor } from '@/lib/utils'
+import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
 import type { PumpToken } from '@/types'
 
@@ -22,7 +22,13 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
       <Link to={`/token/${token.mint}`}>
         <GlassCard hover className="group">
           <div className="flex items-center gap-3">
-            <TokenImage mint={token.mint} symbol={token.symbol} image={token.image} size="md" />
+            <TokenImage
+              mint={token.mint}
+              symbol={token.symbol}
+              image={token.image}
+              uri={token.metadataUri}
+              size="md"
+            />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-white">{token.symbol}</span>
@@ -53,7 +59,7 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
           </div>
           <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
             <span className="flex items-center gap-1">
-              <Users className="h-3 w-3" /> {token.holders}
+              <Users className="h-3 w-3" /> {formatHolders(token.holders)}
             </span>
             <span className="flex items-center gap-1">
               <Activity className="h-3 w-3" /> {formatSol(tokenVolumeSol(token))}

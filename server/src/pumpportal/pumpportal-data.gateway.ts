@@ -253,14 +253,16 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       name: data.name,
     })
 
+    const uri = (data.uri as string) ?? undefined
     return {
       mint: data.mint,
       name: (data.name as string) ?? 'Unknown',
       symbol: (data.symbol as string) ?? data.mint.slice(0, 4).toUpperCase(),
       image: this.metadata.resolveSync(data.mint, {
-        uri: data.uri as string | undefined,
+        uri,
         image: data.image as string | undefined,
       }),
+      metadataUri: uri,
       marketCap,
       bondingCurvePercent: curve,
       holders: 1,
@@ -283,7 +285,11 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       const imageUrl = await this.metadata.enrichImage(mint, fields)
       const current = this.liveFeed.get(mint)
       if (!current || current.image === imageUrl) return
-      const updated = this.tokens.upsertLiveToken({ ...current, image: imageUrl })
+      const updated = this.tokens.upsertLiveToken({
+        ...current,
+        image: imageUrl,
+        metadataUri: fields.uri ?? current.metadataUri,
+      })
       this.events.server?.to('feed').emit('feed:patch', updated)
       this.events.server?.emit('token:update', updated)
     } catch (err) {

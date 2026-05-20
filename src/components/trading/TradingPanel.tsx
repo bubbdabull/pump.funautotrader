@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { ArrowDownUp, Loader2 } from 'lucide-react'
 import { useWallet } from '@solana/wallet-adapter-react'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { TokenImage } from '@/components/shared/TokenImage'
 import { Input } from '@/components/ui/input'
 import { GlowingButton } from '@/components/shared/GlowingButton'
 import { usePumpPortalTrade } from '@/hooks/usePumpPortalTrade'
+import { formatUsd, formatHolders, formatSol, tokenVolumeSol } from '@/lib/utils'
 import type { PumpToken, PumpPortalPool } from '@/types'
 
 interface TradingPanelProps {
@@ -39,103 +41,155 @@ export function TradingPanel({ token }: TradingPanelProps) {
   }
 
   return (
-    <GlassCard glow="purple" className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-white">Trade {token?.symbol ?? 'Token'}</h3>
-        <ArrowDownUp className="h-4 w-4 text-zinc-500" />
+    <GlassCard glow="purple" className="space-y-4 p-0 overflow-hidden">
+      <div className="border-b border-white/[0.06] bg-white/[0.02] px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {token ? (
+              <TokenImage
+                mint={token.mint}
+                symbol={token.symbol}
+                image={token.image}
+                uri={token.metadataUri}
+                size="md"
+              />
+            ) : (
+              <div className="h-12 w-12 rounded-lg bg-white/5" />
+            )}
+            <div>
+              <h3 className="text-base font-semibold text-white">
+                {token?.symbol ?? 'Select token'}
+              </h3>
+              <p className="text-[11px] text-zinc-500">PumpPortal execution</p>
+            </div>
+          </div>
+          <ArrowDownUp className="h-4 w-4 text-zinc-600" />
+        </div>
+        {token && (
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg bg-black/20 px-2 py-1.5">
+              <p className="text-[10px] uppercase tracking-wider text-zinc-600">MCap</p>
+              <p className="font-mono text-xs text-white">{formatUsd(token.marketCap)}</p>
+            </div>
+            <div className="rounded-lg bg-black/20 px-2 py-1.5">
+              <p className="text-[10px] uppercase tracking-wider text-zinc-600">Holders</p>
+              <p className="font-mono text-xs text-white">{formatHolders(token.holders)}</p>
+            </div>
+            <div className="rounded-lg bg-black/20 px-2 py-1.5">
+              <p className="text-[10px] uppercase tracking-wider text-zinc-600">Vol</p>
+              <p className="font-mono text-xs text-white">{formatSol(tokenVolumeSol(token))}</p>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        {(['buy', 'sell'] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setSide(s)}
-            className={`rounded-lg py-2 text-sm font-medium capitalize transition-all ${
-              side === s
-                ? s === 'buy'
-                  ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                  : 'bg-red-600/20 text-red-400 border border-red-500/30'
-                : 'bg-white/5 text-zinc-500'
-            }`}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+      <div className="space-y-4 px-4 pb-4">
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/[0.06] bg-black/20 p-1">
+          {(['buy', 'sell'] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSide(s)}
+              className={`rounded-md py-2.5 text-sm font-semibold capitalize transition-all ${
+                side === s
+                  ? s === 'buy'
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/40'
+                    : 'bg-red-600 text-white shadow-lg shadow-red-900/40'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
 
-      <div>
-        <label className="text-xs text-zinc-500">{side === 'buy' ? 'Amount (SOL)' : 'Sell amount'}</label>
-        {side === 'buy' ? (
-          <Input value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 font-mono" />
-        ) : (
+        <div>
+          <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+            {side === 'buy' ? 'Size (SOL)' : 'Sell %'}
+          </label>
+          {side === 'buy' ? (
+            <Input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="mt-1.5 font-mono text-base"
+            />
+          ) : (
+            <select
+              value={sellPercent}
+              onChange={(e) => setSellPercent(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 font-mono text-sm"
+            >
+              {['25%', '50%', '75%', '100%'].map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Slippage %
+            </label>
+            <Input
+              value={slippage}
+              onChange={(e) => setSlippage(e.target.value)}
+              className="mt-1.5 font-mono"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Priority
+            </label>
+            <Input
+              value={priorityFee}
+              onChange={(e) => setPriorityFee(e.target.value)}
+              className="mt-1.5 font-mono"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+            Route
+          </label>
           <select
-            value={sellPercent}
-            onChange={(e) => setSellPercent(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
+            value={pool}
+            onChange={(e) => setPool(e.target.value as PumpPortalPool)}
+            className="mt-1.5 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm"
           >
-            {['25%', '50%', '75%', '100%'].map((p) => (
+            {POOLS.map((p) => (
               <option key={p} value={p}>
                 {p}
               </option>
             ))}
           </select>
+        </div>
+
+        <GlowingButton
+          className="w-full py-3 text-sm font-semibold"
+          variant={side === 'buy' ? 'success' : 'danger'}
+          disabled={!token || !publicKey || loading}
+          onClick={handleTrade}
+        >
+          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {!publicKey ? 'Connect wallet' : side === 'buy' ? 'Execute buy' : 'Execute sell'}
+        </GlowingButton>
+
+        {error && <p className="text-center text-xs text-red-400">{error}</p>}
+        {lastSig && (
+          <a
+            href={`https://solscan.io/tx/${lastSig}`}
+            target="_blank"
+            rel="noreferrer"
+            className="block text-center text-xs text-violet-400 hover:underline"
+          >
+            View on Solscan
+          </a>
         )}
       </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-xs text-zinc-500">Slippage %</label>
-          <Input value={slippage} onChange={(e) => setSlippage(e.target.value)} className="mt-1 font-mono" />
-        </div>
-        <div>
-          <label className="text-xs text-zinc-500">Priority fee</label>
-          <Input value={priorityFee} onChange={(e) => setPriorityFee(e.target.value)} className="mt-1 font-mono" />
-        </div>
-      </div>
-
-      <div>
-        <label className="text-xs text-zinc-500">Pool (PumpPortal)</label>
-        <select
-          value={pool}
-          onChange={(e) => setPool(e.target.value as PumpPortalPool)}
-          className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm"
-        >
-          {POOLS.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <GlowingButton
-        className="w-full"
-        variant={side === 'buy' ? 'success' : 'danger'}
-        disabled={!token || !publicKey || loading}
-        onClick={handleTrade}
-      >
-        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-        {!publicKey ? 'Connect Wallet' : side === 'buy' ? 'Buy' : 'Sell'} via PumpPortal
-      </GlowingButton>
-
-      {error && <p className="text-center text-xs text-red-400">{error}</p>}
-      {lastSig && (
-        <a
-          href={`https://solscan.io/tx/${lastSig}`}
-          target="_blank"
-          rel="noreferrer"
-          className="block text-center text-xs text-purple-400 hover:underline"
-        >
-          View transaction
-        </a>
-      )}
-
-      <p className="text-center text-[10px] text-zinc-600">
-        Powered by{' '}
-        <a href="https://pumpportal.fun/local-trading-api/trading-api" target="_blank" rel="noreferrer" className="text-teal-500">
-          PumpPortal Local API
-        </a>
-      </p>
     </GlassCard>
   )
 }

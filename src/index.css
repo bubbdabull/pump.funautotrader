@@ -57,6 +57,20 @@ body::before {
   z-index: 1;
 }
 
+/* Professional terminal panels */
+.panel {
+  background: linear-gradient(180deg, rgba(15, 17, 23, 0.92) 0%, rgba(10, 11, 15, 0.88) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4) inset,
+    0 4px 24px rgba(0, 0, 0, 0.35);
+}
+
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Glass card utility */
 .glass {
   background: rgba(17, 19, 24, 0.65);

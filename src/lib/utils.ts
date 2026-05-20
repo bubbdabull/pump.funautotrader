@@ -11,6 +11,14 @@ export function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`
 }
 
+export function formatHolders(value: number | undefined | null): string {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return '—'
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 10_000) return `${(n / 1_000).toFixed(1)}K`
+  return n.toLocaleString()
+}
+
 export function formatSol(value: number): string {
   if (value >= 1000) return `${(value / 1000).toFixed(1)}K SOL`
   if (value >= 1) return `${value.toFixed(2)} SOL`

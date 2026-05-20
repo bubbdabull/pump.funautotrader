@@ -4,6 +4,8 @@ export interface FeedToken {
   name: string
   symbol: string
   image: string
+  /** IPFS / metadata URI from PumpPortal (for image resolution) */
+  metadataUri?: string
   marketCap: number
   bondingCurvePercent: number
   holders: number

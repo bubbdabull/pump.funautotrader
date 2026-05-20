@@ -25,3 +25,4 @@ export {
   normalizeIpfsUrl,
   isLikelyMetadataUri,
 } from './utils/tokenMedia'
+export { countUniqueHolders } from './utils/holders'

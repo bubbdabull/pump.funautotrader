@@ -12,6 +12,7 @@ export interface PumpToken {
   name: string
   symbol: string
   image: string
+  metadataUri?: string
   marketCap: number
   bondingCurvePercent: number
   holders: number
