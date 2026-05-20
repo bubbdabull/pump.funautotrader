@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import WebSocket from 'ws'
 import type { FeedToken } from '../feed/feed.types'
 
 @Injectable()
@@ -19,7 +20,11 @@ export class SupabaseDbService implements OnModuleInit {
       this.logger.warn('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — REST DB disabled')
       return
     }
-    this.client = createClient(url, key, { auth: { persistSession: false } })
+    // Node 20 (Fly Docker) has no native WebSocket — @supabase/realtime-js requires `ws`
+    this.client = createClient(url, key, {
+      auth: { persistSession: false },
+      realtime: { transport: WebSocket as unknown as typeof globalThis.WebSocket },
+    })
     this.enabled = true
     this.logger.log('Supabase REST database connected (service role)')
   }
