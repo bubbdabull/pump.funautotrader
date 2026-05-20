@@ -7,8 +7,13 @@ async function bootstrap() {
   app.setGlobalPrefix('api')
   app.enableCors({ origin: true, credentials: true })
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
-  const port = process.env.PORT || 3001
-  await app.listen(port)
-  console.log(`Phronis API running on http://localhost:${port}`)
+  const port = Number(process.env.PORT) || 3001
+  const host = process.env.HOST || '0.0.0.0'
+  await app.listen(port, host)
+  console.log(`Phronis API listening on ${host}:${port}`)
 }
-bootstrap()
+
+bootstrap().catch((err) => {
+  console.error('Failed to start:', err)
+  process.exit(1)
+})

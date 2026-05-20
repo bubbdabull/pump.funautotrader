@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env
+.env.*
+!.env.example
+!server/.env.example
+server/dist
+server/node_modules
+*.md
+.agents
