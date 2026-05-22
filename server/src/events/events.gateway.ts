@@ -5,7 +5,7 @@ import {
   OnGatewayConnection,
 } from '@nestjs/websockets'
 import { Server, Socket } from 'socket.io'
-import { Logger } from '@nestjs/common'
+import { Inject, Logger, forwardRef } from '@nestjs/common'
 import { TokensService } from '../tokens/tokens.service'
 
 @WebSocketGateway({ cors: { origin: '*' }, path: '/socket.io' })
@@ -16,7 +16,10 @@ export class EventsGateway implements OnGatewayConnection {
   private readonly logger = new Logger(EventsGateway.name)
   private feedInterval?: NodeJS.Timeout
 
-  constructor(private tokens: TokensService) {}
+  constructor(
+    @Inject(forwardRef(() => TokensService))
+    private tokens: TokensService,
+  ) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`)

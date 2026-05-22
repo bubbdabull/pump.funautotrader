@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { TokensService } from './tokens.service'
 import { EventsGateway } from '../events/events.gateway'
@@ -14,6 +14,7 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private config: ConfigService,
     private tokens: TokensService,
+    @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
   ) {}
 

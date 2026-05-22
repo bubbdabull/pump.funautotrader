@@ -13,7 +13,7 @@ import { HoldersModule } from '../holders/holders.module'
   imports: [
     PumpModule,
     TradingModule,
-    EventsModule,
+    forwardRef(() => EventsModule),
     forwardRef(() => HoldersModule),
     forwardRef(() => PumpPortalModule),
   ],
