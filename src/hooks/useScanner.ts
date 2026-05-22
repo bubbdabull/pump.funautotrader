@@ -31,6 +31,18 @@ type ScannerPayload = {
   tradeableCount: number
 }
 
+/** Server already applied filterForLane — do not re-filter HTTP/feed:update snapshots. */
+function payloadFromServer(tokens: PumpToken[] | unknown, lane: ScannerLane): ScannerPayload {
+  const list = ensureArray<PumpToken>(tokens)
+  const tradeableCount = list.filter(passesTradeableFilter).length
+  if (lane === 'tradeable' || lane === 'all') {
+    const mode: FeedDisplayMode = tradeableCount > 0 ? 'tradeable' : 'watchlist_fallback'
+    return { tokens: list, mode, tradeableCount }
+  }
+  return { tokens: list, mode: 'watchlist_fallback', tradeableCount }
+}
+
+/** Incremental WS events — merge then re-rank locally. */
 function applyLane(tokens: PumpToken[], lane: ScannerLane): ScannerPayload {
   if (lane === 'graduating') {
     const list = tokens
@@ -60,10 +72,11 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
         lane === 'graduating'
           ? await tokenApi.graduating()
           : await tokenApi.feed(lane === 'alpha' ? 'alpha' : 'tradeable')
-      return applyLane(ensureArray<PumpToken>(raw), lane)
+      return payloadFromServer(ensureArray<PumpToken>(raw), lane)
     },
-    refetchInterval: 45_000,
-    staleTime: 12_000,
+    refetchInterval: 20_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   })
 
   useEffect(() => {
@@ -112,7 +125,7 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
     const u3 = wsService.onFeedPatch(onPatch)
     const u4 = wsService.onTokenGraduating(onGraduating)
     const u5 = wsService.onFeedUpdate((tokens) => {
-      queryClient.setQueryData(key, applyLane(ensureArray(tokens), lane))
+      queryClient.setQueryData(key, payloadFromServer(ensureArray(tokens), lane))
     })
 
     return () => {

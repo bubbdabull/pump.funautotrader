@@ -25,6 +25,8 @@ export function DashboardPage() {
   const {
     data: feedData,
     isLoading,
+    isFetching,
+    dataUpdatedAt,
     displayMode,
     tradeableCount,
   } = useScannerFeed('tradeable')
@@ -54,6 +56,13 @@ export function DashboardPage() {
           {isLoading
             ? 'loading…'
             : `${tradeableCount} tradeable · ${tokens.length} shown${usingFallback ? ' (watchlist)' : ''}`}
+          {dataUpdatedAt > 0 && (
+            <span className="text-zinc-600">
+              {' '}
+              · updated {Math.max(0, Math.round((Date.now() - dataUpdatedAt) / 1000))}s ago
+              {isFetching ? ' · syncing…' : ''}
+            </span>
+          )}
         </p>
       </div>
 

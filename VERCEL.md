@@ -28,7 +28,7 @@ That is a **Vercel** error (not Railway). Usually:
 | Opening `/api/...` on Vercel | API lives on **Fly.io** — use full URL in env vars, not Vercel `/api` |
 
 **Do not** open `https://your-app.vercel.app/api/tokens/feed` — that path does not exist on Vercel.  
-The app calls `https://app-holy-dream-3607.fly.dev/api/...` via `VITE_API_URL`.
+The app calls `https://pump-funautotrader.fly.dev/api/...` via `VITE_API_URL`.
 
 ## 2. Environment variables
 

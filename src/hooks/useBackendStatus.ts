@@ -41,7 +41,11 @@ export function useBackendStatus() {
     statusLine = `Cannot reach API (${backendLabel()})`
   } else if (apiReachable && pumpportalConnected) {
     statusTone = 'ok'
-    statusLine = feedTokensOnServer > 0 ? 'Live · receiving tokens' : 'Live · waiting for tokens'
+    const socketBit = socketConnected ? 'WS on' : 'WS off'
+    statusLine =
+      feedTokensOnServer > 0
+        ? `Live · ${feedTokensOnServer} tokens · ${socketBit}`
+        : `Live · waiting for tokens · ${socketBit}`
   } else if (apiReachable) {
     statusTone = 'warn'
     statusLine = 'API connected · live stream warming up'
