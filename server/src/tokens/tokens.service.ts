@@ -101,8 +101,13 @@ export class TokensService {
 
   private async bootstrapFeedFromPump(): Promise<FeedToken[]> {
     const limit = this.pumpBootstrapLimit()
-    const coins = await this.pump.fetchLatestCoins(limit)
-    const mapped = await Promise.all(coins.map((c) => this.mapCoin(c)))
+    const [active, nearGrad] = await Promise.all([
+      this.pump.fetchActiveTradingCoins(limit),
+      this.pump.fetchNearGraduation(Math.min(40, limit)),
+    ])
+    const byMint = new Map<string, PumpCoin>()
+    for (const c of [...active, ...nearGrad]) byMint.set(c.mint, c)
+    const mapped = await Promise.all([...byMint.values()].map((c) => this.mapCoin(c)))
     this.liveFeed.mergeBootstrap(mapped)
     return this.liveFeed.getAll()
   }
@@ -370,7 +375,7 @@ export class TokensService {
   async syncFromPump() {
     const limit = this.pumpBootstrapLimit()
     const [latest, nearGrad] = await Promise.all([
-      this.pump.fetchLatestCoins(limit),
+      this.pump.fetchActiveTradingCoins(limit),
       this.pump.fetchNearGraduation(30),
     ])
     const byMint = new Map<string, PumpCoin>()
@@ -491,6 +496,7 @@ export class TokensService {
     })
 
     const momentum = scores.momentumScore
+    const lastTradeMs = this.pump.lastTradeMs(coin)
     return {
       mint: coin.mint,
       name: coin.name,
@@ -514,6 +520,9 @@ export class TokensService {
       priceUsd: marketCap > 0 ? marketCap / 1_000_000_000 : 0,
       priceChange24h: coin.price_change_24h ?? 0,
       liquidity: liquidity || marketCap * 0.01,
+      ...(lastTradeMs && volume24h >= 0.2
+        ? { lastTradeAt: lastTradeMs }
+        : {}),
     }
   }
 

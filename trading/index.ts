@@ -72,6 +72,17 @@ export {
   type FeedQualityFields,
   type ScannerLane,
 } from './utils/feedQuality'
+export {
+  isRecentlyActive,
+  hasRealTimeTradeActivity,
+  isDeadFeedToken,
+  liveActivityScore,
+  passesActiveScannerFilter,
+  rankByLiveActivity,
+  LIVE_ACTIVITY_MAX_AGE_MS,
+  MIN_LIVE_VOLUME_5M_SOL,
+  MIN_FEED_VOLUME_24H_SOL,
+} from './utils/liveActivity'
 export * from './quantitative/indicators'
 export { computeQuantitativeScores, type QuantitativeScores } from './quantitative/scores'
 export { computeRugScore, RUG_BLOCK_THRESHOLD, type RugScoreBreakdown } from './rug/rugScoreEngine'

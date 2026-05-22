@@ -28,7 +28,7 @@ export class TokensController {
   @Get('feed')
   @Header('Cache-Control', 'no-store')
   feed(@Query('lane') lane?: ScannerLane) {
-    return this.tokens.getFeed(lane ?? 'tradeable')
+    return this.tokens.getFeed(lane ?? 'active')
   }
 
   @Get('graduating')
@@ -44,7 +44,7 @@ export class TokensController {
 
   @Get()
   list(@Query('lane') lane?: ScannerLane) {
-    return this.tokens.getFeed(lane ?? 'tradeable')
+    return this.tokens.getFeed(lane ?? 'active')
   }
 
   @Get(':mint/chart')

@@ -1,5 +1,9 @@
 import {
+  activitySol,
+  hasRealTimeTradeActivity,
+  isDeadFeedToken,
   isGraduatingSoon,
+  liveActivityScore,
   passesAlphaFilter,
   passesTradeableFilter,
   type FeedQualityFields,
@@ -17,6 +21,7 @@ export function rankMintForTradeSubscription(
 ): number {
   let score = 0
   if (pinnedMints.has(token.mint)) score += 10_000
+  score += Math.min(6_000, Math.round(liveActivityScore(token, now) * 0.6))
   if (passesTradeableFilter(token)) score += 8_000
   if (isGraduatingSoon(token)) score += 2_500
   if (passesAlphaFilter(token)) score += 1_200
@@ -37,6 +42,7 @@ export function pickMintsForTradeSubscription(
   alreadySubscribed: ReadonlySet<string>,
   mandatoryMints: readonly string[] = [],
 ): string[] {
+  const now = Date.now()
   const picked: string[] = []
   const seen = new Set<string>()
 
@@ -48,9 +54,16 @@ export function pickMintsForTradeSubscription(
   }
 
   const ranked = tokens
+    .filter(
+      (t) =>
+        !isDeadFeedToken(t, now) &&
+        (hasRealTimeTradeActivity(t, now) ||
+          activitySol(t) >= 0.25 ||
+          isGraduatingSoon(t)),
+    )
     .map((t) => ({
       mint: t.mint,
-      score: rankMintForTradeSubscription(t, pinnedMints),
+      score: rankMintForTradeSubscription(t, pinnedMints, now),
     }))
     .sort((a, b) => b.score - a.score)
 

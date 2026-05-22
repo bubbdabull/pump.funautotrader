@@ -5,6 +5,7 @@ import { SupabaseDbService } from '../supabase/supabase-db.service'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
 import { TradingBridgeService } from '../trading/trading-bridge.service'
 import { LiveFeedService } from '../feed/live-feed.service'
+import { HotMintsService } from './hot-mints.service'
 @Injectable()
 export class TradePersistService implements OnModuleInit {
   private readonly activityThrottle = new Map<string, number>()
@@ -15,6 +16,7 @@ export class TradePersistService implements OnModuleInit {
     private ingestion: IngestionOrchestratorService,
     private trading: TradingBridgeService,
     private liveFeed: LiveFeedService,
+    private hotMints: HotMintsService,
   ) {}
 
   onModuleInit() {
@@ -31,13 +33,29 @@ export class TradePersistService implements OnModuleInit {
   }
 
   private async onTrade(mint: string) {
-    if (!this.supabase.enabled) return
-
     const state = this.trading.getState(mint)
     if (!state?.trades.length) return
 
     const last = state.trades[state.trades.length - 1]
-    const inFeed = Boolean(this.liveFeed.get(mint))
+    this.hotMints.recordTrade(mint, last.timestamp)
+    const activity = computeFeedActivity(state)
+    let feedToken = this.liveFeed.get(mint)
+    if (feedToken) {
+      this.liveFeed.upsert({
+        ...feedToken,
+        ...activity,
+        marketCap: state.marketCapUsd || feedToken.marketCap,
+        bondingCurvePercent: state.bondingCurvePercent,
+        volume24h: Math.max(
+          feedToken.volume24h,
+          state.trades.reduce((a, t) => a + t.solAmount, 0),
+        ),
+      })
+    }
+
+    if (!this.supabase.enabled) return
+
+    const inFeed = Boolean(feedToken)
     if (!inFeed && state.trades.length < 3) return
 
     await this.supabase.insertWalletActivityOnce(mint, {
@@ -51,8 +69,7 @@ export class TradePersistService implements OnModuleInit {
 
     if (!this.shouldPatchActivity(mint)) return
 
-    const activity: FeedActivityFields = computeFeedActivity(state)
-    const feedToken = this.liveFeed.get(mint)
+    feedToken = this.liveFeed.get(mint) ?? feedToken
 
     await this.supabase.patchTokenLiveActivity(mint, activity, {
       marketCap: state.marketCapUsd,

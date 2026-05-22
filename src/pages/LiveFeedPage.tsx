@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, AlertTriangle, Rocket, Shield, Sparkles } from 'lucide-react'
+import { Activity, AlertTriangle, Radio, Rocket, Shield, Sparkles } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { LiveFeedTable } from '@/components/feed/LiveFeedTable'
 import { LiveFeedCards } from '@/components/feed/LiveFeedCards'
@@ -14,6 +14,12 @@ import { cn } from '@/lib/utils'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
   {
+    id: 'active',
+    label: 'Live',
+    icon: Radio,
+    desc: 'Traded in last 2m — real ticks, not dead bootstrap',
+  },
+  {
     id: 'tradeable',
     label: 'Tradeable',
     icon: Sparkles,
@@ -24,7 +30,7 @@ const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: strin
 ]
 
 export function LiveFeedPage() {
-  const [lane, setLane] = useState<ScannerLane>('tradeable')
+  const [lane, setLane] = useState<ScannerLane>('active')
   const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
   const { data, isLoading, isError, displayMode, tradeableCount } = useScannerFeed(lane)
@@ -112,6 +118,16 @@ export function LiveFeedPage() {
           {filtered.length} shown · junk filtered server-side
         </span>
       </div>
+
+      {lane === 'active' && filtered.length === 0 && !isLoading && (
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            No tokens with live trades in the last 2 minutes. PumpPortal trade streams may still be
+            warming up — open a token to pin its stream, or check the Tradeable tab.
+          </p>
+        </div>
+      )}
 
       {lane === 'tradeable' && displayMode === 'watchlist_fallback' && (
         <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">

@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import {
+  activitySol,
+  hasRealTimeTradeActivity,
+  isDeadFeedToken,
+  liveActivityScore,
+  MIN_FEED_VOLUME_24H_SOL,
   normalizeVirtualSol,
   passesAlphaFilter,
-  tradeQualityScore,
 } from '@phronis/trading'
 import type { FeedToken, FeedStats } from './feed.types'
 
@@ -21,9 +25,12 @@ export class LiveFeedService {
     return this.maxFeed
   }
 
-  /** Watchlist-quality tokens stored; tradeable lane filters on read after holder enrich. */
+  /** Alpha + volume bar; dead / zero-activity tokens are not stored. */
   shouldStore(token: FeedToken): boolean {
-    return passesAlphaFilter(token)
+    if (!passesAlphaFilter(token)) return false
+    if (hasRealTimeTradeActivity(token)) return true
+    if (isDeadFeedToken(token)) return false
+    return activitySol(token) >= MIN_FEED_VOLUME_24H_SOL
   }
 
   upsert(token: FeedToken): FeedToken | null {
@@ -79,8 +86,9 @@ export class LiveFeedService {
   }
 
   getAll(limit = this.maxFeed * 4): FeedToken[] {
+    const now = Date.now()
     return [...this.tokens.values()]
-      .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
+      .sort((a, b) => liveActivityScore(b, now) - liveActivityScore(a, now))
       .slice(0, limit)
   }
 
@@ -106,6 +114,13 @@ export class LiveFeedService {
   }
 
   private trim() {
+    if (this.tokens.size <= this.maxFeed) return
+    const now = Date.now()
+    for (const [mint, t] of this.tokens) {
+      if (isDeadFeedToken(t, now)) {
+        this.tokens.delete(mint)
+      }
+    }
     if (this.tokens.size <= this.maxFeed) return
     const sorted = this.getAll(this.maxFeed)
     this.tokens.clear()

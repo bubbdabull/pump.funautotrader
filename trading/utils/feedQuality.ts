@@ -1,3 +1,5 @@
+import { isRecentlyActive, liveActivityScore, rankByLiveActivity } from './liveActivity'
+
 /** Feed quality gates — only tradeable tokens are stored and shown by default. */
 
 /** Strict “about to graduate” band (pump.fun ~85 SOL target). */
@@ -28,6 +30,10 @@ export interface FeedQualityFields {
   momentumScore?: number
   /** Set when on-chain holder snapshot exists */
   holdersVerified?: boolean
+  lastTradeAt?: number
+  isActive?: boolean
+  trades1m?: number
+  volume5mSol?: number
 }
 
 export function entrySignal(token: FeedQualityFields): number {
@@ -109,14 +115,18 @@ export function passesTradeableFilter(token: FeedQualityFields): boolean {
   return true
 }
 
-export type FeedDisplayMode = 'tradeable' | 'watchlist_fallback'
+export type FeedDisplayMode = 'active' | 'tradeable' | 'watchlist_fallback'
 
-/** Best tokens to show — strict tradeable first, else top watchlist by score. */
+/** Best tokens to show — live ticks first, then tradeable, else watchlist. */
 export function resolveDisplayFeed<T extends FeedQualityFields>(
   tokens: T[],
   limit = 80,
 ): { tokens: T[]; mode: FeedDisplayMode; tradeableCount: number } {
   const tradeableCount = tokens.filter(passesTradeableFilter).length
+  const active = rankByLiveActivity(tokens, limit)
+  if (active.length >= 3) {
+    return { tokens: active, mode: 'active', tradeableCount }
+  }
   const tradeable = rankTradeable(tokens, limit)
   if (tradeable.length > 0) {
     return { tokens: tradeable, mode: 'tradeable', tradeableCount }
@@ -143,8 +153,11 @@ export function tradeQualityScore(token: FeedQualityFields): number {
   const mcapPts = Math.min(8, Math.log10(token.marketCap + 1) * 2)
   const curvePts = Math.min(6, curve * 0.05)
   const verifiedBonus = token.holdersVerified ? 8 : 0
+  const liveBonus = isRecentlyActive(token) ? 15 : 0
 
-  return Math.round(signalPts + momPts + volPts + holderPts + mcapPts + curvePts + verifiedBonus)
+  return Math.round(
+    signalPts + momPts + volPts + holderPts + mcapPts + curvePts + verifiedBonus + liveBonus,
+  )
 }
 
 export function rankTradeable<T extends FeedQualityFields>(tokens: T[], limit = 80): T[] {
@@ -154,7 +167,7 @@ export function rankTradeable<T extends FeedQualityFields>(tokens: T[], limit = 
     .slice(0, limit)
 }
 
-export type ScannerLane = 'tradeable' | 'alpha' | 'graduating' | 'all'
+export type ScannerLane = 'tradeable' | 'active' | 'alpha' | 'graduating' | 'all'
 
 export function pickNearGraduation<T extends FeedQualityFields>(
   tokens: T[],
@@ -179,14 +192,31 @@ export function filterForLane<T extends FeedQualityFields>(
       if (strict.length >= 3) return strict
       return pickNearGraduation(tokens)
     }
+    case 'active':
+      return rankByLiveActivity(tokens, 60)
     case 'alpha':
       return [...tokens]
         .filter(passesAlphaFilter)
-        .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
+        .sort((a, b) => liveActivityScore(b) - liveActivityScore(a))
         .slice(0, 60)
     case 'all':
+      return [...tokens]
+        .filter(passesAlphaFilter)
+        .sort((a, b) => liveActivityScore(b) - liveActivityScore(a))
+        .slice(0, 100)
     case 'tradeable':
     default:
-      return resolveDisplayFeed(tokens, lane === 'all' ? 100 : 80).tokens
+      return resolveDisplayFeed(tokens, 80).tokens
   }
 }
+
+export {
+  isRecentlyActive,
+  hasRealTimeTradeActivity,
+  isDeadFeedToken,
+  liveActivityScore,
+  passesActiveScannerFilter,
+  rankByLiveActivity,
+  MIN_LIVE_VOLUME_5M_SOL,
+  MIN_FEED_VOLUME_24H_SOL,
+} from './liveActivity'

@@ -9,6 +9,7 @@ import {
   passesTradeableFilter,
   isGraduatingSoon,
   resolveDisplayFeed,
+  rankByLiveActivity,
   tradeQualityScore,
   type FeedDisplayMode,
 } from '@/lib/feedQuality'
@@ -36,6 +37,9 @@ type ScannerPayload = {
 function payloadFromServer(tokens: PumpToken[] | unknown, lane: ScannerLane): ScannerPayload {
   const list = ensureArray<PumpToken>(tokens)
   const tradeableCount = list.filter(passesTradeableFilter).length
+  if (lane === 'active') {
+    return { tokens: list, mode: 'active', tradeableCount }
+  }
   if (lane === 'tradeable' || lane === 'all') {
     const mode: FeedDisplayMode = tradeableCount > 0 ? 'tradeable' : 'watchlist_fallback'
     return { tokens: list, mode, tradeableCount }
@@ -51,6 +55,14 @@ function applyLane(tokens: PumpToken[], lane: ScannerLane): ScannerPayload {
       .sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
     return { tokens: list, mode: 'watchlist_fallback', tradeableCount: tokens.filter(passesTradeableFilter).length }
   }
+  if (lane === 'active') {
+    const list = rankByLiveActivity(tokens, 60)
+    return {
+      tokens: list,
+      mode: list.length >= 3 ? 'active' : 'watchlist_fallback',
+      tradeableCount: tokens.filter(passesTradeableFilter).length,
+    }
+  }
   if (lane === 'alpha') {
     const list = [...tokens]
       .filter(passesAlphaFilter)
@@ -62,7 +74,7 @@ function applyLane(tokens: PumpToken[], lane: ScannerLane): ScannerPayload {
   return { tokens: resolved.tokens, mode: resolved.mode, tradeableCount: resolved.tradeableCount }
 }
 
-export function useScannerFeed(lane: ScannerLane = 'tradeable') {
+export function useScannerFeed(lane: ScannerLane = 'active') {
   const queryClient = useQueryClient()
   const key = ['tokens', 'scanner', lane] as const
 
@@ -72,7 +84,9 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       const raw =
         lane === 'graduating'
           ? await tokenApi.graduating()
-          : await tokenApi.feed(lane === 'alpha' ? 'alpha' : 'tradeable')
+          : await tokenApi.feed(
+              lane === 'alpha' ? 'alpha' : lane === 'active' ? 'active' : 'tradeable',
+            )
       return payloadFromServer(ensureArray<PumpToken>(raw), lane)
     },
     refetchInterval: 20_000,
@@ -112,7 +126,13 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
           return applyLane(merged, 'tradeable')
         })
       }
-      if (lane === 'tradeable' || lane === 'all') pushToken(token)
+      if (
+        lane === 'active' &&
+        (token.isActive || (token.trades1m ?? 0) > 0 || (token.volume5mSol ?? 0) >= 0.04)
+      ) {
+        pushToken(token)
+      }
+      else if (lane === 'tradeable' || lane === 'all') pushToken(token)
       else if (lane === 'alpha' && passesAlphaFilter(token)) pushToken(token)
     }
 

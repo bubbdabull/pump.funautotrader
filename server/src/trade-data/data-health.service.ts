@@ -15,6 +15,7 @@ export type PumpPortalStatusSnapshot = {
   pinnedPriorityMints: number
   liveFeedCount: number
   messagesReceived: number
+  tradeMessagesReceived?: number
   lastMessageAt?: string
   lastTradeSubRotationAt?: string
 }
@@ -53,12 +54,17 @@ export class DataHealthService {
     const feed = this.liveFeed.getAll()
     const coverage = this.feedPin.coverageStats(feed)
 
+    const tradeMsgs = pumpStatus.tradeMessagesReceived ?? 0
     if (!this.config.get('PUMPPORTAL_API_KEY')?.trim()) {
       issues.push('PUMPPORTAL_API_KEY missing — no live trade ticks')
     } else if (!pumpStatus.connected) {
       issues.push('PumpPortal WebSocket disconnected')
     } else if (pumpStatus.subscribedTradeMints < 10) {
       issues.push(`Only ${pumpStatus.subscribedTradeMints} trade subscriptions active`)
+    } else if (tradeMsgs < 5 && pumpStatus.messagesReceived > 100) {
+      issues.push(
+        `Almost no trade ticks parsed (${tradeMsgs} trades / ${pumpStatus.messagesReceived} WS msgs) — check PumpPortal wallet balance`,
+      )
     }
 
     if (!this.config.get('HELIUS_API_KEY')?.trim()) {

@@ -15,6 +15,8 @@ export interface PumpCoin {
   market_cap?: number
   complete?: boolean
   created_timestamp?: number
+  last_trade_timestamp?: number
+  last_trade_timestamp_ms?: number
   virtual_sol_reserves?: number
   virtual_token_reserves?: number
   usd_24h_volume?: number
@@ -83,7 +85,25 @@ export class PumpService {
     return []
   }
 
+  /** Tokens with recent on-chain trades (best bootstrap for live scanner). */
+  async fetchActiveTradingCoins(limit = 80): Promise<PumpCoin[]> {
+    const batch = await this.fetchCoins({
+      limit: Math.min(150, limit * 2),
+      sort: 'last_trade_timestamp',
+      order: 'DESC',
+    })
+    const active = batch.filter((c) => !c.complete)
+    if (active.length > 0) {
+      this.logger.log(`Pump.fun: ${active.length} recently traded coins`)
+      return active.slice(0, limit)
+    }
+    return []
+  }
+
   async fetchLatestCoins(limit = 50): Promise<PumpCoin[]> {
+    const active = await this.fetchActiveTradingCoins(limit)
+    if (active.length >= 10) return active
+
     const fresh = await this.fetchCoins({ limit, sort: 'created_timestamp', order: 'DESC' })
     if (fresh.length > 0) return fresh
 
@@ -151,5 +171,12 @@ export class PumpService {
 
   solReservesToLiquidity(solLamports: number): number {
     return solLamports / 1e9
+  }
+
+  lastTradeMs(coin: PumpCoin): number | undefined {
+    const raw = coin.last_trade_timestamp_ms ?? coin.last_trade_timestamp
+    if (raw == null || !Number.isFinite(Number(raw))) return undefined
+    const n = Number(raw)
+    return n < 1e12 ? n * 1000 : n
   }
 }

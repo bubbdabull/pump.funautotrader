@@ -20,6 +20,7 @@ export interface DataHealthReport {
     coverage: {
       mandatoryCount: number
       mandatoryWithRecentTrade: number
+      feedWithRecentTrade?: number
     }
   }
   db: { tradesLast5m: number; activeTokensLast2m: number }
@@ -53,8 +54,8 @@ export function DataHealthBanner() {
             {' · '}
             <span className="font-normal opacity-90">
               {data.pumpportal.subscribedTradeMints}/{data.pumpportal.maxTradeSubscriptions} streams ·{' '}
-              {data.feed.coverage.mandatoryWithRecentTrade}/{data.feed.coverage.mandatoryCount} feed tokens
-              active · {data.db.tradesLast5m} DB trades (5m)
+              {data.feed.coverage.feedWithRecentTrade ?? data.feed.coverage.mandatoryWithRecentTrade}/
+              {data.feed.size} live · {data.db.tradesLast5m} DB trades (5m)
             </span>
           </p>
           {data.issues.length > 0 && (

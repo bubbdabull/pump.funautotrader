@@ -19,6 +19,7 @@ import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrato
 import { QuantEngineService } from '../quant/quant-engine.service'
 import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 import { FeedTradePinService } from '../trade-data/feed-trade-pin.service'
+import { HotMintsService } from '../trade-data/hot-mints.service'
 
 @Injectable()
 export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
@@ -28,6 +29,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   private rotationTimer?: NodeJS.Timeout
   private readonly subscribedMints = new Set<string>()
   private readonly pendingTradeQueue: string[] = []
+  private readonly maxPendingTradeQueue: number
   private readonly maxTradeSubscriptions: number
   private readonly tradeSubBatchSize: number
   private tradeSubFlushTimer?: NodeJS.Timeout
@@ -54,12 +56,14 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => HolderEnrichmentService))
     private holderEnrichment: HolderEnrichmentService,
     private feedTradePin: FeedTradePinService,
+    private hotMints: HotMintsService,
   ) {
     this.apiKey = this.config.get<string>('PUMPPORTAL_API_KEY')?.trim() || undefined
     const max = Number(this.config.get('PUMPPORTAL_MAX_TRADE_SUBS') ?? 250)
     this.maxTradeSubscriptions = Number.isFinite(max) && max >= 10 ? Math.min(max, 2000) : 250
     const batch = Number(this.config.get('PUMPPORTAL_TRADE_SUB_BATCH') ?? 80)
     this.tradeSubBatchSize = Number.isFinite(batch) && batch >= 1 ? Math.min(batch, 500) : 80
+    this.maxPendingTradeQueue = Math.max(this.maxTradeSubscriptions * 2, 400)
   }
 
   getStatus() {
@@ -133,7 +137,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         const data = JSON.parse(raw.toString()) as Record<string, unknown>
         this.messageCount++
         this.lastMessageAt = new Date().toISOString()
-        this.handleMessage(data)
+        this.dispatchMessage(data)
       } catch (err) {
         this.logger.warn(`Invalid WS message: ${(err as Error).message}`)
       }
@@ -160,9 +164,13 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       ...this.autoTrader.getPriorityMints(),
       ...this.feedTradePin.getMandatoryMints(),
     ])
-    const mandatory = this.feedTradePin.getMandatoryMints()
+    const mandatory = [
+      ...this.hotMints.getHotMints(80),
+      ...this.feedTradePin.getMandatoryMints(),
+    ]
+    const mandatoryUnique = [...new Set(mandatory)]
 
-    for (const mint of mandatory) {
+    for (const mint of mandatoryUnique) {
       while (
         this.subscribedMints.size >= this.maxTradeSubscriptions &&
         !this.subscribedMints.has(mint)
@@ -178,28 +186,41 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       pinned,
       slotsLeft,
       this.subscribedMints,
-      mandatory,
+      mandatoryUnique,
     )
     for (const mint of picks) {
       this.queueTradeSubscription(mint, true)
     }
     this.lastRotationAt = new Date().toISOString()
-    if (picks.length || mandatory.length) {
+    if (picks.length || mandatoryUnique.length) {
       this.logger.debug(
-        `Trade subs: mandatory=${mandatory.length} queued=${picks.length} active=${this.subscribedMints.size}/${this.maxTradeSubscriptions}`,
+        `Trade subs: mandatory=${mandatoryUnique.length} queued=${picks.length} active=${this.subscribedMints.size}/${this.maxTradeSubscriptions} pending=${this.pendingTradeQueue.length}`,
       )
     }
   }
 
   /** Drop a subscribed mint that is not pinned to make room for feed tokens. */
   private evictOneNonPinned(pinned: ReadonlySet<string>): boolean {
-    for (const mint of this.subscribedMints) {
-      if (!pinned.has(mint)) {
-        this.subscribedMints.delete(mint)
-        return true
+    const hot = new Set(this.hotMints.getHotMints(120, 180_000))
+    const candidates = [...this.subscribedMints].filter((m) => !pinned.has(m) && !hot.has(m))
+    const victim = candidates[0]
+    if (!victim) {
+      for (const mint of this.subscribedMints) {
+        if (!pinned.has(mint)) {
+          this.unsubscribeTradeMints([mint])
+          return true
+        }
       }
+      return false
     }
-    return false
+    this.unsubscribeTradeMints([victim])
+    return true
+  }
+
+  private unsubscribeTradeMints(mints: string[]) {
+    if (!mints.length || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    this.ws.send(JSON.stringify({ method: 'unsubscribeTokenTrade', keys: mints }))
+    for (const m of mints) this.subscribedMints.delete(m)
   }
 
   private queueTradeSubscription(mint: string, front = false) {
@@ -210,6 +231,10 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     if (idx >= 0) this.pendingTradeQueue.splice(idx, 1)
     if (front) this.pendingTradeQueue.unshift(mint)
     else this.pendingTradeQueue.push(mint)
+
+    while (this.pendingTradeQueue.length > this.maxPendingTradeQueue) {
+      this.pendingTradeQueue.pop()
+    }
 
     if (this.tradeSubFlushTimer) return
     this.tradeSubFlushTimer = setTimeout(() => {
@@ -275,23 +300,76 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     return this.subscribedMints.has(mint)
   }
 
+  private extractSolAmount(data: Record<string, unknown>): number {
+    const direct = Number(
+      data.solAmount ??
+        data.sol_amount ??
+        data.sol ??
+        data.amount ??
+        data.nativeAmount ??
+        0,
+    )
+    if (direct > 0) return direct
+
+    const vSol = Number(data.vSolInBondingCurve ?? data.v_sol_in_bonding_curve ?? 0)
+    if (vSol > 0 && vSol < 500) return vSol * 0.002
+
+    const tokenAmt = Number(
+      data.tokenAmount ?? data.token_amount ?? data.newTokenBalance ?? 0,
+    )
+    const mcapSol = Number(data.marketCapSol ?? data.market_cap_sol ?? 0)
+    if (tokenAmt > 0 && mcapSol > 1) {
+      return Math.max(0.002, (tokenAmt / 1_000_000_000) * mcapSol * 0.015)
+    }
+    return 0
+  }
+
   private parseTradeSide(data: Record<string, unknown>): 'buy' | 'sell' | null {
-    const raw = String(data.txType ?? data.type ?? data.side ?? data.tradeType ?? '').toLowerCase()
-    if (raw === 'buy' || raw === 'sell') return raw
+    const raw = String(
+      data.txType ?? data.type ?? data.side ?? data.tradeType ?? data.event ?? '',
+    ).toLowerCase()
+    if (raw === 'buy' || raw === 'sell' || raw === 'purchase' || raw === 'sale') {
+      return raw === 'sell' || raw === 'sale' ? 'sell' : 'buy'
+    }
     if (data.isBuy === true) return 'buy'
     if (data.isBuy === false) return 'sell'
-    const sol = Number(data.solAmount ?? data.sol_amount ?? data.sol ?? 0)
+    const sol = this.extractSolAmount(data)
     const trader = data.traderPublicKey ?? data.trader ?? data.user ?? data.owner
-    if (sol > 0 && trader && !data.name && !data.symbol) {
+    const hasTradeFields =
+      Boolean(data.signature) ||
+      Boolean(data.tokenAmount ?? data.token_amount ?? data.newTokenBalance)
+    if (sol > 0 && trader && hasTradeFields) {
       return 'buy'
     }
     return null
   }
 
   private isLaunchMessage(data: Record<string, unknown>, txType: string): boolean {
-    if (txType === 'create' || txType === 'new') return true
-    if ((data.name || data.symbol) && !this.parseTradeSide(data)) return true
+    if (txType === 'create' || txType === 'new' || txType === 'launch') return true
+    const hasLaunchMeta = Boolean(data.name || data.symbol || data.uri)
+    const tradeSide = this.parseTradeSide(data)
+    if (hasLaunchMeta && !tradeSide) return true
     return false
+  }
+
+  private dispatchMessage(data: unknown) {
+    if (Array.isArray(data)) {
+      for (const item of data) {
+        if (item && typeof item === 'object') {
+          this.handleMessage(item as Record<string, unknown>)
+        }
+      }
+      return
+    }
+    if (data && typeof data === 'object') {
+      const rec = data as Record<string, unknown>
+      const nested = rec.data ?? rec.payload ?? rec.message
+      if (nested && typeof nested === 'object' && !rec.mint) {
+        this.handleMessage(nested as Record<string, unknown>)
+        return
+      }
+      this.handleMessage(rec)
+    }
   }
 
   private handleMessage(data: Record<string, unknown>) {
@@ -303,17 +381,21 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
     if (tradeSide) {
       this.tradeMessageCount++
-      const sol = Number(data.solAmount ?? data.sol_amount ?? data.sol ?? 0)
-      void this.ingestTrade(mint, data, tradeSide).then(() =>
+      const sol = this.extractSolAmount(data) || 0.005
+      this.hotMints.recordTrade(mint)
+      void this.ingestTrade(mint, data, tradeSide, sol).then(() =>
         this.publishTokenUpdate(mint, sol),
       )
       return
     }
 
     if (this.isLaunchMessage(data, txType)) {
-      this.handleNewToken(mint, data)
-      if (Number(data.solAmount ?? 0) > 0) {
-        void this.ingestTrade(mint, data, 'buy')
+      const initialSol = this.extractSolAmount(data) || Number(data.initialBuy ?? 0) * 1e-9
+      void this.handleNewToken(mint, data, initialSol)
+      if (initialSol >= 0.08) {
+        this.tradeMessageCount++
+        this.hotMints.recordTrade(mint)
+        void this.ingestTrade(mint, data, 'buy', initialSol)
       }
       return
     }
@@ -355,14 +437,20 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     })
   }
 
-  private async ingestTrade(mint: string, data: Record<string, unknown>, side: 'buy' | 'sell') {
+  private async ingestTrade(
+    mint: string,
+    data: Record<string, unknown>,
+    side: 'buy' | 'sell',
+    solOverride?: number,
+  ) {
+    const sol = solOverride ?? this.extractSolAmount(data)
     await this.publishIngest(
       'token.trade',
       mint,
       {
         ...data,
         txType: side,
-        solAmount: Number(data.solAmount ?? data.sol_amount ?? 0),
+        solAmount: sol,
         tokenAmount: Number(
           data.tokenAmount ?? data.token_amount ?? data.newTokenBalance ?? 0,
         ),
@@ -374,7 +462,11 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     )
   }
 
-  private async handleNewToken(mint: string, data: Record<string, unknown>) {
+  private async handleNewToken(
+    mint: string,
+    data: Record<string, unknown>,
+    initialSol = 0,
+  ) {
     const event = data as unknown as PumpPortalNewTokenEvent
 
     const token = this.buildFeedToken({ ...event, mint, ...data })
@@ -398,8 +490,11 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     })
     void this.holderEnrichment.enrichMint(mint, true)
 
-    this.autoTrader.pinTradeStream(mint)
-    this.queueTradeSubscription(mint, true)
+    const mcapSol = Number(data.marketCapSol ?? 0)
+    if (initialSol >= 0.12 || mcapSol >= 28) {
+      this.autoTrader.pinTradeStream(mint)
+      this.queueTradeSubscription(mint, true)
+    }
 
     await this.publishIngest('token.launch', mint, { ...event, mint, ...data }, mint)
 

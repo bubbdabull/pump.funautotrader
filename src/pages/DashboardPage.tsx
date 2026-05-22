@@ -30,7 +30,7 @@ export function DashboardPage() {
     dataUpdatedAt,
     displayMode,
     tradeableCount,
-  } = useScannerFeed('tradeable')
+  } = useScannerFeed('active')
   const { data: graduatingData } = useScannerFeed('graduating')
   const tokens = ensureArray<PumpToken>(feedData)
   const graduating = ensureArray<PumpToken>(graduatingData)
