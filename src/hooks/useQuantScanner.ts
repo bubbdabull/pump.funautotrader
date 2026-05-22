@@ -63,16 +63,23 @@ export function useMomentumRankingsState() {
   useEffect(() => {
     wsService.connect()
     const unsub = wsService.onQuantUpdate((u) => {
+      if (!u.scores) return
       patch(u)
+      const confidence = u.scores.tradeConfidenceScore
+      if (confidence == null || !Number.isFinite(confidence)) return
       setRankings((prev) => {
         const next = [...prev.filter((r) => r.mint !== u.mint)]
-        next.push({ mint: u.mint, confidence: u.scores.tradeConfidenceScore })
+        next.push({ mint: u.mint, confidence })
         return next.sort((a, b) => b.confidence - a.confidence).slice(0, 50)
       })
+    })
+    const unsubHolders = wsService.onQuantHolders((h) => {
+      useQuantStore.getState().patchHolders(h)
     })
     const unsubStrat = wsService.onQuantStrategy(({ mint, signal }) => addStrategy(mint, signal))
     return () => {
       unsub()
+      unsubHolders()
       unsubStrat()
     }
   }, [patch, addStrategy])

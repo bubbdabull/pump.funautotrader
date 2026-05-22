@@ -99,14 +99,14 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
       const promoted = this.tokens.promoteIfTradeable(mint, merged.holders)
       if (promoted) {
         this.events.server?.to('feed').emit('feed:patch', promoted)
-        this.events.server?.emit('quant:update', {
+        this.events.server?.emit('quant:holders', {
           mint,
           holders: promoted.holders,
           holdersVerified: true,
           at: new Date().toISOString(),
         })
       } else {
-        this.events.server?.emit('quant:update', {
+        this.events.server?.emit('quant:holders', {
           mint,
           holders: merged.holders,
           holdersVerified: true,

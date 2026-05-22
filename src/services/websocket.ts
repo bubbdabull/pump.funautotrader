@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client'
 import type { PumpToken, AutoTradeSignal } from '@/types'
-import type { QuantUpdate, StrategySignal } from '@/lib/quantTypes'
+import type { QuantHolderPatch, QuantUpdate, StrategySignal } from '@/lib/quantTypes'
 
 import { WS_URL } from '@/lib/apiConfig'
 
@@ -8,6 +8,7 @@ type TokenUpdateHandler = (token: PumpToken) => void
 type FeedHandler = (tokens: PumpToken[]) => void
 type SignalHandler = (signal: AutoTradeSignal) => void
 type QuantUpdateHandler = (payload: QuantUpdate) => void
+type QuantHoldersHandler = (payload: QuantHolderPatch) => void
 type QuantStrategyHandler = (payload: { mint: string; signal: StrategySignal }) => void
 
 class WebSocketService {
@@ -20,6 +21,7 @@ class WebSocketService {
   private graduatingHandlers = new Set<TokenUpdateHandler>()
   private signalHandlers = new Set<SignalHandler>()
   private quantUpdateHandlers = new Set<QuantUpdateHandler>()
+  private quantHoldersHandlers = new Set<QuantHoldersHandler>()
   private quantStrategyHandlers = new Set<QuantStrategyHandler>()
   private rugWarningHandlers = new Set<(payload: { mint: string; rug: QuantUpdate['rug'] }) => void>()
 
@@ -62,6 +64,10 @@ class WebSocketService {
 
     this.socket.on('quant:update', (payload: QuantUpdate) => {
       this.quantUpdateHandlers.forEach((h) => h(payload))
+    })
+
+    this.socket.on('quant:holders', (payload: QuantHolderPatch) => {
+      this.quantHoldersHandlers.forEach((h) => h(payload))
     })
 
     this.socket.on('quant:strategy', (payload: { mint: string; signal: StrategySignal }) => {
@@ -130,6 +136,11 @@ class WebSocketService {
   onQuantUpdate(handler: QuantUpdateHandler) {
     this.quantUpdateHandlers.add(handler)
     return () => this.quantUpdateHandlers.delete(handler)
+  }
+
+  onQuantHolders(handler: QuantHoldersHandler) {
+    this.quantHoldersHandlers.add(handler)
+    return () => this.quantHoldersHandlers.delete(handler)
   }
 
   onQuantStrategy(handler: QuantStrategyHandler) {

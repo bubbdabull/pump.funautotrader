@@ -142,27 +142,29 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
     : undefined
 
   useEffect(() => {
-    const unsub = wsService.onQuantUpdate(
-      (u: { mint: string; holders?: number; holdersVerified?: boolean }) => {
-        if (!u.holders || u.holders <= 0) return
-        queryClient.setQueryData<ScannerPayload>(key, (prev) => {
-          let list = mergeQuantHolders(prev?.tokens ?? [])
-          const idx = list.findIndex((t) => t.mint === u.mint)
-          if (idx >= 0) {
-            const next = [...list]
-            next[idx] = {
-              ...next[idx],
-              holders: Math.max(next[idx].holders, u.holders ?? 0),
-              holdersVerified: u.holdersVerified ?? next[idx].holdersVerified,
-            }
-            list = next
-          }
-          return applyLane(list, lane)
-        })
-      },
-    )
+    const applyHolderPatch = (u: { mint: string; holders?: number; holdersVerified?: boolean }) => {
+      if (!u.holders || u.holders <= 0) return
+      queryClient.setQueryData<ScannerPayload>(key, (prev) => {
+        const list = ensureArray<PumpToken>(prev?.tokens ?? [])
+        const idx = list.findIndex((t) => t.mint === u.mint)
+        if (idx < 0) return prev
+        const next = [...list]
+        next[idx] = {
+          ...next[idx],
+          holders: Math.max(next[idx].holders, u.holders ?? 0),
+          holdersVerified: u.holdersVerified ?? next[idx].holdersVerified,
+        }
+        return applyLane(next, lane)
+      })
+    }
+    const unsub = wsService.onQuantHolders(applyHolderPatch)
+    const unsubLegacy = wsService.onQuantUpdate((u) => {
+      if (u.scores) return
+      if (u.holders) applyHolderPatch(u)
+    })
     return () => {
       unsub()
+      unsubLegacy()
     }
   }, [queryClient, lane])
 

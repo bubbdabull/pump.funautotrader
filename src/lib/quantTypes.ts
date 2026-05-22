@@ -61,3 +61,11 @@ export interface QuantRanking {
   mint: string
   confidence: number
 }
+
+/** Holder-only WS patch (no scores/rug). */
+export interface QuantHolderPatch {
+  mint: string
+  holders: number
+  holdersVerified?: boolean
+  at?: string
+}
