@@ -11,7 +11,7 @@ import { PumpModule } from '../pump/pump.module'
   imports: [
     HeliusModule,
     FeedModule,
-    EventsModule,
+    forwardRef(() => EventsModule),
     PumpModule,
     forwardRef(() => TokensModule),
   ],

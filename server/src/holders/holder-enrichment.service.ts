@@ -42,6 +42,7 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
     private liveFeed: LiveFeedService,
     @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
+    @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
     private pump: PumpService,
   ) {}

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Inject, Logger, OnModuleInit, forwardRef } from '@nestjs/common'
 import {
   globalMarketState,
   computeQuantitativeScores,
@@ -19,9 +19,11 @@ export class QuantEngineService implements OnModuleInit {
   private readonly holderCounts = new Map<string, number>()
 
   constructor(
+    @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
     private ingestion: IngestionOrchestratorService,
     private persist: QuantPersistService,
+    @Inject(forwardRef(() => HolderEnrichmentService))
     private holderEnrichment: HolderEnrichmentService,
   ) {}
 

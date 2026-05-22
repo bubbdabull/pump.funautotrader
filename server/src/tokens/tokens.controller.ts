@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Param, Post, Query } from '@nestjs/common'
+import { Controller, Get, Header, Inject, Param, Post, Query, forwardRef } from '@nestjs/common'
 import { TokensService } from './tokens.service'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 import type { ScannerLane } from '@phronis/trading'
@@ -21,6 +21,7 @@ function parseChartIntervalMs(raw?: string): number {
 export class TokensController {
   constructor(
     private tokens: TokensService,
+    @Inject(forwardRef(() => PumpPortalDataGateway))
     private pumpportal: PumpPortalDataGateway,
   ) {}
 

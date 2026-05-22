@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common'
+import { Injectable, Inject, Logger, OnModuleInit, OnModuleDestroy, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import WebSocket from 'ws'
 import { EventsGateway } from '../events/events.gateway'
@@ -40,14 +40,18 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private config: ConfigService,
+    @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
     private trading: TradingBridgeService,
     private autoTrader: AutoTraderService,
+    @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
     private liveFeed: LiveFeedService,
     private metadata: TokenMetadataService,
     private ingestion: IngestionOrchestratorService,
+    @Inject(forwardRef(() => QuantEngineService))
     private quant: QuantEngineService,
+    @Inject(forwardRef(() => HolderEnrichmentService))
     private holderEnrichment: HolderEnrichmentService,
     private feedTradePin: FeedTradePinService,
   ) {

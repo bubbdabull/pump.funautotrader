@@ -22,6 +22,7 @@ export class EventsGateway implements OnGatewayConnection {
     @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
     private autoTrader: AutoTraderService,
+    @Inject(forwardRef(() => PumpPortalDataGateway))
     private pumpportal: PumpPortalDataGateway,
   ) {}
 

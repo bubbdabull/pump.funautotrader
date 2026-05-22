@@ -1,4 +1,4 @@
-import { Controller, Get, Header } from '@nestjs/common'
+import { Controller, Get, Header, Inject, forwardRef } from '@nestjs/common'
 import { DataHealthService } from './data-health.service'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 
@@ -6,6 +6,7 @@ import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 export class DataHealthController {
   constructor(
     private health: DataHealthService,
+    @Inject(forwardRef(() => PumpPortalDataGateway))
     private pumpportal: PumpPortalDataGateway,
   ) {}
 
