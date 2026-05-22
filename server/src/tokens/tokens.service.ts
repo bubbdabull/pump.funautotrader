@@ -206,20 +206,57 @@ export class TokensService {
     return this.mapCoin(coin)
   }
 
-  getTrades(mint: string, limit = 50): FeedTrade[] {
+  async getTrades(mint: string, limit = 50): Promise<FeedTrade[]> {
     const state = this.trading.getState(mint)
-    if (!state) return []
-    return state.trades
-      .slice(-limit)
-      .reverse()
-      .map((t) => ({
-        signature: t.signature,
-        wallet: t.wallet,
-        side: t.side,
-        solAmount: t.solAmount,
-        tokenAmount: t.tokenAmount,
-        timestamp: new Date(t.timestamp).toISOString(),
-      }))
+    if (state?.trades.length) {
+      return state.trades
+        .slice(-limit)
+        .reverse()
+        .map((t) => ({
+          signature: t.signature,
+          wallet: t.wallet,
+          side: t.side,
+          solAmount: t.solAmount,
+          tokenAmount: t.tokenAmount,
+          timestamp: new Date(t.timestamp).toISOString(),
+        }))
+    }
+
+    if (this.supabase.enabled) {
+      const rows = await this.supabase.loadRecentWalletActivity(mint, limit)
+      return rows
+        .reverse()
+        .map((a) => ({
+          signature: (a.signature as string) ?? undefined,
+          wallet: a.wallet as string,
+          side: (a.side as string) === 'sell' ? 'sell' : 'buy',
+          solAmount: Number(a.solAmount ?? 0),
+          tokenAmount: 0,
+          timestamp: new Date(a.actedAt as string).toISOString(),
+        }))
+    }
+    return []
+  }
+
+  /** Write feed token + activity to Supabase (all lanes, not only strict tradeable). */
+  persistFeedToken(token: FeedToken): void {
+    if (!this.supabase.enabled) return
+    void this.supabase.upsertFeedToken(token).catch((err) =>
+      this.logger.debug(`persistFeedToken ${token.mint.slice(0, 8)}: ${(err as Error).message}`),
+    )
+  }
+
+  patchHoldersToDb(mint: string, snap: { holders: number; verified?: boolean; top1Pct?: number; top5Pct?: number; entropy?: number }): void {
+    if (!this.supabase.enabled) return
+    void this.supabase
+      .patchTokenHolders(mint, snap.holders, Boolean(snap.verified), {
+        top1Pct: snap.top1Pct,
+        top5Pct: snap.top5Pct,
+        entropy: snap.entropy,
+      })
+      .catch((err) =>
+        this.logger.debug(`patchHolders ${mint.slice(0, 8)}: ${(err as Error).message}`),
+      )
   }
 
   getStats() {
@@ -263,7 +300,9 @@ export class TokensService {
       holders,
       holdersVerified: Boolean(chain?.verified ?? chain?.holders),
     })
-    return this.liveFeed.upsert(enriched) ?? this.liveFeed.patch(enriched)
+    const saved = this.liveFeed.upsert(enriched) ?? this.liveFeed.patch(enriched)
+    if (saved) this.persistFeedToken(saved)
+    return saved
   }
 
   /** Push live trade activity to feed + clients even when full upsert gates fail. */
@@ -296,6 +335,7 @@ export class TokensService {
     this.events.server?.emit('token:update', saved)
     this.events.server?.to('feed').emit('feed:patch', saved)
     this.events.emitChartUpdate(mint)
+    this.persistFeedToken(saved)
     if (whaleSol && whaleSol >= 5) {
       void this.persistToSupabase(saved, { whaleSol })
     }
@@ -308,7 +348,7 @@ export class TokensService {
   ) {
     try {
       if (this.supabase.enabled && !this.prisma.enabled) {
-        await this.supabase.upsertToken(token)
+        await this.supabase.upsertFeedToken(token)
         if (options?.isNew) {
           await this.supabase.createAlert({
             type: 'token',
@@ -474,6 +514,14 @@ export class TokensService {
         website: media.website ?? current.website,
       })
       if (saved) {
+        this.persistFeedToken(saved)
+        void this.supabase.patchTokenMedia(mint, {
+          image: media.image,
+          metadataUri: media.metadataUri ?? saved.metadataUri,
+          twitter: media.twitter,
+          telegram: media.telegram,
+          website: media.website,
+        })
         this.events.server?.to('feed').emit('feed:patch', saved)
         this.events.server?.emit('token:update', saved)
       }

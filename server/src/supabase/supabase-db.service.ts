@@ -106,10 +106,10 @@ export class SupabaseDbService implements OnModuleInit {
     return mints.length
   }
 
-  async upsertToken(token: FeedToken) {
+  /** Persist any feed-visible token (trades, images, holders) — not gated on tradeable filter. */
+  async upsertFeedToken(token: FeedToken) {
     if (!this.client) return
     const isTradeable = passesTradeableFilter(token)
-    if (!isTradeable) return
     const row = {
       id: randomUUID(),
       mint: token.mint,
@@ -182,6 +182,57 @@ export class SupabaseDbService implements OnModuleInit {
         return
       }
       throw new Error(error.message)
+    }
+  }
+
+  /** @deprecated Use upsertFeedToken — kept for callers that meant strict tradeable-only. */
+  async upsertToken(token: FeedToken) {
+    return this.upsertFeedToken(token)
+  }
+
+  async patchTokenMedia(
+    mint: string,
+    patch: {
+      image?: string
+      metadataUri?: string | null
+      twitter?: string | null
+      telegram?: string | null
+      website?: string | null
+    },
+  ) {
+    if (!this.client) return
+    const payload: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+    if (patch.image != null) payload.image = patch.image
+    if (patch.metadataUri !== undefined) payload.metadataUri = patch.metadataUri
+    if (patch.twitter !== undefined) payload.twitter = patch.twitter
+    if (patch.telegram !== undefined) payload.telegram = patch.telegram
+    if (patch.website !== undefined) payload.website = patch.website
+    const { error } = await this.client.from('Token').update(payload).eq('mint', mint)
+    if (error) this.logger.debug(`Token media patch: ${error.message}`)
+  }
+
+  async patchTokenHolders(
+    mint: string,
+    holders: number,
+    holdersVerified: boolean,
+    holderMeta?: { top1Pct?: number; top5Pct?: number; entropy?: number },
+  ) {
+    if (!this.client) return
+    const { error } = await this.client.from('Token').update({
+      holders,
+      holdersVerified,
+      updatedAt: new Date().toISOString(),
+    }).eq('mint', mint)
+    if (error) this.logger.debug(`Token holders patch: ${error.message}`)
+    if (holderMeta && holders > 0) {
+      await this.insertHolderSnapshot(
+        mint,
+        holders,
+        holderMeta.top1Pct ?? 0,
+        holderMeta.top5Pct ?? 0,
+        holderMeta.entropy ?? 0,
+        { holdersVerified },
+      )
     }
   }
 
@@ -338,18 +389,40 @@ export class SupabaseDbService implements OnModuleInit {
   }
 
   async listTradeableTokensForRehydrate(limit = 50) {
+    return this.listFeedTokensForRehydrate(limit, true)
+  }
+
+  /** Mints to replay trades on startup (active feed + recent DB activity). */
+  async listFeedTokensForRehydrate(limit = 80, tradeableOnly = false) {
     if (!this.client) return []
-    const { data, error } = await this.client
+    let q = this.client
       .from('Token')
       .select('mint, symbol, name, marketCap, bondingCurvePercent, metadataUri, image')
-      .eq('isTradeable', true)
-      .order('updatedAt', { ascending: false })
+      .order('lastTradeAt', { ascending: false, nullsFirst: false })
       .limit(limit)
+    if (tradeableOnly) q = q.eq('isTradeable', true)
+    const { data, error } = await q
     if (error) {
-      this.logger.debug(`listTradeableTokens: ${error.message}`)
+      this.logger.debug(`listFeedTokens: ${error.message}`)
       return []
     }
-    return data ?? []
+    const rows = data ?? []
+    if (rows.length >= Math.min(limit, 20)) return rows
+
+    const { data: waMints } = await this.client
+      .from('WalletActivity')
+      .select('mint')
+      .order('actedAt', { ascending: false })
+      .limit(limit * 2)
+    const seen = new Set(rows.map((r) => r.mint as string))
+    for (const row of waMints ?? []) {
+      const m = row.mint as string
+      if (!m || seen.has(m)) continue
+      seen.add(m)
+      rows.push({ mint: m, symbol: m.slice(0, 6), name: m.slice(0, 8), marketCap: 0, bondingCurvePercent: 0, metadataUri: null, image: null })
+      if (rows.length >= limit) break
+    }
+    return rows
   }
 
   async loadRecentWalletActivity(mint: string, limit = 150) {

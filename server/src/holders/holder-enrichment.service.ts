@@ -115,6 +115,16 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
       if (exclude.length) globalMarketState.addExcludeWallets(mint, exclude)
 
       const promoted = this.tokens.promoteIfTradeable(mint, merged.holders)
+      const target = promoted ?? this.liveFeed.get(mint)
+      if (target) {
+        this.tokens.persistFeedToken({
+          ...target,
+          holders: merged.holders,
+          holdersVerified: true,
+        })
+      }
+      void this.tokens.patchHoldersToDb(mint, merged)
+
       if (promoted) {
         this.events.server?.to('feed').emit('feed:patch', promoted)
         this.events.server?.emit('quant:holders', {

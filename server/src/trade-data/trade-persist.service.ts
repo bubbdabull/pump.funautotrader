@@ -1,6 +1,5 @@
 import { Injectable, Inject, OnModuleInit, forwardRef } from '@nestjs/common'
-import { passesTradeableFilter } from '@phronis/trading'
-import { computeFeedActivity, type FeedActivityFields } from '@phronis/trading'
+import { computeFeedActivity } from '@phronis/trading'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
 import { TradingBridgeService } from '../trading/trading-bridge.service'
@@ -51,7 +50,24 @@ export class TradePersistService implements OnModuleInit {
     if (!this.supabase.enabled) return
 
     const inFeed = Boolean(feedToken)
-    if (!inFeed && state.trades.length < 3) return
+    const hot = this.hotMints.getHotMints(80).includes(mint)
+    if (!inFeed && !hot && state.trades.length < 2) return
+
+    feedToken = feedToken ?? this.liveFeed.get(mint)
+    if (feedToken) {
+      const enriched = {
+        ...feedToken,
+        ...activity,
+        marketCap: state.marketCapUsd || feedToken.marketCap,
+        bondingCurvePercent: state.bondingCurvePercent,
+        volume24h: Math.max(
+          feedToken.volume24h,
+          state.trades.reduce((a, t) => a + t.solAmount, 0),
+        ),
+      }
+      feedToken = this.liveFeed.patch(enriched) ?? enriched
+      void this.tokens.persistFeedToken(feedToken)
+    }
 
     await this.supabase.insertWalletActivityOnce(mint, {
       wallet: last.wallet,
@@ -64,29 +80,10 @@ export class TradePersistService implements OnModuleInit {
 
     if (!this.shouldPatchActivity(mint)) return
 
-    feedToken = this.liveFeed.get(mint) ?? feedToken
-
     await this.supabase.patchTokenLiveActivity(mint, activity, {
       marketCap: state.marketCapUsd,
       bondingCurvePercent: state.bondingCurvePercent,
       volume24h: state.trades.reduce((a, t) => a + t.solAmount, 0),
     })
-
-    if (feedToken) {
-      const enriched = {
-        ...feedToken,
-        ...activity,
-        marketCap: state.marketCapUsd || feedToken.marketCap,
-        bondingCurvePercent: state.bondingCurvePercent,
-        volume24h: Math.max(
-          feedToken.volume24h,
-          state.trades.reduce((a, t) => a + t.solAmount, 0),
-        ),
-      }
-      const saved = this.liveFeed.upsert(enriched)
-      if (saved && passesTradeableFilter(saved)) {
-        void this.supabase.upsertToken(saved)
-      }
-    }
   }
 }

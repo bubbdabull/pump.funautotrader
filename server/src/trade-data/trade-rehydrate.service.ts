@@ -33,7 +33,7 @@ export class TradeRehydrateService implements OnModuleInit {
 
     const feedMints = this.liveFeed.getAll(80).map((t) => t.mint)
     const hot = this.hotMints.getHotMints(60)
-    const dbRows = await this.supabase.listTradeableTokensForRehydrate(45)
+    const dbRows = await this.supabase.listFeedTokensForRehydrate(60)
     const mints = [...new Set([...hot, ...feedMints, ...dbRows.map((r) => r.mint as string)])].slice(
       0,
       80,

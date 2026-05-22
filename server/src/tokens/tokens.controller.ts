@@ -70,6 +70,7 @@ export class TokensController {
   }
 
   @Get(':mint/trades')
+  @Header('Cache-Control', 'no-store')
   trades(@Param('mint') mint: string) {
     return this.tokens.getTrades(mint)
   }
