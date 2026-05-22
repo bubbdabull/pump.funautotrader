@@ -1,5 +1,10 @@
 import type { FeedQualityFields } from './feedQuality'
-import { activitySol, passesAlphaFilter, tradeQualityScore } from './feedQuality'
+import {
+  activitySol,
+  passesAlphaFilter,
+  passesMinHolderDepth,
+  tradeQualityScore,
+} from './feedQuality'
 
 /** Token traded within this window counts as "live" on the scanner. */
 export const LIVE_ACTIVITY_MAX_AGE_MS = 120_000
@@ -76,11 +81,42 @@ export function liveActivityScore(token: FeedQualityWithActivity, now = Date.now
   return score
 }
 
-/** Scanner row must have real-time ticks + minimum volume (not stale bootstrap). */
+/** Hot lane — live ticks + multi-holder depth (filters 1–2 wallet rugs). */
 export function passesActiveScannerFilter(token: FeedQualityWithActivity): boolean {
   if (!passesAlphaFilter(token)) return false
   if (isDeadFeedToken(token)) return false
+  if (!passesMinHolderDepth(token)) return false
   return hasRealTimeTradeActivity(token)
+}
+
+/** Meaningful volume or live ticks — not a dead bootstrap row. */
+export function passesTradingActivity(token: FeedQualityWithActivity): boolean {
+  if (hasRealTimeTradeActivity(token)) return true
+  if (activitySol(token) >= MIN_FEED_VOLUME_24H_SOL) return true
+  if ((token.trades1m ?? 0) >= 2 && (token.volume5mSol ?? 0) >= 0.02) return true
+  return false
+}
+
+/**
+ * All Live / Alpha — trading activity + at least 3 holders/traders (not 1–2 wallet rugs).
+ */
+export function passesScannerQualityFilter(token: FeedQualityWithActivity): boolean {
+  if (!passesAlphaFilter(token)) return false
+  if (isDeadFeedToken(token)) return false
+  if (!passesTradingActivity(token)) return false
+  if (!passesMinHolderDepth(token)) return false
+  return true
+}
+
+export function rankScannerQuality<T extends FeedQualityWithActivity>(
+  tokens: T[],
+  limit = 100,
+): T[] {
+  const now = Date.now()
+  return [...tokens]
+    .filter(passesScannerQualityFilter)
+    .sort((a, b) => liveActivityScore(b, now) - liveActivityScore(a, now))
+    .slice(0, limit)
 }
 
 export function rankByLiveActivity<T extends FeedQualityWithActivity>(

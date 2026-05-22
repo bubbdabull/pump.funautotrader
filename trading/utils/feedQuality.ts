@@ -1,4 +1,8 @@
-import { isRecentlyActive, liveActivityScore, rankByLiveActivity } from './liveActivity'
+import {
+  isRecentlyActive,
+  rankByLiveActivity,
+  rankScannerQuality,
+} from './liveActivity'
 
 /** Feed quality gates — only tradeable tokens are stored and shown by default. */
 
@@ -15,6 +19,9 @@ export const TRADEABLE_MIN_MOMENTUM = 18
 export const TRADEABLE_MIN_HOLDERS_VERIFIED = 10
 /** Stream trader count (bonding curve — no SPL accounts yet). */
 export const TRADEABLE_MIN_HOLDERS_UNVERIFIED = 18
+
+/** Scanner / All Live — hide 1–2 wallet rugs; use trades1m as proxy on bonding curve. */
+export const SCANNER_MIN_HOLDERS = 3
 
 export interface FeedQualityFields {
   mint: string
@@ -45,6 +52,18 @@ export function activitySol(token: FeedQualityFields): number {
   return token.liquidity ?? 0
 }
 
+/** Holders for gating — verified on-chain, else max(stream holders, recent trade count). */
+export function effectiveHolderCount(token: FeedQualityFields): number {
+  const h = token.holders ?? 0
+  const trades = token.trades1m ?? 0
+  if (token.holdersVerified && h >= 2) return h
+  return Math.max(h, trades >= 2 ? trades : 0)
+}
+
+export function passesMinHolderDepth(token: FeedQualityFields): boolean {
+  return effectiveHolderCount(token) >= SCANNER_MIN_HOLDERS
+}
+
 export function isGraduatingSoon(token: FeedQualityFields): boolean {
   const curve = token.bondingCurvePercent
   return curve >= GRADUATING_CURVE_MIN && curve <= GRADUATING_CURVE_MAX
@@ -63,15 +82,15 @@ export function passesAlphaFilter(token: FeedQualityFields): boolean {
   const signal = entrySignal(token)
   const vol = activitySol(token)
   const curve = token.bondingCurvePercent
-  const holders = token.holders ?? 0
 
   if (!passesIngestGate(token)) return false
   if (curve < 5 || curve > 99) return false
   if (isGraduatingSoon(token)) return false
   if (signal > 72) return false
   if (token.marketCap < 3_000) return false
-  if (vol < 0.12 && holders < 8) return false
-  if ((token.momentumScore ?? 0) < 12 && vol < 0.3 && holders < 12) return false
+  if (effectiveHolderCount(token) < SCANNER_MIN_HOLDERS && vol < 0.2) return false
+  if (vol < 0.12 && effectiveHolderCount(token) < 8) return false
+  if ((token.momentumScore ?? 0) < 12 && vol < 0.3 && effectiveHolderCount(token) < 12) return false
 
   return true
 }
@@ -91,12 +110,14 @@ export function passesTradeableFilter(token: FeedQualityFields): boolean {
   const hasPumpPortalTicks =
     token.isActive === true || (token.trades1m ?? 0) > 0 || (token.volume5mSol ?? 0) > 0.01
 
-  /** Live PumpPortal ticks — relaxed bar (bonding-curve tokens rarely have 18+ holders). */
+  /** Live PumpPortal ticks — still require multi-wallet activity. */
   if (hasPumpPortalTicks) {
     if (token.marketCap < 4_000) return false
     if (signal > 68) return false
     if (vol < 0.12) return false
     if (mom < 12) return false
+    if (!passesMinHolderDepth(token)) return false
+    if ((token.trades1m ?? 0) < 2 && effectiveHolderCount(token) < 4) return false
     return true
   }
 
@@ -206,15 +227,8 @@ export function filterForLane<T extends FeedQualityFields>(
     case 'active':
       return rankByLiveActivity(tokens, 60)
     case 'alpha':
-      return [...tokens]
-        .filter(passesAlphaFilter)
-        .sort((a, b) => liveActivityScore(b) - liveActivityScore(a))
-        .slice(0, 60)
     case 'all':
-      return [...tokens]
-        .filter(passesAlphaFilter)
-        .sort((a, b) => liveActivityScore(b) - liveActivityScore(a))
-        .slice(0, 100)
+      return rankScannerQuality(tokens, lane === 'all' ? 100 : 60)
     case 'tradeable':
     default:
       return resolveDisplayFeed(tokens, 80).tokens
@@ -227,7 +241,10 @@ export {
   isDeadFeedToken,
   liveActivityScore,
   passesActiveScannerFilter,
+  passesScannerQualityFilter,
+  passesTradingActivity,
   rankByLiveActivity,
+  rankScannerQuality,
   MIN_LIVE_VOLUME_5M_SOL,
   MIN_FEED_VOLUME_24H_SOL,
 } from './liveActivity'

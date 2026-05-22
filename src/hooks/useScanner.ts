@@ -6,6 +6,8 @@ import type { PumpToken } from '@/types'
 import { ensureArray } from '@/lib/ensureArray'
 import {
   passesAlphaFilter,
+  passesActiveScannerFilter,
+  passesScannerQualityFilter,
   passesTradeableFilter,
   isGraduatingSoon,
   resolveDisplayFeed,
@@ -149,15 +151,10 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
           return applyLane(merged, 'tradeable')
         })
       }
-      if (lane === 'all' || lane === 'active') {
-        if (
-          token.isActive ||
-          (token.trades1m ?? 0) > 0 ||
-          (token.volume5mSol ?? 0) > 0 ||
-          token.marketCap >= 3_000
-        ) {
-          pushToken(token)
-        }
+      if (lane === 'active') {
+        if (passesActiveScannerFilter(token)) pushToken(token)
+      } else if (lane === 'all') {
+        if (passesScannerQualityFilter(token)) pushToken(token)
       } else if (lane === 'tradeable') {
         if (passesTradeableFilter(token)) pushToken(token)
       } else if (lane === 'alpha' && passesAlphaFilter(token)) {
