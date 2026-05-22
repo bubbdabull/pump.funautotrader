@@ -6,9 +6,10 @@ import { TradingModule } from '../trading/trading.module'
 import { EventsModule } from '../events/events.module'
 import { IngestionModule } from '../ingestion/ingestion.module'
 import { SupabaseModule } from '../supabase/supabase.module'
+import { HoldersModule } from '../holders/holders.module'
 
 @Module({
-  imports: [TradingModule, EventsModule, IngestionModule, SupabaseModule],
+  imports: [TradingModule, EventsModule, IngestionModule, SupabaseModule, HoldersModule],
   controllers: [QuantController],
   providers: [QuantEngineService, QuantPersistService],
   exports: [QuantEngineService, QuantPersistService],

@@ -24,6 +24,7 @@ import {
 import type { TokenChartSeries, ChartPoint } from './chart.types'
 import { TokenMetadataService } from './token-metadata.service'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
+import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 
 @Injectable()
 export class TokensService {
@@ -38,6 +39,7 @@ export class TokensService {
     private liveFeed: LiveFeedService,
     private metadata: TokenMetadataService,
     private supabase: SupabaseDbService,
+    private holderEnrichment: HolderEnrichmentService,
   ) {}
 
   private pumpBootstrapLimit(): number {
@@ -411,7 +413,14 @@ export class TokensService {
 
     const metrics = evaluateEntry(state).metrics
     const volume24h = state.trades.reduce((a, t) => a + t.solAmount, 0)
-    const holders = resolveHolderCount(state, coin?.holder_count)
+    const holders = resolveHolderCount(
+      {
+        walletBalances: state.walletBalances,
+        trades: state.trades,
+        onChainHolders: state.onChainHolders,
+      },
+      coin?.holder_count,
+    )
 
     const mcaps = state.liquidityHistory.map((h) => h.marketCapSol).filter((m) => m > 0)
     let priceChange24h = coin?.price_change_24h ?? 0
@@ -454,7 +463,20 @@ export class TokensService {
 
   private enrichFromMarketState(mint: string, token: FeedToken): FeedToken {
     const fromState = this.tokenFromMarketState(mint)
-    if (!fromState) return token
+    const chain = this.holderEnrichment.getCached(mint)
+    const state = this.trading.getState(mint)
+    const holdersFromChain = chain?.holders ?? 0
+    const holders = state
+      ? resolveHolderCount({
+          walletBalances: state.walletBalances,
+          trades: state.trades,
+          onChainHolders: chain ?? state.onChainHolders,
+        })
+      : Math.max(token.holders ?? 0, holdersFromChain, fromState?.holders ?? 0)
+
+    if (!fromState) {
+      return holders > (token.holders ?? 0) ? { ...token, holders } : token
+    }
     return {
       ...token,
       ...fromState,
@@ -472,7 +494,7 @@ export class TokensService {
       telegram: token.telegram ?? fromState.telegram,
       website: token.website ?? fromState.website,
       bondingCurvePercent: Math.max(token.bondingCurvePercent ?? 0, fromState.bondingCurvePercent),
-      holders: Math.max(token.holders ?? 0, fromState.holders),
+      holders: Math.max(holders, token.holders ?? 0, fromState.holders),
       volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,
     }

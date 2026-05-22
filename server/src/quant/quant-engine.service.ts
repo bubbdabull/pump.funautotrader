@@ -10,6 +10,7 @@ import { EventsGateway } from '../events/events.gateway'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
 import { QuantPersistService } from './quant-persist.service'
 import { resolveHolderCount } from '@phronis/trading'
+import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 
 @Injectable()
 export class QuantEngineService implements OnModuleInit {
@@ -21,6 +22,7 @@ export class QuantEngineService implements OnModuleInit {
     private events: EventsGateway,
     private ingestion: IngestionOrchestratorService,
     private persist: QuantPersistService,
+    private holderEnrichment: HolderEnrichmentService,
   ) {}
 
   onModuleInit() {
@@ -41,7 +43,12 @@ export class QuantEngineService implements OnModuleInit {
     const strategies = evaluateAllStrategies(state)
     const risk = globalRiskManager.canOpenTrade()
 
-    const holders = resolveHolderCount(state)
+    const holders = resolveHolderCount({
+      walletBalances: state.walletBalances,
+      trades: state.trades,
+      onChainHolders: state.onChainHolders,
+    })
+    void this.holderEnrichment.enrichMint(mint)
     this.rankings.set(mint, scores.tradeConfidenceScore)
     this.holderCounts.set(mint, holders)
 
@@ -81,7 +88,11 @@ export class QuantEngineService implements OnModuleInit {
       rug: computeRugScore(state),
       strategies: evaluateAllStrategies(state),
       risk: globalRiskManager.getState(),
-      holders: resolveHolderCount(state),
+      holders: resolveHolderCount({
+        walletBalances: state.walletBalances,
+        trades: state.trades,
+        onChainHolders: state.onChainHolders,
+      }),
     }
   }
 

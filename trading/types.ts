@@ -1,5 +1,7 @@
 /** Microstructure snapshot for a single Pump.fun mint (event-sourced). */
 
+import type { OnChainHolderSnapshot } from './types/onChainHolders'
+
 export interface TradeTick {
   signature: string
   wallet: string
@@ -33,6 +35,10 @@ export interface TokenMarketState {
   walletBuySol: Map<string, number>
   /** deployer / creator if known */
   deployerWallet?: string
+  /** Bonding curve / pool wallets to exclude from holder metrics */
+  excludeWallets?: string[]
+  /** RPC or Bubblemaps holder snapshot */
+  onChainHolders?: OnChainHolderSnapshot
   lastUpdated: number
   /** EV at entry for exit deterioration check */
   entryEvScore?: number

@@ -25,7 +25,24 @@ Configured on Fly:
 
 Metering: ~**0.01 SOL per 10,000** trade websocket messages.
 
-## 3. Enrichment (holders, volume, mcap)
+## 3. Holder counts (on-chain + Bubblemaps)
+
+Real holder counts do **not** come from pump.fun’s public API. The server enriches mints via:
+
+1. **Helius / Solana RPC** — `getProgramAccounts` on the SPL Token program (counts wallets with balance > 0, excludes bonding-curve wallets).
+2. **Optional Bubblemaps** — `BUBBLEMAPS_API_KEY` for cluster maps and concentration (rug math).
+3. **PumpPortal trade stream** — unique buyers when `PUMPPORTAL_API_KEY` is set.
+
+**Fly secrets (required for accurate holders):**
+
+```bash
+HELIUS_API_KEY=your_helius_key
+# optional
+BUBBLEMAPS_API_KEY=your_bubblemaps_pro_key
+HOLDER_ENRICH_INTERVAL_MS=90000
+```
+
+## 4. Enrichment (holders, volume, mcap)
 
 | Source | Role |
 |--------|------|

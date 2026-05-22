@@ -37,6 +37,11 @@ export {
   countUniqueBuyers,
 } from './utils/holders'
 export {
+  holderEntropyFromAmounts,
+  distributionFromAmounts,
+} from './utils/holderDistribution'
+export type { OnChainHolderSnapshot } from './types/onChainHolders'
+export {
   passesAlphaFilter,
   isGraduatingSoon,
   filterForLane,

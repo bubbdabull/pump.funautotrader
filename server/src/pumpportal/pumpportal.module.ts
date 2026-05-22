@@ -8,11 +8,13 @@ import { TradingModule } from '../trading/trading.module'
 import { TokensModule } from '../tokens/tokens.module'
 import { IngestionModule } from '../ingestion/ingestion.module'
 import { QuantModule } from '../quant/quant.module'
+import { HoldersModule } from '../holders/holders.module'
 
 @Module({
   imports: [
     TradingModule,
     IngestionModule,
+    HoldersModule,
     forwardRef(() => QuantModule),
     forwardRef(() => EventsModule),
     forwardRef(() => TokensModule),

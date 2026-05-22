@@ -7,9 +7,16 @@ import { PumpModule } from '../pump/pump.module'
 import { PumpPortalModule } from '../pumpportal/pumpportal.module'
 import { TradingModule } from '../trading/trading.module'
 import { EventsModule } from '../events/events.module'
+import { HoldersModule } from '../holders/holders.module'
 
 @Module({
-  imports: [PumpModule, TradingModule, EventsModule, forwardRef(() => PumpPortalModule)],
+  imports: [
+    PumpModule,
+    TradingModule,
+    EventsModule,
+    HoldersModule,
+    forwardRef(() => PumpPortalModule),
+  ],
   controllers: [TokensController],
   providers: [TokensService, TokenMetadataService, PumpFeedSyncService],
   exports: [TokensService, TokenMetadataService, PumpFeedSyncService],

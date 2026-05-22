@@ -17,6 +17,7 @@ import type { FeedToken } from '../feed/feed.types'
 import { pickMintsForTradeSubscription } from './trade-subscription.util'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
 import { QuantEngineService } from '../quant/quant-engine.service'
+import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 
 @Injectable()
 export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
@@ -45,6 +46,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     private metadata: TokenMetadataService,
     private ingestion: IngestionOrchestratorService,
     private quant: QuantEngineService,
+    private holderEnrichment: HolderEnrichmentService,
   ) {
     this.apiKey = this.config.get<string>('PUMPPORTAL_API_KEY')?.trim() || undefined
     const max = Number(this.config.get('PUMPPORTAL_MAX_TRADE_SUBS') ?? 250)
@@ -271,7 +273,9 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         ...data,
         txType: side,
         solAmount: Number(data.solAmount ?? data.sol_amount ?? 0),
-        tokenAmount: Number(data.tokenAmount ?? data.token_amount ?? 0),
+        tokenAmount: Number(
+          data.tokenAmount ?? data.token_amount ?? data.newTokenBalance ?? 0,
+        ),
         traderPublicKey:
           data.traderPublicKey ?? data.trader ?? data.user ?? data.owner,
         signature: data.signature,
@@ -298,6 +302,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       image: (data.image as string) ?? undefined,
       metadataUri: (data.metadata_uri as string) ?? (data.uri as string) ?? event.uri,
     })
+    void this.holderEnrichment.enrichMint(mint, true)
 
     this.autoTrader.pinTradeStream(mint)
     this.queueTradeSubscription(mint, true)

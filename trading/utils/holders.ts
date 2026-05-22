@@ -1,8 +1,11 @@
-/** Count unique holders from bonding-curve trade stream + optional pump.fun REST count. */
+/** Count unique holders from bonding-curve trade stream + on-chain / Bubblemaps snapshots. */
+
+import type { OnChainHolderSnapshot } from '../types/onChainHolders'
 
 export interface HolderCountInput {
   walletBalances: Map<string, number>
   trades: { wallet: string; side: 'buy' | 'sell' }[]
+  onChainHolders?: OnChainHolderSnapshot
 }
 
 /** Wallets still holding tokens (net balance > 0 from stream). */
@@ -32,22 +35,25 @@ export function countUniqueTraders(state: HolderCountInput): number {
   return wallets.size
 }
 
+function countFromStream(state: HolderCountInput): number {
+  const withBalance = countWalletsWithBalance(state)
+  const buyers = countUniqueBuyers(state)
+  const traders = countUniqueTraders(state)
+  return Math.max(withBalance, buyers, traders, buyers > 0 ? 1 : 0)
+}
+
 /**
- * Best-effort holder count: max of on-chain stream estimates and pump.fun API.
- * Stream under-counts until enough trades; API may lag on brand-new launches.
+ * Best-effort holder count: on-chain/Bubblemaps > unique traders from stream.
+ * Stream alone under-counts until trade subs cover the mint.
  */
 export function resolveHolderCount(
   state: HolderCountInput,
   pumpFunHolderCount?: number | null,
 ): number {
-  const withBalance = countWalletsWithBalance(state)
-  const buyers = countUniqueBuyers(state)
-  const traders = countUniqueTraders(state)
-  const tradeEvents = state.trades.length
-  const fromTrades = tradeEvents >= 4 ? Math.min(tradeEvents, buyers + Math.ceil(traders * 0.6)) : 0
-  const fromStream = Math.max(withBalance, buyers, traders, fromTrades, 1)
+  const onChain = state.onChainHolders?.holders ?? 0
+  const fromStream = countFromStream(state)
   const fromApi = pumpFunHolderCount != null && pumpFunHolderCount > 0 ? pumpFunHolderCount : 0
-  return Math.max(fromStream, fromApi)
+  return Math.max(onChain, fromStream, fromApi, 1)
 }
 
 /** @deprecated Use resolveHolderCount */

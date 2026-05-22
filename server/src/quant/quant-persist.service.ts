@@ -40,15 +40,23 @@ export class QuantPersistService {
     const state = globalMarketState.getState(mint)
     if (!state) return
 
-    const holders = resolveHolderCount(state)
-    const balances = [...state.walletBalances.values()].filter((b) => b > 0)
-    const total = balances.reduce((a, b) => a + b, 0)
-    let top1Pct = 0
-    let top5Pct = 0
-    if (total > 0) {
-      const sorted = [...balances].sort((a, b) => b - a)
-      top1Pct = (sorted[0] ?? 0) / total
-      top5Pct = sorted.slice(0, 5).reduce((a, b) => a + b, 0) / total
+    const holders = resolveHolderCount({
+      walletBalances: state.walletBalances,
+      trades: state.trades,
+      onChainHolders: state.onChainHolders,
+    })
+    const chain = state.onChainHolders
+    let top1Pct = chain?.top1Pct ?? 0
+    let top5Pct = chain?.top5Pct ?? 0
+    const entropy = chain?.entropy ?? computeHDI(state)
+    if (!chain) {
+      const balances = [...state.walletBalances.values()].filter((b) => b > 0)
+      const total = balances.reduce((a, b) => a + b, 0)
+      if (total > 0) {
+        const sorted = [...balances].sort((a, b) => b - a)
+        top1Pct = (sorted[0] ?? 0) / total
+        top5Pct = sorted.slice(0, 5).reduce((a, b) => a + b, 0) / total
+      }
     }
 
     try {
@@ -57,7 +65,7 @@ export class QuantPersistService {
         scores,
         rug,
         holders,
-        { top1Pct, top5Pct, entropy: computeHDI(state) },
+        { top1Pct, top5Pct, entropy },
         state.trades.slice(-15).map((t) => ({
           wallet: t.wallet,
           side: t.side,

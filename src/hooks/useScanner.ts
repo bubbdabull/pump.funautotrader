@@ -102,7 +102,8 @@ export function useScannerFeed(lane: ScannerLane = 'alpha') {
     : undefined
 
   useEffect(() => {
-    const unsub = wsService.onQuantUpdate((u) => {
+    const unsub = wsService.onQuantUpdate((u: { mint: string; holders?: number }) => {
+      if (!u.holders || u.holders <= 0) return
       queryClient.setQueryData<PumpToken[]>(key, (prev) => {
         const list = mergeQuantHolders(ensureArray<PumpToken>(prev))
         const idx = list.findIndex((t) => t.mint === u.mint)

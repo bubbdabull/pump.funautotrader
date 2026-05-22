@@ -61,7 +61,7 @@ export class IngestionOrchestratorService implements OnModuleInit {
           signature: p.signature as string | undefined,
           txType: (p.txType as 'buy' | 'sell') ?? undefined,
           solAmount: Number(p.solAmount ?? p.sol_amount ?? 0),
-          tokenAmount: Number(p.tokenAmount ?? p.token_amount ?? 0),
+          tokenAmount: Number(p.tokenAmount ?? p.token_amount ?? p.newTokenBalance ?? 0),
           traderPublicKey: (p.traderPublicKey ??
             p.trader ??
             p.user ??

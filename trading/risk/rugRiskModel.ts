@@ -31,7 +31,23 @@ export function computeRRM(
   const liquidityFragilityRisk = clamp01(1 - lsi)
 
   let holderConcentrationRisk = 0.25
-  if (totalTokens > 0) {
+  const chain = state.onChainHolders
+  if (chain && chain.top1Pct > 0) {
+    const topShare = chain.top1Pct
+    const top5Share = chain.top5Pct
+    holderConcentrationRisk = clamp01(topShare * 1.2 + top5Share * 0.5)
+    if (topShare > 0.1) {
+      holderConcentrationRisk = clamp01(
+        holderConcentrationRisk + Math.exp((topShare - 0.1) * 8) * 0.05,
+      )
+    }
+    if (top5Share > 0.4) {
+      holderConcentrationRisk = clamp01(holderConcentrationRisk + 0.25)
+    }
+    if (chain.suspiciousClusterPct && chain.suspiciousClusterPct > 0.35) {
+      holderConcentrationRisk = clamp01(holderConcentrationRisk + chain.suspiciousClusterPct * 0.2)
+    }
+  } else if (totalTokens > 0) {
     const sorted = balances
       .filter((b) => b > 0)
       .sort((a, b) => b - a)

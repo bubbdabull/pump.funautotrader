@@ -5,6 +5,7 @@ import type {
   EntryDecision,
   PositionContext,
 } from '../types'
+import type { OnChainHolderSnapshot } from '../types/onChainHolders'
 import {
   evaluateEntry,
   evScoreToSignalScore,
@@ -35,6 +36,24 @@ export class MarketStateManager {
 
   getState(mint: string): TokenMarketState | undefined {
     return this.states.get(mint)
+  }
+
+  patchOnChainHolders(mint: string, snapshot: OnChainHolderSnapshot) {
+    const state = this.states.get(mint)
+    if (!state) return
+    state.onChainHolders = snapshot
+    state.lastUpdated = Date.now()
+    this.states.set(mint, state)
+    this.recompute(mint)
+  }
+
+  addExcludeWallets(mint: string, wallets: string[]) {
+    const state = this.states.get(mint)
+    if (!state) return
+    const set = new Set(state.excludeWallets ?? [])
+    for (const w of wallets) if (w) set.add(w)
+    state.excludeWallets = [...set]
+    this.states.set(mint, state)
   }
 
   onEntry(listener: EntryListener) {
