@@ -39,6 +39,11 @@ class WebSocketService {
 
     this.socket.on('token:update', (token: PumpToken) => {
       this.tokenHandlers.forEach((h) => h(token))
+      this.feedPatchHandlers.forEach((h) => h(token))
+    })
+
+    this.socket.on('chart:update', (series: TokenChartSeries) => {
+      this.chartHandlers.forEach((h) => h(series))
     })
 
     this.socket.on('feed:update', (tokens: PumpToken[]) => {

@@ -289,7 +289,13 @@ export class TokensService {
   /** Push live trade activity to feed + clients even when full upsert gates fail. */
   emitFeedPatch(mint: string, whaleSol?: number): FeedToken | null {
     const state = this.trading.getState(mint)
-    const live = this.liveFeed.get(mint)
+    let live = this.liveFeed.get(mint)
+    if (!live && state?.trades.length) {
+      const built = this.tokenFromMarketState(mint)
+      if (built) {
+        live = this.liveFeed.upsert(built) ?? this.liveFeed.patch(built) ?? undefined
+      }
+    }
     if (!state && !live) return null
     const activity = state ? computeFeedActivity(state) : {}
     const base =
@@ -309,6 +315,7 @@ export class TokensService {
     if (!saved) return null
     this.events.server?.emit('token:update', saved)
     this.events.server?.to('feed').emit('feed:patch', saved)
+    this.events.emitChartUpdate(mint)
     if (whaleSol && whaleSol >= 5) {
       void this.persistToSupabase(saved, { whaleSol })
     }

@@ -29,7 +29,7 @@ export class EventsGateway implements OnGatewayConnection {
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`)
     if (!this.feedInterval) {
-      this.feedInterval = setInterval(() => this.broadcastFeed(), 15000)
+      this.feedInterval = setInterval(() => this.broadcastFeed(), 8_000)
     }
   }
 

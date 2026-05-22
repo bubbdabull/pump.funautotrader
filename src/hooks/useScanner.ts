@@ -170,13 +170,31 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
     }
 
     const onPatch = (token: PumpToken) => {
+      const hasLive =
+        token.isActive ||
+        (token.trades1m ?? 0) > 0 ||
+        (token.volume5mSol ?? 0) > 0 ||
+        Boolean(token.lastTradeAt)
       queryClient.setQueryData<ScannerPayload>(key, (old) => {
-        if (!old?.tokens?.length) return old
-        const idx = old.tokens.findIndex((t) => t.mint === token.mint)
-        if (idx < 0) return old
-        const next = [...old.tokens]
-        next[idx] = mergeScannerToken(next[idx], token)
-        return { ...old, tokens: next }
+        if (!old) return old
+        const list = old.tokens ?? []
+        const idx = list.findIndex((t) => t.mint === token.mint)
+        if (idx >= 0) {
+          const next = [...list]
+          next[idx] = mergeScannerToken(next[idx], token)
+          return { ...old, tokens: next }
+        }
+        if (lane === 'active' && hasLive) {
+          return {
+            ...old,
+            tokens: upsert(list, token, 120),
+            mode: 'active',
+          }
+        }
+        if ((lane === 'tradeable' || lane === 'all') && hasLive) {
+          return { ...old, tokens: upsert(list, token, 120) }
+        }
+        return old
       })
       if (isGraduatingSoon(token)) onGraduating(token)
     }
@@ -187,6 +205,7 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       else onTradeable(t)
     })
     const u3 = wsService.onFeedPatch(onPatch)
+    const u3b = wsService.onTokenUpdate(onPatch)
     const u4 = wsService.onTokenGraduating(onGraduating)
     const u5 = wsService.onFeedUpdate((tokens) => {
       queryClient.setQueryData(key, payloadFromServer(ensureArray(tokens), lane))
@@ -196,6 +215,7 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       u1()
       u2()
       u3()
+      u3b()
       u4()
       u5()
     }
@@ -262,9 +282,11 @@ export function useTokenChart(mint: string, intervalMs = 5_000) {
     void tokenApi.watchTrades(mint).catch(() => undefined)
     const unsub = wsService.onChartUpdate((series) => {
       if (series.mint !== mint) return
-      if (series.intervalMs === intervalMs) {
-        queryClient.setQueryData(key, series)
-      }
+      queryClient.setQueryData(key, (prev) => ({
+        ...(prev ?? { mint, intervalMs, candles: [], points: [], tradeCount: 0 }),
+        ...series,
+        intervalMs: series.intervalMs ?? intervalMs,
+      }))
     })
     return () => {
       unsub()

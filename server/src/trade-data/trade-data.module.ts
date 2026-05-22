@@ -1,4 +1,5 @@
-import { Global, Module } from '@nestjs/common'
+import { Global, Module, forwardRef } from '@nestjs/common'
+import { TokensModule } from '../tokens/tokens.module'
 import { TradePersistService } from './trade-persist.service'
 import { TradeRehydrateService } from './trade-rehydrate.service'
 import { FeedTradePinService } from './feed-trade-pin.service'
@@ -10,7 +11,7 @@ import { AutoTraderModule } from '../autotrader/autotrader.module'
 
 @Global()
 @Module({
-  imports: [IngestionModule, TradingModule, AutoTraderModule],
+  imports: [IngestionModule, TradingModule, AutoTraderModule, forwardRef(() => TokensModule)],
   providers: [
     TradePersistService,
     TradeRehydrateService,

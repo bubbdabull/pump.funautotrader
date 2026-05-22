@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common'
+import { Injectable, Inject, OnModuleInit, forwardRef } from '@nestjs/common'
 import { passesTradeableFilter } from '@phronis/trading'
 import { computeFeedActivity, type FeedActivityFields } from '@phronis/trading'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
@@ -6,6 +6,7 @@ import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrato
 import { TradingBridgeService } from '../trading/trading-bridge.service'
 import { LiveFeedService } from '../feed/live-feed.service'
 import { HotMintsService } from './hot-mints.service'
+import { TokensService } from '../tokens/tokens.service'
 @Injectable()
 export class TradePersistService implements OnModuleInit {
   private readonly activityThrottle = new Map<string, number>()
@@ -17,6 +18,8 @@ export class TradePersistService implements OnModuleInit {
     private trading: TradingBridgeService,
     private liveFeed: LiveFeedService,
     private hotMints: HotMintsService,
+    @Inject(forwardRef(() => TokensService))
+    private tokens: TokensService,
   ) {}
 
   onModuleInit() {
@@ -40,20 +43,7 @@ export class TradePersistService implements OnModuleInit {
     this.hotMints.recordTrade(mint, last.timestamp)
     const activity = computeFeedActivity(state)
     let feedToken = this.liveFeed.get(mint)
-    const vol = Math.max(
-      feedToken?.volume24h ?? 0,
-      state.trades.reduce((a, t) => a + t.solAmount, 0),
-    )
-    const patchBody = {
-      mint,
-      ...activity,
-      marketCap: state.marketCapUsd || feedToken?.marketCap || 0,
-      bondingCurvePercent: state.bondingCurvePercent,
-      volume24h: vol,
-    }
-    if (feedToken) {
-      this.liveFeed.patch({ ...feedToken, ...patchBody })
-    }
+    void this.tokens.emitFeedPatch(mint)
 
     if (!this.supabase.enabled) return
 
