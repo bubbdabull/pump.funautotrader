@@ -60,7 +60,9 @@ export function LiveFeedCards({ tokens }: LiveFeedCardsProps) {
                 <span className="inline-flex items-center gap-1 text-zinc-500">
                   <Users className="h-3 w-3" /> Holders
                 </span>
-                <span className="text-right font-mono text-zinc-200">{formatHolders(holders)}</span>
+                <span className="text-right font-mono text-zinc-200">
+                  {formatHolders(holders, token.holdersVerified)}
+                </span>
                 <span className="text-zinc-500">Vol</span>
                 <span className="text-right font-mono text-zinc-200">{formatSol(tokenVolumeSol(token))}</span>
               </div>

@@ -22,6 +22,9 @@ export interface PumpCoin {
   reply_count?: number
   price_change_24h?: number
   total_supply?: number
+  bonding_curve?: string
+  associated_bonding_curve?: string
+  creator?: string
 }
 
 const V3_BASE = 'https://frontend-api-v3.pump.fun'

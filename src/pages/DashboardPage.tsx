@@ -22,7 +22,7 @@ function formatVolumeDisplay(sol: number): { value: number; suffix: string } {
 }
 
 export function DashboardPage() {
-  const { data: feedData, isLoading } = useScannerFeed('all')
+  const { data: feedData, isLoading } = useScannerFeed('tradeable')
   const { data: alphaData } = useScannerFeed('alpha')
   const { data: graduatingData } = useScannerFeed('graduating')
   const tokens = ensureArray<PumpToken>(feedData)
@@ -50,7 +50,7 @@ export function DashboardPage() {
       <div className="mb-4 lg:mb-6">
         <h1 className="text-xl font-bold tracking-tight text-white lg:text-2xl">Dashboard</h1>
         <p className="text-xs text-zinc-500 lg:text-sm">
-          Live Pump.fun · {isLoading ? 'loading…' : `${tokens.length} live · ${alphaTokens.length} alpha`}
+          Live Pump.fun · {isLoading ? 'loading…' : `${tokens.length} tradeable · ${alphaTokens.length} watchlist`}
         </p>
       </div>
 

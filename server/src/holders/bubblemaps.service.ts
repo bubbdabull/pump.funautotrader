@@ -62,6 +62,7 @@ export class BubblemapsService {
         entropy: dist.entropy,
         suspiciousClusterPct,
         source: 'bubblemaps',
+        verified: true,
         updatedAt: Date.now(),
       }
     } catch (err) {

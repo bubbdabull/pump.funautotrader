@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { normalizeVirtualSol } from '@phronis/trading'
+import {
+  normalizeVirtualSol,
+  passesTradeableFilter,
+  tradeQualityScore,
+} from '@phronis/trading'
 import type { FeedToken, FeedStats } from './feed.types'
 
 @Injectable()
@@ -9,20 +13,31 @@ export class LiveFeedService {
   private readonly tokens = new Map<string, FeedToken>()
 
   constructor(config: ConfigService) {
-    const n = Number(config.get('LIVE_FEED_MAX') ?? 300)
-    this.maxFeed = Number.isFinite(n) && n >= 50 ? Math.min(n, 2000) : 300
+    const n = Number(config.get('LIVE_FEED_MAX') ?? 80)
+    this.maxFeed = Number.isFinite(n) && n >= 20 ? Math.min(n, 500) : 80
   }
 
   getMaxFeed(): number {
     return this.maxFeed
   }
 
-  upsert(token: FeedToken): FeedToken {
+  /** Only tradeable tokens are kept in the public feed store. */
+  shouldStore(token: FeedToken): boolean {
+    return passesTradeableFilter(token)
+  }
+
+  upsert(token: FeedToken): FeedToken | null {
+    if (!this.shouldStore(token)) {
+      return null
+    }
     const prev = this.tokens.get(token.mint)
     const merged: FeedToken = prev
       ? {
           ...prev,
           ...token,
+          holders: Math.max(prev.holders, token.holders),
+          holdersVerified: prev.holdersVerified || token.holdersVerified,
+          volume24h: Math.max(prev.volume24h, token.volume24h),
           launchedAt: prev.launchedAt || token.launchedAt,
         }
       : token
@@ -33,6 +48,7 @@ export class LiveFeedService {
 
   mergeBootstrap(tokens: FeedToken[]) {
     for (const t of tokens) {
+      if (!this.shouldStore(t)) continue
       const prev = this.tokens.get(t.mint)
       this.tokens.set(
         t.mint,
@@ -41,6 +57,7 @@ export class LiveFeedService {
               ...t,
               ...prev,
               holders: Math.max(prev.holders, t.holders),
+              holdersVerified: prev.holdersVerified || t.holdersVerified,
               volume24h: Math.max(prev.volume24h, t.volume24h),
             }
           : t,
@@ -55,12 +72,12 @@ export class LiveFeedService {
 
   getAll(limit = this.maxFeed): FeedToken[] {
     return [...this.tokens.values()]
-      .sort((a, b) => new Date(b.launchedAt).getTime() - new Date(a.launchedAt).getTime())
+      .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
       .slice(0, limit)
   }
 
   getStats(): FeedStats {
-    const all = [...this.tokens.values()]
+    const all = this.getAll(500)
     const hourAgo = Date.now() - 60 * 60 * 1000
     const newTokensLastHour = all.filter((t) => new Date(t.launchedAt).getTime() > hourAgo).length
     const totalVolume24h = all.reduce((s, t) => {
@@ -69,9 +86,7 @@ export class LiveFeedService {
     }, 0)
     const totalMarketCap = all.reduce((s, t) => s + t.marketCap, 0)
     const avgSignalScore =
-      all.length > 0
-        ? all.reduce((s, t) => s + t.signalScore, 0) / all.length
-        : 0
+      all.length > 0 ? all.reduce((s, t) => s + t.signalScore, 0) / all.length : 0
 
     return {
       activeTokens: all.length,

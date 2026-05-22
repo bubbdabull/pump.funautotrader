@@ -132,7 +132,10 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                     <td className="px-4 py-2.5 text-right">
                       <span className="inline-flex items-center justify-end gap-1 font-mono text-xs text-zinc-300">
                         <Users className="h-3 w-3 text-zinc-600" />
-                        {formatHolders(byMint[token.mint]?.holders ?? token.holders)}
+                        {formatHolders(
+                          byMint[token.mint]?.holders ?? token.holders,
+                          byMint[token.mint]?.holdersVerified ?? token.holdersVerified,
+                        )}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-300">

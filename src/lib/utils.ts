@@ -11,12 +11,17 @@ export function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`
 }
 
-export function formatHolders(value: number | undefined | null): string {
+export function formatHolders(
+  value: number | undefined | null,
+  verified?: boolean,
+): string {
   const n = Number(value)
   if (!Number.isFinite(n) || n <= 0) return '—'
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 10_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toLocaleString()
+  let s: string
+  if (n >= 1_000_000) s = `${(n / 1_000_000).toFixed(1)}M`
+  else if (n >= 10_000) s = `${(n / 1_000).toFixed(1)}K`
+  else s = n.toLocaleString()
+  return verified ? `${s}*` : s
 }
 
 export function formatSol(value: number): string {

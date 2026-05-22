@@ -13,13 +13,18 @@ import type { ScannerLane } from '@/lib/feedQuality'
 import { cn } from '@/lib/utils'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
-  { id: 'all', label: 'Live', icon: Activity, desc: 'All active Pump.fun launches' },
-  { id: 'alpha', label: 'Alpha', icon: Sparkles, desc: 'Quality-filtered — junk hidden' },
+  {
+    id: 'tradeable',
+    label: 'Tradeable',
+    icon: Sparkles,
+    desc: 'Tokens we would actually trade — volume, holders, signal',
+  },
+  { id: 'alpha', label: 'Watchlist', icon: Activity, desc: 'Broader quality filter' },
   { id: 'graduating', label: 'Graduating', icon: Rocket, desc: 'Highest curve % — nearing PumpSwap' },
 ]
 
 export function LiveFeedPage() {
-  const [lane, setLane] = useState<ScannerLane>('all')
+  const [lane, setLane] = useState<ScannerLane>('tradeable')
   const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
   const { data, isLoading, isError } = useScannerFeed(lane)
@@ -71,7 +76,7 @@ export function LiveFeedPage() {
         ))}
         <div className="flex flex-1 items-center justify-end gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-400/90">
           <Shield className="h-3.5 w-3.5 shrink-0" />
-          Low-signal & illiquid tokens never appear in Alpha
+          Only trade-grade tokens are stored — thousands of daily launches filtered out
         </div>
       </div>
 

@@ -12,6 +12,8 @@ export interface FeedToken {
   marketCap: number
   bondingCurvePercent: number
   holders: number
+  /** True after Helius/Bubblemaps holder snapshot */
+  holdersVerified?: boolean
   volume24h: number
   signalScore: number
   momentumScore: number

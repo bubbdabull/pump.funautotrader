@@ -59,6 +59,7 @@ export class QuantEngineService implements OnModuleInit {
       strategies: strategies.slice(0, 3),
       risk,
       holders,
+      holdersVerified: Boolean(state.onChainHolders?.verified),
       at: new Date().toISOString(),
     }
 

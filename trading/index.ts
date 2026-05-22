@@ -42,7 +42,11 @@ export {
 } from './utils/holderDistribution'
 export type { OnChainHolderSnapshot } from './types/onChainHolders'
 export {
+  passesIngestGate,
   passesAlphaFilter,
+  passesTradeableFilter,
+  tradeQualityScore,
+  rankTradeable,
   isGraduatingSoon,
   filterForLane,
   activitySol,

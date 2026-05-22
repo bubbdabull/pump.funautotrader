@@ -92,6 +92,7 @@ export class HeliusService {
       top5Pct: dist.top5Pct,
       entropy: dist.entropy,
       source: 'helius',
+      verified: true,
       updatedAt: Date.now(),
     }
   }

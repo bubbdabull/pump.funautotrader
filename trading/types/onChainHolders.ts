@@ -8,4 +8,5 @@ export interface OnChainHolderSnapshot {
   suspiciousClusterPct?: number
   source: 'helius' | 'bubblemaps' | 'stream' | 'merged'
   updatedAt: number
+  verified?: boolean
 }

@@ -234,8 +234,10 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       const live = this.liveFeed.get(mint)
       if (live) {
         const saved = this.tokens.upsertLiveToken({ ...live, bondingCurvePercent: 100 })
-        this.events.server?.emit('token:graduating', saved)
-        this.events.server?.to('feed').emit('feed:patch', saved)
+        if (saved) {
+          this.events.server?.emit('token:graduating', saved)
+          this.events.server?.to('feed').emit('feed:patch', saved)
+        }
       }
       void this.publishTokenUpdate(mint)
       this.autoTrader.pinTradeStream(mint)
@@ -289,13 +291,17 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
     const token = this.buildFeedToken({ ...event, mint, ...data })
     const saved = this.tokens.upsertLiveToken(token, { isNew: true })
-    this.events.server?.emit('pumpportal:newToken', saved)
-    if (saved.bondingCurvePercent < 78) {
-      this.events.server?.to('feed').emit('feed:prepend', saved)
+    this.events.server?.emit('pumpportal:newToken', saved ?? token)
+    if (saved) {
+      if (saved.bondingCurvePercent < 78) {
+        this.events.server?.to('feed').emit('feed:prepend', saved)
+      } else {
+        this.events.server?.emit('token:graduating', saved)
+      }
+      this.logger.log(`Tradeable: ${saved.symbol} (${mint.slice(0, 8)}…)`)
     } else {
-      this.events.server?.emit('token:graduating', saved)
+      this.logger.debug(`Tracking ${token.symbol} (${mint.slice(0, 8)}…) — not tradeable yet`)
     }
-    this.logger.log(`New token: ${saved.symbol} (${mint.slice(0, 8)}…)`)
 
     void this.enrichTokenMedia(mint, {
       uri: (data.uri as string) ?? event.uri,
@@ -319,6 +325,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     const token = await this.tokens.getToken(mint)
     if (!token) return
     const saved = this.tokens.upsertLiveToken(token, { whaleSol })
+    if (!saved) return
     this.events.server?.emit('token:update', saved)
     this.events.server?.to('feed').emit('feed:patch', saved)
   }
@@ -389,6 +396,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         telegram: media.telegram ?? current.telegram,
         website: media.website ?? current.website,
       })
+      if (!updated) return
       this.events.server?.to('feed').emit('feed:patch', updated)
       this.events.server?.emit('token:update', updated)
     } catch (err) {

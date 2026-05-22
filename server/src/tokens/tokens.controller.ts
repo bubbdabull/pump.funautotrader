@@ -8,7 +8,7 @@ export class TokensController {
 
   @Get('feed')
   feed(@Query('lane') lane?: ScannerLane) {
-    return this.tokens.getFeed(lane ?? 'alpha')
+    return this.tokens.getFeed(lane ?? 'tradeable')
   }
 
   @Get('graduating')
@@ -23,7 +23,7 @@ export class TokensController {
 
   @Get()
   list(@Query('lane') lane?: ScannerLane) {
-    return this.tokens.getFeed(lane ?? 'alpha')
+    return this.tokens.getFeed(lane ?? 'tradeable')
   }
 
   @Get(':mint/chart')

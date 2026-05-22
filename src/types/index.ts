@@ -19,6 +19,8 @@ export interface PumpToken {
   marketCap: number
   bondingCurvePercent: number
   holders: number
+  /** On-chain holder snapshot applied (Helius / Bubblemaps) */
+  holdersVerified?: boolean
   volume24h: number
   /** Rule-based entry quality (lower = better snipe) */
   signalScore?: number

@@ -44,7 +44,7 @@ export const pumpportalApi = {
 export const tokenApi = {
   list: () => api.get('/tokens/feed').then((r) => ensureArray<PumpToken>(r.data)),
   get: (mint: string) => api.get<PumpToken>(`/tokens/${mint}`).then((r) => r.data),
-  feed: (lane: ScannerLane = 'alpha') =>
+  feed: (lane: ScannerLane = 'tradeable') =>
     api.get('/tokens/feed', { params: { lane } }).then((r) => ensureArray<PumpToken>(r.data)),
   graduating: () => api.get('/tokens/graduating').then((r) => ensureArray<PumpToken>(r.data)),
   chart: (mint: string) => api.get<TokenChartSeries>(`/tokens/${mint}/chart`).then((r) => r.data),

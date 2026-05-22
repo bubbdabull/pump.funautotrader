@@ -4,7 +4,11 @@ import { tokenApi } from '@/services/api'
 import { wsService } from '@/services/websocket'
 import type { PumpToken } from '@/types'
 import { ensureArray } from '@/lib/ensureArray'
-import { passesAlphaFilter, isGraduatingSoon } from '@/lib/feedQuality'
+import {
+  passesAlphaFilter,
+  passesTradeableFilter,
+  isGraduatingSoon,
+} from '@/lib/feedQuality'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
 
@@ -21,10 +25,13 @@ function upsert(list: PumpToken[], token: PumpToken, max = 80): PumpToken[] {
 function applyLane(tokens: PumpToken[], lane: ScannerLane): PumpToken[] {
   if (lane === 'graduating') return tokens.filter(isGraduatingSoon)
   if (lane === 'alpha') return tokens.filter(passesAlphaFilter)
-  return tokens.slice(0, 120)
+  if (lane === 'tradeable' || lane === 'all') {
+    return tokens.filter(passesTradeableFilter)
+  }
+  return tokens
 }
 
-export function useScannerFeed(lane: ScannerLane = 'alpha') {
+export function useScannerFeed(lane: ScannerLane = 'tradeable') {
   const queryClient = useQueryClient()
   const key = ['tokens', 'scanner', lane] as const
 
@@ -38,18 +45,12 @@ export function useScannerFeed(lane: ScannerLane = 'alpha') {
   useEffect(() => {
     wsService.connect()
 
-    const onLive = (token: PumpToken) => {
-      if (lane === 'all') {
-        queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token, 120))
-      }
-    }
-
-    const onAlpha = (token: PumpToken) => {
-      if (!passesAlphaFilter(token)) return
-      queryClient.setQueryData<PumpToken[]>(['tokens', 'scanner', 'alpha'], (old) =>
+    const onTradeable = (token: PumpToken) => {
+      if (!passesTradeableFilter(token)) return
+      queryClient.setQueryData<PumpToken[]>(['tokens', 'scanner', 'tradeable'], (old) =>
         upsert(ensureArray(old), token),
       )
-      if (lane === 'alpha') {
+      if (lane === 'tradeable' || lane === 'all') {
         queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token))
       }
     }
@@ -57,10 +58,10 @@ export function useScannerFeed(lane: ScannerLane = 'alpha') {
     const onGraduating = (token: PumpToken) => {
       if (!isGraduatingSoon(token) && token.bondingCurvePercent < 100) return
       queryClient.setQueryData<PumpToken[]>(['tokens', 'scanner', 'graduating'], (old) =>
-        upsert(ensureArray(old), { ...token, bondingCurvePercent: Math.max(token.bondingCurvePercent, 78) }),
-      )
-      queryClient.setQueryData<PumpToken[]>(['tokens', 'scanner', 'alpha'], (old): PumpToken[] =>
-        ensureArray<PumpToken>(old).filter((t) => t.mint !== token.mint),
+        upsert(ensureArray(old), {
+          ...token,
+          bondingCurvePercent: Math.max(token.bondingCurvePercent, 78),
+        }),
       )
       if (lane === 'graduating') {
         queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token))
@@ -68,19 +69,14 @@ export function useScannerFeed(lane: ScannerLane = 'alpha') {
     }
 
     const onPatch = (token: PumpToken) => {
-      onLive(token)
       if (isGraduatingSoon(token)) onGraduating(token)
-      else if (passesAlphaFilter(token)) onAlpha(token)
+      else onTradeable(token)
     }
 
-    const u1 = wsService.onFeedPrepend((t) => {
-      onLive(t)
-      onAlpha(t)
-    })
+    const u1 = wsService.onFeedPrepend(onTradeable)
     const u2 = wsService.onPumpPortalToken((t) => {
-      onLive(t)
       if (isGraduatingSoon(t)) onGraduating(t)
-      else onAlpha(t)
+      else onTradeable(t)
     })
     const u3 = wsService.onFeedPatch(onPatch)
     const u4 = wsService.onTokenGraduating(onGraduating)
@@ -102,20 +98,23 @@ export function useScannerFeed(lane: ScannerLane = 'alpha') {
     : undefined
 
   useEffect(() => {
-    const unsub = wsService.onQuantUpdate((u: { mint: string; holders?: number }) => {
-      if (!u.holders || u.holders <= 0) return
-      queryClient.setQueryData<PumpToken[]>(key, (prev) => {
-        const list = mergeQuantHolders(ensureArray<PumpToken>(prev))
-        const idx = list.findIndex((t) => t.mint === u.mint)
-        if (idx < 0) return list
-        const next = [...list]
-        next[idx] = {
-          ...next[idx],
-          holders: Math.max(next[idx].holders, u.holders ?? 0),
-        }
-        return next
-      })
-    })
+    const unsub = wsService.onQuantUpdate(
+      (u: { mint: string; holders?: number; holdersVerified?: boolean }) => {
+        if (!u.holders || u.holders <= 0) return
+        queryClient.setQueryData<PumpToken[]>(key, (prev) => {
+          const list = mergeQuantHolders(ensureArray<PumpToken>(prev))
+          const idx = list.findIndex((t) => t.mint === u.mint)
+          if (idx < 0) return list
+          const next = [...list]
+          next[idx] = {
+            ...next[idx],
+            holders: Math.max(next[idx].holders, u.holders ?? 0),
+            holdersVerified: u.holdersVerified ?? next[idx].holdersVerified,
+          }
+          return next
+        })
+      },
+    )
     return () => {
       unsub()
     }

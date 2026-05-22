@@ -47,7 +47,7 @@ export class TokensService {
     return Number.isFinite(n) && n >= 10 ? Math.min(n, 200) : 100
   }
 
-  async getFeed(lane: ScannerLane = 'alpha'): Promise<FeedToken[]> {
+  async getFeed(lane: ScannerLane = 'tradeable'): Promise<FeedToken[]> {
     const all = await this.getAllTokens()
     return filterForLane(all, lane)
   }
@@ -168,10 +168,44 @@ export class TokensService {
     return this.liveFeed.getStats()
   }
 
-  upsertLiveToken(token: FeedToken, options?: { isNew?: boolean; whaleSol?: number }): FeedToken {
-    const saved = this.liveFeed.upsert(this.enrichFromMarketState(token.mint, token))
+  upsertLiveToken(
+    token: FeedToken,
+    options?: { isNew?: boolean; whaleSol?: number },
+  ): FeedToken | null {
+    const enriched = this.enrichFromMarketState(token.mint, token)
+    const saved = this.liveFeed.upsert(enriched)
+    if (!saved) return null
     void this.persistToSupabase(saved, options)
     return saved
+  }
+
+  /** After holder on-chain snapshot or trades — add to feed if now tradeable. */
+  promoteIfTradeable(mint: string, holderCount?: number): FeedToken | null {
+    const live = this.liveFeed.get(mint)
+    const state = this.trading.getState(mint)
+    const chain = this.holderEnrichment.getCached(mint)
+    const base =
+      live ??
+      (state ? this.tokenFromMarketState(mint) : null) ??
+      null
+    if (!base) return null
+
+    const holders =
+      holderCount ??
+      (state
+        ? resolveHolderCount({
+            walletBalances: state.walletBalances,
+            trades: state.trades,
+            onChainHolders: chain ?? state.onChainHolders,
+          })
+        : Math.max(base.holders, chain?.holders ?? 0))
+
+    const enriched = this.enrichFromMarketState(mint, {
+      ...base,
+      holders,
+      holdersVerified: Boolean(chain?.verified ?? chain?.holders),
+    })
+    return this.liveFeed.upsert(enriched)
   }
 
   private async persistToSupabase(
@@ -447,6 +481,7 @@ export class TokensService {
       marketCap: state.marketCapUsd || (coin?.usd_market_cap ?? coin?.market_cap ?? 0),
       bondingCurvePercent: state.bondingCurvePercent,
       holders,
+      holdersVerified: Boolean(state.onChainHolders?.verified),
       volume24h,
       signalScore: evScoreToSignalScore(metrics),
       momentumScore: momentum,
@@ -466,6 +501,9 @@ export class TokensService {
     const chain = this.holderEnrichment.getCached(mint)
     const state = this.trading.getState(mint)
     const holdersFromChain = chain?.holders ?? 0
+    const holdersVerified = Boolean(
+      chain?.verified ?? token.holdersVerified ?? fromState?.holdersVerified,
+    )
     const holders = state
       ? resolveHolderCount({
           walletBalances: state.walletBalances,
@@ -475,7 +513,8 @@ export class TokensService {
       : Math.max(token.holders ?? 0, holdersFromChain, fromState?.holders ?? 0)
 
     if (!fromState) {
-      return holders > (token.holders ?? 0) ? { ...token, holders } : token
+      const next = { ...token, holders, holdersVerified }
+      return holders > (token.holders ?? 0) || holdersVerified ? next : token
     }
     return {
       ...token,
@@ -495,6 +534,7 @@ export class TokensService {
       website: token.website ?? fromState.website,
       bondingCurvePercent: Math.max(token.bondingCurvePercent ?? 0, fromState.bondingCurvePercent),
       holders: Math.max(holders, token.holders ?? 0, fromState.holders),
+      holdersVerified: holdersVerified || fromState.holdersVerified,
       volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,
     }

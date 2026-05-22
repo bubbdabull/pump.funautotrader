@@ -23,6 +23,7 @@ function mergeSnapshots(
     entropy: Math.max(helius.entropy, bubble.entropy),
     suspiciousClusterPct: bubble.suspiciousClusterPct ?? helius.suspiciousClusterPct,
     source: 'merged',
+    verified: true,
     updatedAt: Date.now(),
   }
 }
@@ -94,15 +95,20 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
       globalMarketState.patchOnChainHolders(mint, merged)
       if (exclude.length) globalMarketState.addExcludeWallets(mint, exclude)
 
-      const live = this.liveFeed.get(mint)
-      if (live) {
-        const state = globalMarketState.getState(mint)
-        const holders = state ? resolveHolderCount(state) : merged.holders
-        const updated = this.tokens.upsertLiveToken({ ...live, holders })
-        this.events.server?.to('feed').emit('feed:patch', updated)
+      const promoted = this.tokens.promoteIfTradeable(mint, merged.holders)
+      if (promoted) {
+        this.events.server?.to('feed').emit('feed:patch', promoted)
         this.events.server?.emit('quant:update', {
           mint,
-          holders,
+          holders: promoted.holders,
+          holdersVerified: true,
+          at: new Date().toISOString(),
+        })
+      } else {
+        this.events.server?.emit('quant:update', {
+          mint,
+          holders: merged.holders,
+          holdersVerified: true,
           at: new Date().toISOString(),
         })
       }
