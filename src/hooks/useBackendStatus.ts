@@ -31,7 +31,10 @@ export function useBackendStatus() {
 
   const apiReachable = statusQuery.isSuccess
   const pumpportalConnected = Boolean(statusQuery.data?.connected)
-  const feedTokensOnServer = statusQuery.data?.feedTokens ?? 0
+  const feedTokensOnServer =
+    statusQuery.data?.feedTokens ??
+    (statusQuery.data as { liveFeedCount?: number } | undefined)?.liveFeedCount ??
+    0
 
   let statusLine = 'Connecting to API…'
   let statusTone: 'ok' | 'warn' | 'error' = 'warn'

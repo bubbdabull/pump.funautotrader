@@ -47,6 +47,7 @@ export function LiveFeedPage() {
     data,
     isLoading,
     isError,
+    error,
     isFetching,
     dataUpdatedAt,
     displayMode,
@@ -203,7 +204,13 @@ export function LiveFeedPage() {
       )}
 
       {isError && (
-        <p className="mb-3 text-sm text-red-400">Scanner API unreachable — check Fly deploy & Vercel env.</p>
+        <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <p className="font-medium">Feed request failed</p>
+          <p className="mt-1 text-xs text-red-200/80">
+            {(error as Error)?.message ??
+              'Cannot reach API — run npm run dev with Fly URLs or redeploy Vercel.'}
+          </p>
+        </div>
       )}
 
       {isLoading ? (

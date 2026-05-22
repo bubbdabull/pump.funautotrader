@@ -4,33 +4,11 @@ import { tokenApi } from '@/services/api'
 import { wsService } from '@/services/websocket'
 import type { PumpToken } from '@/types'
 import { ensureArray } from '@/lib/ensureArray'
-import {
-  passesAlphaFilter,
-  passesTradeableFilter,
-  isGraduatingSoon,
-  resolveDisplayFeed,
-  rankByLiveActivity,
-  tradeQualityScore,
-  type FeedDisplayMode,
-} from '@/lib/feedQuality'
+import { passesTradeableFilter, type FeedDisplayMode } from '@/lib/feedQuality'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
 import type { TokenChartSeries } from '@/lib/chartTypes'
 import { mergePumpTokens, normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
-
-function mergeScannerToken(prev: PumpToken, token: PumpToken): PumpToken {
-  return mergePumpTokens(prev, token)
-}
-
-function upsert(list: PumpToken[], token: PumpToken, max = 80): PumpToken[] {
-  const idx = list.findIndex((t) => t.mint === token.mint)
-  if (idx >= 0) {
-    const next = [...list]
-    next[idx] = mergeScannerToken(next[idx], token)
-    return next
-  }
-  return [token, ...list].slice(0, max)
-}
 
 type ScannerPayload = {
   tokens: PumpToken[]
@@ -38,51 +16,31 @@ type ScannerPayload = {
   tradeableCount: number
 }
 
-/** Server already applied filterForLane — do not re-filter HTTP/feed:update snapshots. */
-function payloadFromServer(tokens: PumpToken[] | unknown, lane: ScannerLane): ScannerPayload {
-  const list = normalizePumpTokens(ensureArray<PumpToken>(tokens))
+function buildPayload(tokens: PumpToken[], lane: ScannerLane): ScannerPayload {
+  const list = normalizePumpTokens(tokens).filter((t) => t.mint.length >= 32)
   const tradeableCount = list.filter(passesTradeableFilter).length
-  if (lane === 'active') {
-    return { tokens: list, mode: 'active', tradeableCount }
-  }
-  if (lane === 'all') {
-    return { tokens: list, mode: 'active', tradeableCount }
-  }
   if (lane === 'tradeable') {
-    const mode: FeedDisplayMode = tradeableCount > 0 ? 'tradeable' : 'watchlist_fallback'
-    return { tokens: list, mode, tradeableCount }
-  }
-  return { tokens: list, mode: 'watchlist_fallback', tradeableCount }
-}
-
-/** Incremental WS events — merge then re-rank locally. */
-function applyLane(tokens: PumpToken[], lane: ScannerLane): ScannerPayload {
-  if (lane === 'graduating') {
-    const list = tokens
-      .filter(isGraduatingSoon)
-      .sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
-    return { tokens: list, mode: 'watchlist_fallback', tradeableCount: tokens.filter(passesTradeableFilter).length }
-  }
-  if (lane === 'active') {
-    const list = rankByLiveActivity(tokens, 60)
     return {
       tokens: list,
-      mode: list.length >= 3 ? 'active' : 'watchlist_fallback',
-      tradeableCount: tokens.filter(passesTradeableFilter).length,
+      mode: tradeableCount > 0 ? 'tradeable' : 'watchlist_fallback',
+      tradeableCount,
     }
   }
-  if (lane === 'alpha') {
-    const list = [...tokens]
-      .filter(passesAlphaFilter)
-      .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
-      .slice(0, 60)
-    return { tokens: list, mode: 'watchlist_fallback', tradeableCount: tokens.filter(passesTradeableFilter).length }
-  }
-  const resolved = resolveDisplayFeed(tokens, 80)
-  return { tokens: resolved.tokens, mode: resolved.mode, tradeableCount: resolved.tradeableCount }
+  return { tokens: list, mode: 'active', tradeableCount }
 }
 
-export function useScannerFeed(lane: ScannerLane = 'tradeable') {
+function mergeIntoList(list: PumpToken[], token: PumpToken, max = 100): PumpToken[] {
+  const t = normalizePumpToken(token)
+  const idx = list.findIndex((x) => x.mint === t.mint)
+  if (idx >= 0) {
+    const next = [...list]
+    next[idx] = mergePumpTokens(next[idx], t)
+    return next
+  }
+  return [t, ...list].slice(0, max)
+}
+
+export function useScannerFeed(lane: ScannerLane = 'all') {
   const queryClient = useQueryClient()
   const key = ['tokens', 'scanner', lane] as const
 
@@ -92,172 +50,44 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       const raw =
         lane === 'graduating'
           ? await tokenApi.graduating()
-          : await tokenApi.feed(lane === 'tradeable' ? 'tradeable' : lane)
-      return payloadFromServer(ensureArray<PumpToken>(raw), lane)
+          : await tokenApi.feed(lane)
+      return buildPayload(ensureArray<PumpToken>(raw), lane)
     },
-    refetchInterval: 4_000,
-    staleTime: 1_500,
+    refetchInterval: 3_000,
+    staleTime: 1_000,
     refetchOnWindowFocus: true,
-    retry: 3,
-    retryDelay: (n) => Math.min(1000 * 2 ** n, 8000),
+    retry: 2,
   })
 
   useEffect(() => {
     wsService.connect()
 
-    const pushToken = (raw: PumpToken) => {
-      const token = normalizePumpToken(raw)
-      queryClient.setQueryData<ScannerPayload>(key, (old) => {
-        const list = old?.tokens ?? []
-        const idx = list.findIndex((t) => t.mint === token.mint)
-        const merged =
-          idx >= 0 ? upsert(list, token, 120) : upsert(list, token, 120)
-        return applyLane(merged, lane)
-      })
-    }
-
-    const onStreamToken = (raw: PumpToken) => {
-      const token = normalizePumpToken(raw)
-      const hasLive =
-        token.isActive ||
-        (token.trades1m ?? 0) > 0 ||
-        (token.volume5mSol ?? 0) > 0 ||
-        Boolean(token.lastTradeAt)
-
-      if (lane === 'all' || lane === 'active') {
-        if (hasLive || token.marketCap >= 3_000) pushToken(token)
-      } else if (lane === 'alpha' && passesAlphaFilter(token)) {
-        pushToken(token)
-      } else if (lane === 'tradeable' && passesTradeableFilter(token)) {
-        pushToken(token)
-      }
-
-      if (passesTradeableFilter(token)) {
-        queryClient.setQueryData<ScannerPayload>(['tokens', 'scanner', 'tradeable'], (old) => {
-          const merged = upsert(old?.tokens ?? [], token)
-          return applyLane(merged, 'tradeable')
-        })
-      }
-    }
-
-    const onGraduating = (token: PumpToken) => {
-      if (!isGraduatingSoon(token) && token.bondingCurvePercent < 100) return
-      queryClient.setQueryData<ScannerPayload>(['tokens', 'scanner', 'graduating'], (old) => {
-        const merged = upsert(old?.tokens ?? [], {
-          ...token,
-          bondingCurvePercent: Math.max(token.bondingCurvePercent, 78),
-        })
-        return applyLane(merged, 'graduating')
-      })
-      if (lane === 'graduating') pushToken(token)
-    }
-
-    const onPatch = (raw: PumpToken) => {
-      const token = normalizePumpToken(raw)
-      const hasLive =
-        token.isActive ||
-        (token.trades1m ?? 0) > 0 ||
-        (token.volume5mSol ?? 0) > 0 ||
-        Boolean(token.lastTradeAt)
-      queryClient.setQueryData<ScannerPayload>(key, (old) => {
-        if (!old) return old
-        const list = old.tokens ?? []
-        const idx = list.findIndex((t) => t.mint === token.mint)
-        if (idx >= 0) {
-          const next = [...list]
-          next[idx] = mergeScannerToken(next[idx], token)
-          return { ...old, tokens: next }
-        }
-        if (lane === 'active' && hasLive) {
-          return {
-            ...old,
-            tokens: upsert(list, token, 120),
-            mode: 'active',
-          }
-        }
-        if ((lane === 'tradeable' || lane === 'all') && hasLive) {
-          return { ...old, tokens: upsert(list, token, 120) }
-        }
-        return old
-      })
-      if (isGraduatingSoon(token)) onGraduating(token)
-    }
-
-    const u1 = wsService.onFeedPrepend(onStreamToken)
-    const u2 = wsService.onPumpPortalToken((t) => {
-      if (isGraduatingSoon(t)) onGraduating(t)
-      else onStreamToken(t)
-    })
-    const u3 = wsService.onFeedPatch(onPatch)
-    const u3b = wsService.onTokenUpdate(onPatch)
-    const u4 = wsService.onTokenGraduating(onGraduating)
-    const u5 = wsService.onFeedUpdate((tokens) => {
-      const list = normalizePumpTokens(ensureArray(tokens))
-      if (list.length === 0) return
+    const patchOne = (raw: PumpToken) => {
       queryClient.setQueryData<ScannerPayload>(key, (prev) => {
-        const next = payloadFromServer(list, lane)
-        const prevLen = prev?.tokens?.length ?? 0
-        if (
-          (lane === 'active' || lane === 'all') &&
-          prevLen > 5 &&
-          next.tokens.length < prevLen / 2
-        ) {
-          return prev
-        }
-        return next
+        const list = prev?.tokens ?? []
+        const next = mergeIntoList(list, raw)
+        return buildPayload(next, lane)
       })
-    })
+    }
+
+    const unsubPatch = wsService.onFeedPatch(patchOne)
+    const unsubToken = wsService.onTokenUpdate(patchOne)
+    const unsubPrepend = wsService.onFeedPrepend(patchOne)
+    const unsubPortal = wsService.onPumpPortalToken(patchOne)
 
     return () => {
-      u1()
-      u2()
-      u3()
-      u3b()
-      u4()
-      u5()
+      unsubPatch()
+      unsubToken()
+      unsubPrepend()
+      unsubPortal()
     }
   }, [queryClient, lane])
 
-  const merged: PumpToken[] | undefined = query.data?.tokens
-    ? mergeQuantHolders(query.data.tokens)
-    : undefined
-
-  useEffect(() => {
-    const applyHolderPatch = (u: { mint: string; holders?: number; holdersVerified?: boolean }) => {
-      if (!u.holders || u.holders <= 0) return
-      queryClient.setQueryData<ScannerPayload>(key, (prev) => {
-        const list = ensureArray<PumpToken>(prev?.tokens ?? [])
-        const idx = list.findIndex((t) => t.mint === u.mint)
-        if (idx < 0) return prev
-        const next = [...list]
-        next[idx] = {
-          ...next[idx],
-          holders: u.holdersVerified
-            ? (u.holders ?? next[idx].holders)
-            : Math.max(next[idx].holders ?? 0, u.holders ?? 0),
-          holdersVerified:
-            Boolean(u.holdersVerified) &&
-            (u.holders ?? 0) >= 2 &&
-            (next[idx].holdersVerified || (u.holders ?? 0) >= 2),
-        }
-        if (!prev) return prev
-        return { ...prev, tokens: next }
-      })
-    }
-    const unsub = wsService.onQuantHolders(applyHolderPatch)
-    const unsubLegacy = wsService.onQuantUpdate((u) => {
-      if (u.scores) return
-      if (u.holders) applyHolderPatch(u)
-    })
-    return () => {
-      unsub()
-      unsubLegacy()
-    }
-  }, [queryClient, lane])
+  const tokens = query.data?.tokens ? mergeQuantHolders(query.data.tokens) : undefined
 
   return {
     ...query,
-    data: merged,
+    data: tokens,
     displayMode: query.data?.mode ?? 'watchlist_fallback',
     tradeableCount: query.data?.tradeableCount ?? 0,
   }

@@ -52,7 +52,8 @@ export interface PumpPortalStatus {
   messagesReceived: number
   lastMessageAt?: string
   subscribedTradeMints: number
-  feedTokens: number
+  feedTokens?: number
+  liveFeedCount?: number
 }
 
 export const pumpportalApi = {
