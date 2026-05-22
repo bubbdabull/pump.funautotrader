@@ -21,7 +21,7 @@ function upsert(list: PumpToken[], token: PumpToken, max = 80): PumpToken[] {
 function applyLane(tokens: PumpToken[], lane: ScannerLane): PumpToken[] {
   if (lane === 'graduating') return tokens.filter(isGraduatingSoon)
   if (lane === 'alpha') return tokens.filter(passesAlphaFilter)
-  return tokens
+  return tokens.slice(0, 120)
 }
 
 export function useScannerFeed(lane: ScannerLane = 'alpha') {
@@ -38,9 +38,20 @@ export function useScannerFeed(lane: ScannerLane = 'alpha') {
   useEffect(() => {
     wsService.connect()
 
+    const onLive = (token: PumpToken) => {
+      if (lane === 'all') {
+        queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token, 120))
+      }
+    }
+
     const onAlpha = (token: PumpToken) => {
       if (!passesAlphaFilter(token)) return
-      queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token))
+      queryClient.setQueryData<PumpToken[]>(['tokens', 'scanner', 'alpha'], (old) =>
+        upsert(ensureArray(old), token),
+      )
+      if (lane === 'alpha') {
+        queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token))
+      }
     }
 
     const onGraduating = (token: PumpToken) => {
@@ -51,15 +62,23 @@ export function useScannerFeed(lane: ScannerLane = 'alpha') {
       queryClient.setQueryData<PumpToken[]>(['tokens', 'scanner', 'alpha'], (old): PumpToken[] =>
         ensureArray<PumpToken>(old).filter((t) => t.mint !== token.mint),
       )
+      if (lane === 'graduating') {
+        queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token))
+      }
     }
 
     const onPatch = (token: PumpToken) => {
+      onLive(token)
       if (isGraduatingSoon(token)) onGraduating(token)
       else if (passesAlphaFilter(token)) onAlpha(token)
     }
 
-    const u1 = wsService.onFeedPrepend(onAlpha)
+    const u1 = wsService.onFeedPrepend((t) => {
+      onLive(t)
+      onAlpha(t)
+    })
     const u2 = wsService.onPumpPortalToken((t) => {
+      onLive(t)
       if (isGraduatingSoon(t)) onGraduating(t)
       else onAlpha(t)
     })

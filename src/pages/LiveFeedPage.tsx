@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Rocket, Shield, Sparkles } from 'lucide-react'
+import { Activity, Rocket, Shield, Sparkles } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { LiveFeedTable } from '@/components/feed/LiveFeedTable'
 import { LiveFeedCards } from '@/components/feed/LiveFeedCards'
@@ -13,12 +13,13 @@ import type { ScannerLane } from '@/lib/feedQuality'
 import { cn } from '@/lib/utils'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
+  { id: 'all', label: 'Live', icon: Activity, desc: 'All active Pump.fun launches' },
   { id: 'alpha', label: 'Alpha', icon: Sparkles, desc: 'Quality-filtered — junk hidden' },
   { id: 'graduating', label: 'Graduating', icon: Rocket, desc: '78–99% curve — near PumpSwap' },
 ]
 
 export function LiveFeedPage() {
-  const [lane, setLane] = useState<ScannerLane>('alpha')
+  const [lane, setLane] = useState<ScannerLane>('all')
   const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
   const { data, isLoading, isError } = useScannerFeed(lane)

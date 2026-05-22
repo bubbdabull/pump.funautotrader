@@ -60,6 +60,7 @@ export class SupabaseDbService implements OnModuleInit {
   async upsertToken(token: FeedToken) {
     if (!this.client) return
     const row = {
+      id: randomUUID(),
       mint: token.mint,
       name: token.name,
       symbol: token.symbol,
@@ -77,13 +78,33 @@ export class SupabaseDbService implements OnModuleInit {
       launchedAt: token.launchedAt,
       updatedAt: new Date().toISOString(),
     }
-    const existing = await this.findTokenByMint(token.mint)
-    if (existing) {
-      const { error } = await this.client.from('Token').update(row).eq('mint', token.mint)
-      if (error) throw new Error(error.message)
-    } else {
-      const { error } = await this.client.from('Token').insert({ ...row, id: randomUUID() })
-      if (error) throw new Error(error.message)
+    const { error } = await this.client.from('Token').upsert(row, { onConflict: 'mint' })
+    if (error) {
+      const existing = await this.findTokenByMint(token.mint)
+      if (existing) {
+        const { error: updErr } = await this.client
+          .from('Token')
+          .update({
+            name: row.name,
+            symbol: row.symbol,
+            image: row.image,
+            marketCap: row.marketCap,
+            bondingCurvePercent: row.bondingCurvePercent,
+            holders: row.holders,
+            volume24h: row.volume24h,
+            aiRiskScore: row.aiRiskScore,
+            momentumScore: row.momentumScore,
+            whaleActivity: row.whaleActivity,
+            priceUsd: row.priceUsd,
+            priceChange24h: row.priceChange24h,
+            liquidity: row.liquidity,
+            updatedAt: row.updatedAt,
+          })
+          .eq('mint', token.mint)
+        if (updErr) throw new Error(updErr.message)
+        return
+      }
+      throw new Error(error.message)
     }
   }
 
@@ -231,13 +252,12 @@ export class SupabaseDbService implements OnModuleInit {
     patch: { rugScore?: number; tradeConfidence?: number; holders?: number; creatorWallet?: string },
   ) {
     if (!this.client) return
-    const { error } = await this.client
-      .from('Token')
-      .update({
-        ...patch,
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('mint', mint)
+    const payload: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+    if (patch.holders != null) payload.holders = patch.holders
+    if (patch.rugScore != null) payload.rugScore = patch.rugScore
+    if (patch.tradeConfidence != null) payload.tradeConfidence = patch.tradeConfidence
+    if (patch.creatorWallet != null) payload.creatorWallet = patch.creatorWallet
+    const { error } = await this.client.from('Token').update(payload).eq('mint', mint)
     if (error) this.logger.debug(`Token quant patch: ${error.message}`)
   }
 

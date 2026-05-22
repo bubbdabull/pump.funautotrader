@@ -22,9 +22,11 @@ function formatVolumeDisplay(sol: number): { value: number; suffix: string } {
 }
 
 export function DashboardPage() {
-  const { data: feedData, isLoading } = useScannerFeed('alpha')
+  const { data: feedData, isLoading } = useScannerFeed('all')
+  const { data: alphaData } = useScannerFeed('alpha')
   const { data: graduatingData } = useScannerFeed('graduating')
   const tokens = ensureArray<PumpToken>(feedData)
+  const alphaTokens = ensureArray<PumpToken>(alphaData)
   const graduating = ensureArray<PumpToken>(graduatingData)
   const { data: stats } = useFeedStats()
   useMomentumRankingsState()
@@ -48,7 +50,7 @@ export function DashboardPage() {
       <div className="mb-4 lg:mb-6">
         <h1 className="text-xl font-bold tracking-tight text-white lg:text-2xl">Dashboard</h1>
         <p className="text-xs text-zinc-500 lg:text-sm">
-          Live Pump.fun · {isLoading ? 'loading…' : `${tokens.length} alpha tokens`}
+          Live Pump.fun · {isLoading ? 'loading…' : `${tokens.length} live · ${alphaTokens.length} alpha`}
         </p>
       </div>
 

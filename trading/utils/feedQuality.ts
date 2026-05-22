@@ -45,9 +45,10 @@ export function passesAlphaFilter(token: FeedQualityFields): boolean {
   if (token.marketCap < 500) return false
   if (curve < 2) return false
   if (isGraduatingSoon(token)) return false
-  if (signal > 62) return false
-  if (vol < 0.08 && token.holders < 3) return false
-  if ((token.momentumScore ?? 0) < 12 && vol < 0.25) return false
+  // signalScore = inverted EV (lower is better). Static/new tokens often land ~65–75 until trades refine scores.
+  if (signal > 78) return false
+  if (vol < 0.05 && token.holders < 2) return false
+  if ((token.momentumScore ?? 0) < 8 && vol < 0.15 && token.holders < 3) return false
 
   return true
 }
