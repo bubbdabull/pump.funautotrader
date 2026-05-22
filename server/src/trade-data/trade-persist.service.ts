@@ -40,17 +40,19 @@ export class TradePersistService implements OnModuleInit {
     this.hotMints.recordTrade(mint, last.timestamp)
     const activity = computeFeedActivity(state)
     let feedToken = this.liveFeed.get(mint)
+    const vol = Math.max(
+      feedToken?.volume24h ?? 0,
+      state.trades.reduce((a, t) => a + t.solAmount, 0),
+    )
+    const patchBody = {
+      mint,
+      ...activity,
+      marketCap: state.marketCapUsd || feedToken?.marketCap || 0,
+      bondingCurvePercent: state.bondingCurvePercent,
+      volume24h: vol,
+    }
     if (feedToken) {
-      this.liveFeed.upsert({
-        ...feedToken,
-        ...activity,
-        marketCap: state.marketCapUsd || feedToken.marketCap,
-        bondingCurvePercent: state.bondingCurvePercent,
-        volume24h: Math.max(
-          feedToken.volume24h,
-          state.trades.reduce((a, t) => a + t.solAmount, 0),
-        ),
-      })
+      this.liveFeed.patch({ ...feedToken, ...patchBody })
     }
 
     if (!this.supabase.enabled) return

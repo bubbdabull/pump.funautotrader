@@ -7,6 +7,7 @@ import {
   resolveTokenImageCandidates,
   parseTokenMetadataJson,
   isDirectImageUrl,
+  isPlaceholderTokenImage,
   type ParsedTokenMetadata,
 } from '@phronis/trading'
 
@@ -37,11 +38,11 @@ export class TokenMetadataService {
     fields?: { uri?: string; image?: string; metadataUri?: string },
   ): string {
     const cached = this.imageCache.get(mint)
-    if (cached) return cached
+    if (cached && !isPlaceholderTokenImage(cached)) return cached
 
     const metaUri = fields?.metadataUri ?? fields?.uri
     const direct = fields?.image
-    if (direct && isDirectImageUrl(direct)) {
+    if (direct && isDirectImageUrl(direct) && !isPlaceholderTokenImage(direct)) {
       const img = normalizeIpfsUrl(direct)
       this.imageCache.set(mint, img)
       return img
@@ -71,7 +72,7 @@ export class TokenMetadataService {
     },
   ): Promise<TokenMediaEnrichment> {
     const cached = this.metaCache.get(mint)
-    if (cached?.image && isDirectImageUrl(cached.image)) return cached
+    if (cached?.image && !isPlaceholderTokenImage(cached.image)) return cached
 
     const metadataUri = fields?.metadataUri ?? fields?.uri
     let parsed: ParsedTokenMetadata = {

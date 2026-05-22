@@ -104,7 +104,7 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
           verified: false,
           updatedAt: Date.now(),
         }
-      } else if (merged && streamHolders > merged.holders) {
+      } else if (merged && !merged.verified && streamHolders > merged.holders) {
         merged = { ...merged, holders: streamHolders }
       }
 

@@ -17,11 +17,46 @@ import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
 import type { TokenChartSeries } from '@/lib/chartTypes'
 
+function isPlaceholderImage(url?: string): boolean {
+  if (!url?.trim()) return true
+  const u = url.toLowerCase()
+  return (
+    u.includes('dexscreener.com/ds-data') ||
+    u.includes('imagedelivery.net/wl1joijim_na') ||
+    (u.includes('pump.fun/coin/') && u.endsWith('.png'))
+  )
+}
+
+function preferImage(next?: string, prev?: string): string {
+  if (next && !isPlaceholderImage(next)) return next
+  if (prev && !isPlaceholderImage(prev)) return prev
+  return next || prev || ''
+}
+
+function mergeScannerToken(prev: PumpToken, token: PumpToken): PumpToken {
+  return {
+    ...prev,
+    ...token,
+    image: preferImage(token.image, prev.image),
+    metadataUri: token.metadataUri || prev.metadataUri,
+    holders: token.holdersVerified
+      ? (token.holders ?? prev.holders)
+      : Math.max(prev.holders ?? 0, token.holders ?? 0),
+    holdersVerified: prev.holdersVerified || token.holdersVerified,
+    lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
+    trades1m: token.trades1m ?? prev.trades1m,
+    volume5mSol: Math.max(prev.volume5mSol ?? 0, token.volume5mSol ?? 0),
+    isActive: token.isActive ?? prev.isActive,
+    buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
+    mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
+  }
+}
+
 function upsert(list: PumpToken[], token: PumpToken, max = 80): PumpToken[] {
   const idx = list.findIndex((t) => t.mint === token.mint)
   if (idx >= 0) {
     const next = [...list]
-    next[idx] = { ...next[idx], ...token }
+    next[idx] = mergeScannerToken(next[idx], token)
     return next
   }
   return [token, ...list].slice(0, max)
@@ -74,7 +109,7 @@ function applyLane(tokens: PumpToken[], lane: ScannerLane): ScannerPayload {
   return { tokens: resolved.tokens, mode: resolved.mode, tradeableCount: resolved.tradeableCount }
 }
 
-export function useScannerFeed(lane: ScannerLane = 'active') {
+export function useScannerFeed(lane: ScannerLane = 'tradeable') {
   const queryClient = useQueryClient()
   const key = ['tokens', 'scanner', lane] as const
 
@@ -102,19 +137,7 @@ export function useScannerFeed(lane: ScannerLane = 'active') {
         const list = old?.tokens ?? []
         const idx = list.findIndex((t) => t.mint === token.mint)
         const merged =
-          idx >= 0
-            ? (() => {
-                const next = [...list]
-                const prev = next[idx]
-                next[idx] = {
-                  ...prev,
-                  ...token,
-                  image: token.image || prev.image,
-                  metadataUri: token.metadataUri || prev.metadataUri,
-                }
-                return next
-              })()
-            : upsert(list, token, 120)
+          idx >= 0 ? upsert(list, token, 120) : upsert(list, token, 120)
         return applyLane(merged, lane)
       })
     }
@@ -126,13 +149,11 @@ export function useScannerFeed(lane: ScannerLane = 'active') {
           return applyLane(merged, 'tradeable')
         })
       }
-      if (
-        lane === 'active' &&
-        (token.isActive || (token.trades1m ?? 0) > 0 || (token.volume5mSol ?? 0) >= 0.04)
-      ) {
-        pushToken(token)
-      }
-      else if (lane === 'tradeable' || lane === 'all') pushToken(token)
+      if (lane === 'active') {
+        if (token.isActive || (token.trades1m ?? 0) > 0 || (token.volume5mSol ?? 0) > 0) {
+          pushToken(token)
+        }
+      } else if (lane === 'tradeable' || lane === 'all') pushToken(token)
       else if (lane === 'alpha' && passesAlphaFilter(token)) pushToken(token)
     }
 
@@ -149,8 +170,15 @@ export function useScannerFeed(lane: ScannerLane = 'active') {
     }
 
     const onPatch = (token: PumpToken) => {
+      queryClient.setQueryData<ScannerPayload>(key, (old) => {
+        if (!old?.tokens?.length) return old
+        const idx = old.tokens.findIndex((t) => t.mint === token.mint)
+        if (idx < 0) return old
+        const next = [...old.tokens]
+        next[idx] = mergeScannerToken(next[idx], token)
+        return { ...old, tokens: next }
+      })
       if (isGraduatingSoon(token)) onGraduating(token)
-      else onTradeable(token)
     }
 
     const u1 = wsService.onFeedPrepend(onTradeable)
@@ -187,10 +215,13 @@ export function useScannerFeed(lane: ScannerLane = 'active') {
         const next = [...list]
         next[idx] = {
           ...next[idx],
-          holders: Math.max(next[idx].holders, u.holders ?? 0),
+          holders: u.holdersVerified
+            ? (u.holders ?? next[idx].holders)
+            : Math.max(next[idx].holders ?? 0, u.holders ?? 0),
           holdersVerified: u.holdersVerified ?? next[idx].holdersVerified,
         }
-        return applyLane(next, lane)
+        if (!prev) return prev
+        return { ...prev, tokens: next }
       })
     }
     const unsub = wsService.onQuantHolders(applyHolderPatch)

@@ -23,6 +23,7 @@ import {
   normalizeVirtualSol,
   resolveTokenImage,
   isDirectImageUrl,
+  isPlaceholderTokenImage,
 } from '@phronis/trading'
 import type { TokenChartSeries, ChartPoint, OhlcvCandle } from './chart.types'
 import { TokenMetadataService } from './token-metadata.service'
@@ -250,7 +251,7 @@ export class TokensService {
     options?: { isNew?: boolean; whaleSol?: number },
   ): FeedToken | null {
     const enriched = this.enrichFromMarketState(token.mint, token)
-    const saved = this.liveFeed.upsert(enriched)
+    const saved = this.liveFeed.upsert(enriched) ?? this.liveFeed.patch(enriched)
     if (!saved) return null
     void this.persistToSupabase(saved, options)
     return saved
@@ -282,7 +283,36 @@ export class TokensService {
       holders,
       holdersVerified: Boolean(chain?.verified ?? chain?.holders),
     })
-    return this.liveFeed.upsert(enriched)
+    return this.liveFeed.upsert(enriched) ?? this.liveFeed.patch(enriched)
+  }
+
+  /** Push live trade activity to feed + clients even when full upsert gates fail. */
+  emitFeedPatch(mint: string, whaleSol?: number): FeedToken | null {
+    const state = this.trading.getState(mint)
+    const live = this.liveFeed.get(mint)
+    if (!state && !live) return null
+    const activity = state ? computeFeedActivity(state) : {}
+    const base =
+      live ??
+      (state ? this.tokenFromMarketState(mint) : null)
+    if (!base) return null
+    const enriched = this.enrichFromMarketState(mint, {
+      ...base,
+      ...activity,
+      marketCap: state?.marketCapUsd || base.marketCap,
+      bondingCurvePercent: state?.bondingCurvePercent ?? base.bondingCurvePercent,
+      volume24h: state
+        ? Math.max(base.volume24h, state.trades.reduce((a, t) => a + t.solAmount, 0))
+        : base.volume24h,
+    })
+    const saved = this.liveFeed.patch(enriched) ?? this.liveFeed.upsert(enriched)
+    if (!saved) return null
+    this.events.server?.emit('token:update', saved)
+    this.events.server?.to('feed').emit('feed:patch', saved)
+    if (whaleSol && whaleSol >= 5) {
+      void this.persistToSupabase(saved, { whaleSol })
+    }
+    return saved
   }
 
   private async persistToSupabase(
@@ -496,7 +526,6 @@ export class TokensService {
     })
 
     const momentum = scores.momentumScore
-    const lastTradeMs = this.pump.lastTradeMs(coin)
     return {
       mint: coin.mint,
       name: coin.name,
@@ -520,9 +549,6 @@ export class TokensService {
       priceUsd: marketCap > 0 ? marketCap / 1_000_000_000 : 0,
       priceChange24h: coin.price_change_24h ?? 0,
       liquidity: liquidity || marketCap * 0.01,
-      ...(lastTradeMs && volume24h >= 0.2
-        ? { lastTradeAt: lastTradeMs }
-        : {}),
     }
   }
 
@@ -587,8 +613,8 @@ export class TokensService {
     const batch = tokens
       .filter((t) => {
         const cached = this.metadata.getCached(t.mint)
-        if (cached && isDirectImageUrl(cached)) return false
-        if (t.image && isDirectImageUrl(t.image)) return false
+        if (cached && !isPlaceholderTokenImage(cached)) return false
+        if (t.image && !isPlaceholderTokenImage(t.image)) return false
         return Boolean(t.metadataUri || t.image)
       })
       .slice(0, 18)
@@ -628,9 +654,11 @@ export class TokensService {
     const holdersVerified = Boolean(
       chain?.verified ?? token.holdersVerified ?? fromState?.holdersVerified,
     )
-    // Ignore stale Helius "20 holder" snapshots (getTokenLargestAccounts cap on bonding-curve mints)
-    const onChainForCount =
-      chain && chain.holders > 20 ? chain : state?.onChainHolders
+    const onChainForCount = chain?.verified
+      ? chain
+      : chain && chain.holders > 20
+        ? chain
+        : state?.onChainHolders
     const holders = state
       ? resolveHolderCount({
           walletBalances: state.walletBalances,
@@ -660,7 +688,9 @@ export class TokensService {
       telegram: token.telegram ?? fromState.telegram,
       website: token.website ?? fromState.website,
       bondingCurvePercent: Math.max(token.bondingCurvePercent ?? 0, fromState.bondingCurvePercent),
-      holders: Math.max(holders, token.holders ?? 0, fromState.holders),
+      holders: holdersVerified
+        ? holders
+        : Math.max(holders, token.holders ?? 0, fromState.holders),
       holdersVerified: holdersVerified || fromState.holdersVerified,
       volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,

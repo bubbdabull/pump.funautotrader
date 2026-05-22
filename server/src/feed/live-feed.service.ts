@@ -8,6 +8,7 @@ import {
   MIN_FEED_VOLUME_24H_SOL,
   normalizeVirtualSol,
   passesAlphaFilter,
+  isPlaceholderTokenImage,
 } from '@phronis/trading'
 import type { FeedToken, FeedStats } from './feed.types'
 
@@ -29,8 +30,41 @@ export class LiveFeedService {
   shouldStore(token: FeedToken): boolean {
     if (!passesAlphaFilter(token)) return false
     if (hasRealTimeTradeActivity(token)) return true
+    if ((token.trades1m ?? 0) > 0 || token.isActive) return true
+    if (token.holdersVerified && (token.holders ?? 0) >= 5) return true
     if (isDeadFeedToken(token)) return false
-    return activitySol(token) >= MIN_FEED_VOLUME_24H_SOL
+    return activitySol(token) >= MIN_FEED_VOLUME_24H_SOL * 0.5
+  }
+
+  /** Merge activity/holders/images without re-running full store gates. */
+  patch(token: FeedToken): FeedToken | null {
+    const prev = this.tokens.get(token.mint)
+    if (!prev) return this.upsert(token)
+    const merged: FeedToken = {
+      ...prev,
+      ...token,
+      image: this.pickImage(token.image, prev.image),
+      metadataUri: token.metadataUri || prev.metadataUri,
+      holders: token.holdersVerified
+        ? (token.holders ?? prev.holders)
+        : Math.max(prev.holders, token.holders ?? 0),
+      holdersVerified: prev.holdersVerified || token.holdersVerified,
+      volume24h: Math.max(prev.volume24h, token.volume24h),
+      lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
+      trades1m: token.trades1m ?? prev.trades1m,
+      volume5mSol: Math.max(prev.volume5mSol ?? 0, token.volume5mSol ?? 0),
+      buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
+      mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
+      isActive: token.isActive ?? prev.isActive,
+    }
+    this.tokens.set(token.mint, merged)
+    return merged
+  }
+
+  private pickImage(next?: string, prev?: string): string {
+    if (next && !isPlaceholderTokenImage(next)) return next
+    if (prev && !isPlaceholderTokenImage(prev)) return prev
+    return next || prev || ''
   }
 
   upsert(token: FeedToken): FeedToken | null {
@@ -42,9 +76,11 @@ export class LiveFeedService {
       ? {
           ...prev,
           ...token,
-          image: token.image || prev.image,
+          image: this.pickImage(token.image, prev.image),
           metadataUri: token.metadataUri || prev.metadataUri,
-          holders: Math.max(prev.holders, token.holders),
+          holders: token.holdersVerified
+            ? (token.holders ?? prev.holders)
+            : Math.max(prev.holders, token.holders ?? 0),
           holdersVerified: prev.holdersVerified || token.holdersVerified,
           volume24h: Math.max(prev.volume24h, token.volume24h),
           launchedAt: prev.launchedAt || token.launchedAt,
@@ -117,6 +153,7 @@ export class LiveFeedService {
     if (this.tokens.size <= this.maxFeed) return
     const now = Date.now()
     for (const [mint, t] of this.tokens) {
+      if (hasRealTimeTradeActivity(t, now)) continue
       if (isDeadFeedToken(t, now)) {
         this.tokens.delete(mint)
       }

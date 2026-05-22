@@ -55,6 +55,17 @@ export function resolveTokenImageCandidates(
   return out
 }
 
+/** Generic CDN fallbacks — not a real token image until metadata resolves. */
+export function isPlaceholderTokenImage(url?: string): boolean {
+  if (!url?.trim()) return true
+  const u = url.toLowerCase()
+  return (
+    u.includes('dexscreener.com/ds-data') ||
+    u.includes('imagedelivery.net/wl1joijim_na') ||
+    (u.includes('pump.fun/coin/') && u.endsWith('.png'))
+  )
+}
+
 export function resolveTokenImage(
   mint: string,
   fields?: { uri?: string; image?: string; imageUri?: string },

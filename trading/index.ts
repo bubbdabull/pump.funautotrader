@@ -24,6 +24,7 @@ export {
   resolveTokenImageCandidates,
   normalizeIpfsUrl,
   isLikelyMetadataUri,
+  isPlaceholderTokenImage,
 } from './utils/tokenMedia'
 export {
   parseTokenMetadataJson,

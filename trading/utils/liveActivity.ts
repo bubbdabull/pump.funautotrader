@@ -5,7 +5,7 @@ import { activitySol, passesAlphaFilter, tradeQualityScore } from './feedQuality
 export const LIVE_ACTIVITY_MAX_AGE_MS = 120_000
 
 /** Min 5m streamed volume (SOL) to count as real activity — filters wash/dead ticks. */
-export const MIN_LIVE_VOLUME_5M_SOL = 0.04
+export const MIN_LIVE_VOLUME_5M_SOL = 0.01
 /** Min 24h volume (SOL) to keep a bootstrap row without WS ticks. */
 export const MIN_FEED_VOLUME_24H_SOL = 0.22
 
@@ -23,12 +23,12 @@ export function hasRealTimeTradeActivity(
 ): boolean {
   const vol5 = token.volume5mSol ?? 0
   const trades1m = token.trades1m ?? 0
-  if (trades1m >= 1 && vol5 >= MIN_LIVE_VOLUME_5M_SOL) return true
-  if (token.isActive && vol5 >= MIN_LIVE_VOLUME_5M_SOL) return true
+  if (trades1m >= 1) return true
+  if (token.isActive) return true
   if (
     token.lastTradeAt &&
     now - token.lastTradeAt < LIVE_ACTIVITY_MAX_AGE_MS &&
-    vol5 >= MIN_LIVE_VOLUME_5M_SOL * 1.5
+    vol5 >= MIN_LIVE_VOLUME_5M_SOL
   ) {
     return true
   }
@@ -48,7 +48,13 @@ export function isDeadFeedToken(token: FeedQualityWithActivity, now = Date.now()
   const trades1m = token.trades1m ?? 0
   const vol24 = activitySol(token)
   const last = token.lastTradeAt ?? 0
-  const stale = last === 0 || now - last > 5 * 60_000
+  const hasWsTicks = trades1m > 0 || token.isActive || vol5 >= MIN_LIVE_VOLUME_5M_SOL
+  if (hasWsTicks) return false
+
+  const stale = last === 0 || now - last > 10 * 60_000
+  if (!stale && last > 0 && !hasWsTicks) {
+    return vol24 < MIN_FEED_VOLUME_24H_SOL
+  }
 
   if (trades1m > 0 || vol5 >= MIN_LIVE_VOLUME_5M_SOL) return false
   if (vol24 >= MIN_FEED_VOLUME_24H_SOL * 1.5) return false

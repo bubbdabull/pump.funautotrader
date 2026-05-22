@@ -505,12 +505,15 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   private async publishTokenUpdate(mint: string, whaleSol?: number) {
-    const token = await this.tokens.getToken(mint)
-    if (!token) return
-    const saved = this.tokens.upsertLiveToken(token, { whaleSol })
-    if (!saved) return
-    this.events.server?.emit('token:update', saved)
-    this.events.server?.to('feed').emit('feed:patch', saved)
+    const saved = this.tokens.emitFeedPatch(mint, whaleSol)
+    if (!saved) {
+      const token = await this.tokens.getToken(mint)
+      if (!token) return
+      const upserted = this.tokens.upsertLiveToken(token, { whaleSol })
+      if (!upserted) return
+      this.events.server?.emit('token:update', upserted)
+      this.events.server?.to('feed').emit('feed:patch', upserted)
+    }
     this.events.emitChartUpdate(mint)
   }
 
@@ -571,15 +574,25 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         metadataUri: fields.metadataUri ?? fields.uri,
       })
       const current = this.liveFeed.get(mint)
-      if (!current) return
-      const updated = this.tokens.upsertLiveToken({
-        ...current,
-        image: media.image,
-        metadataUri: media.metadataUri ?? current.metadataUri,
-        twitter: media.twitter ?? current.twitter,
-        telegram: media.telegram ?? current.telegram,
-        website: media.website ?? current.website,
-      })
+      const base = current ?? (await this.tokens.getToken(mint))
+      if (!base) return
+      const updated =
+        this.liveFeed.patch({
+          ...base,
+          image: media.image,
+          metadataUri: media.metadataUri ?? base.metadataUri,
+          twitter: media.twitter ?? base.twitter,
+          telegram: media.telegram ?? base.telegram,
+          website: media.website ?? base.website,
+        }) ??
+        (await this.tokens.upsertLiveToken({
+          ...base,
+          image: media.image,
+          metadataUri: media.metadataUri ?? base.metadataUri,
+          twitter: media.twitter ?? base.twitter,
+          telegram: media.telegram ?? base.telegram,
+          website: media.website ?? base.website,
+        }))
       if (!updated) return
       this.events.server?.to('feed').emit('feed:patch', updated)
       this.events.server?.emit('token:update', updated)
