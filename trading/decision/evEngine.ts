@@ -6,6 +6,11 @@ import {
   ENTRY_SIS_MAX,
   FILTER_HDI_MIN,
   FILTER_MQI_MIN,
+  SNIPE_ENTRY_EV_MIN,
+  SNIPE_ENTRY_LSI_MIN,
+  SNIPE_ENTRY_MQI_MIN,
+  SNIPE_FILTER_HDI_MIN,
+  SNIPE_FILTER_MQI_MIN,
 } from '../constants'
 import { computeLSI } from '../risk/liquidityModel'
 import { computeSIS, applySisEvMultiplier } from '../risk/sniperModel'
@@ -87,16 +92,40 @@ export function passesTradeQualityFilter(metrics: ProbabilisticMetrics): string[
   return fails
 }
 
-export function evaluateEntry(state: TokenMarketState): EntryDecision {
+export type EntryProfile = 'default' | 'snipe'
+
+function passesTradeQualityForProfile(
+  metrics: ProbabilisticMetrics,
+  profile: EntryProfile,
+): string[] {
+  const fails: string[] = []
+  const { mqi, hdi, sis, rrm } = metrics.components
+  const mqiMin = profile === 'snipe' ? SNIPE_FILTER_MQI_MIN : FILTER_MQI_MIN
+  const hdiMin = profile === 'snipe' ? SNIPE_FILTER_HDI_MIN : FILTER_HDI_MIN
+  if (mqi < mqiMin) fails.push('mqi_below_floor')
+  if (hdi < hdiMin) fails.push('hdi_below_floor')
+  if (sis > ENTRY_SIS_MAX) fails.push('sis_toxic')
+  if (rrm > ENTRY_RRM_MAX) fails.push('rrm_elevated')
+  return fails
+}
+
+export function evaluateEntry(
+  state: TokenMarketState,
+  profile: EntryProfile = 'default',
+): EntryDecision {
   const metrics = computeProbabilisticMetrics(state)
   const { lsi, mqi, sis, rrm } = metrics.components
-  const blockReasons: string[] = passesTradeQualityFilter(metrics)
+  const blockReasons: string[] = passesTradeQualityForProfile(metrics, profile)
 
-  if (metrics.evScore <= ENTRY_EV_MIN) blockReasons.push('ev_below_threshold')
+  const evMin = profile === 'snipe' ? SNIPE_ENTRY_EV_MIN : ENTRY_EV_MIN
+  const lsiMin = profile === 'snipe' ? SNIPE_ENTRY_LSI_MIN : ENTRY_LSI_MIN
+  const mqiMin = profile === 'snipe' ? SNIPE_ENTRY_MQI_MIN : ENTRY_MQI_MIN
+
+  if (metrics.evScore <= evMin) blockReasons.push('ev_below_threshold')
   if (rrm >= ENTRY_RRM_MAX) blockReasons.push('rrm_blocked')
   if (sis >= ENTRY_SIS_MAX) blockReasons.push('sis_blocked')
-  if (lsi <= ENTRY_LSI_MIN) blockReasons.push('lsi_unstable')
-  if (mqi <= ENTRY_MQI_MIN) blockReasons.push('mqi_weak')
+  if (lsi <= lsiMin) blockReasons.push('lsi_unstable')
+  if (mqi <= mqiMin) blockReasons.push('mqi_weak')
 
   const blocked = blockReasons.length > 0
   const allowed = !blocked

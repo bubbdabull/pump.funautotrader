@@ -15,6 +15,10 @@ import {
   passesTradeableFilter,
   bondingCurvePercentFromSol,
   buildOhlcvFromTrades,
+  buildChartPointsFromCandles,
+  candleChangePct,
+  mcapToPriceUsd,
+  curveFromLiquiditySnapshot,
   computeFeedActivity,
   type ScannerLane,
 } from '@phronis/trading'
@@ -117,90 +121,66 @@ export class TokensService {
     const state = this.trading.getState(mint)
     const token = this.liveFeed.get(mint)
     const fallbackMcap = token?.marketCap ?? state?.marketCapUsd ?? 0
-    const curve = token?.bondingCurvePercent ?? state?.bondingCurvePercent ?? 0
-    const points: ChartPoint[] = []
+    const fallbackCurve = token?.bondingCurvePercent ?? state?.bondingCurvePercent ?? 0
     const bucketMs = Math.max(1_000, Math.min(60_000, intervalMs))
-
-    if (state?.liquidityHistory.length) {
-      for (const h of state.liquidityHistory) {
-        const mc = marketCapUsdFromSol(h.marketCapSol)
-        points.push({
-          t: h.timestamp,
-          price: mc > 0 ? mc : fallbackMcap,
-          volume: 0,
-          curve: bondingCurvePercentFromSol(h.virtualSolReserves || h.marketCapSol),
-        })
-      }
-    }
+    const liqHist = state?.liquidityHistory ?? []
 
     const candles: OhlcvCandle[] = state?.trades.length
-      ? buildOhlcvFromTrades(state.trades, bucketMs, fallbackMcap, 240)
+      ? buildOhlcvFromTrades(state.trades, bucketMs, fallbackMcap, 300, liqHist)
       : []
 
-    if (state?.trades.length) {
-      const volBuckets = new Map<number, number>()
-      for (const tr of state.trades) {
-        const bucket = Math.floor(tr.timestamp / bucketMs) * bucketMs
-        volBuckets.set(bucket, (volBuckets.get(bucket) ?? 0) + tr.solAmount)
-      }
-      for (const [t, volume] of volBuckets) {
-        const candle = candles.find((c) => c.t === t)
-        if (candle) {
-          points.push({
-            t,
-            price: candle.close,
-            volume: candle.volume,
-            curve,
-          })
-          continue
-        }
-        const near = points.find((p) => Math.abs(p.t - t) < bucketMs + 500)
-        if (near) near.volume += volume
-        else {
-          points.push({ t, price: fallbackMcap, volume, curve })
-        }
-      }
+    let outCandles = candles
+    if (!outCandles.length && liqHist.length) {
+      outCandles = buildOhlcvFromTrades(
+        [],
+        bucketMs,
+        fallbackMcap,
+        300,
+        liqHist,
+      )
     }
 
-    if (!points.length && candles.length) {
-      for (const c of candles) {
-        points.push({ t: c.t, price: c.close, volume: c.volume, curve })
-      }
-    }
+    const points: ChartPoint[] = buildChartPointsFromCandles(outCandles, fallbackCurve).map(
+      (p) => ({
+        t: p.t,
+        price: p.price,
+        priceUsd: p.priceUsd,
+        volume: p.volume,
+        curve: p.curve,
+      }),
+    )
 
-    if (!points.length && !candles.length && token) {
+    if (!points.length && token) {
+      const mc = token.marketCap || fallbackMcap
       points.push({
         t: Date.now(),
-        price: token.marketCap,
+        price: mc,
+        priceUsd: mcapToPriceUsd(mc),
         volume: token.volume24h,
         curve: token.bondingCurvePercent,
       })
     }
 
-    points.sort((a, b) => a.t - b.t)
     const lastTrade = state?.trades[state.trades.length - 1]
-
-    let outCandles = candles
-    if (!outCandles.length && points.length > 0) {
-      outCandles = points.slice(-120).map((p) => ({
-        t: p.t,
-        open: p.price,
-        high: p.price,
-        low: p.price,
-        close: p.price,
-        volume: p.volume,
-        buys: 0,
-        sells: 0,
-      }))
-    }
+    const lastCandle = outCandles[outCandles.length - 1]
+    const currentMcap =
+      lastCandle?.close ?? state?.marketCapUsd ?? fallbackMcap
+    const lastHist = liqHist[liqHist.length - 1]
+    const currentCurve =
+      lastCandle?.curve ??
+      (lastHist ? curveFromLiquiditySnapshot(lastHist) : fallbackCurve)
 
     return {
       mint,
       intervalMs: bucketMs,
       candles: outCandles,
-      points: points.slice(-120),
+      points: points.slice(-300),
       tradeCount: state?.trades.length ?? 0,
       lastTradeAt: lastTrade?.timestamp,
+      currentMcap,
+      currentPriceUsd: mcapToPriceUsd(currentMcap),
+      currentCurve,
+      changePct: candleChangePct(outCandles),
     }
   }
 

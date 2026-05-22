@@ -3,6 +3,7 @@ import {
   globalMarketState,
   evaluateEntry,
   finalizeEntryDecision,
+  type EntryProfile,
   evScoreToSignalScore,
   momentumScoreFromMetrics,
   scoreFromStaticFields,
@@ -42,10 +43,10 @@ export class TradingBridgeService implements OnModuleInit {
     return globalMarketState.getState(mint)
   }
 
-  evaluateMint(mint: string) {
+  evaluateMint(mint: string, profile: EntryProfile = 'default') {
     const state = globalMarketState.getState(mint)
     if (!state) return null
-    return finalizeEntryDecision(evaluateEntry(state))
+    return finalizeEntryDecision(evaluateEntry(state, profile))
   }
 
   toLegacyScores(metrics: EntryDecision['metrics']) {

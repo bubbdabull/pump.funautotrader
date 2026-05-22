@@ -27,6 +27,7 @@ export function ProTokenChart({ mint }: ProTokenChartProps) {
       time: p.t,
       label: format(p.t, 'HH:mm:ss'),
       mcap: p.price,
+      priceUsd: p.priceUsd ?? p.price / 1_000_000_000,
       volume: p.volume,
       curve: p.curve,
     }))

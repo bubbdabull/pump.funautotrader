@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import type { PumpPortalNewTokenEvent } from '../pumpportal/pumpportal.types'
 import { TradingBridgeService } from '../trading/trading-bridge.service'
+import { EventsGateway } from '../events/events.gateway'
 import type { EntryDecision } from '@phronis/trading'
 
 export interface AutoTradeRules {
@@ -52,22 +54,39 @@ export class AutoTraderService {
   /** Mints that must keep PumpPortal trade streams (signals + open interest). */
   private readonly pinnedTradeMints = new Set<string>()
 
-  constructor(private trading: TradingBridgeService) {
-    this.trading.onEntrySignal((mint, decision) => {
-      if (!this.rules.enabled) return
-      const state = this.trading.getState(mint)
-      const signal = this.buildSignalFromDecision(mint, decision, {
-        mint,
-        symbol: state?.symbol,
-        name: state?.name,
-        vSolInBondingCurve: state?.liquidity,
-        marketCapSol: (state?.marketCapUsd ?? 0) / 200,
-      } as PumpPortalNewTokenEvent)
-      if (signal && this.passesLegacyRules(signal)) {
-        this.pinTradeStream(mint)
-        this.emitSignal(signal)
-      }
-    })
+  constructor(
+    private trading: TradingBridgeService,
+    config: ConfigService,
+    @Inject(forwardRef(() => EventsGateway))
+    private events: EventsGateway,
+  ) {
+    const enabled = config.get('AUTOTRADER_ENABLED')
+    if (enabled === 'true' || enabled === '1') {
+      this.rules.enabled = true
+      this.logger.log('Autotrader enabled via AUTOTRADER_ENABLED')
+    }
+  }
+
+  /** Called on every trade tick — primary signal path (needs ≥3 trades for EV). */
+  onTradeTick(mint: string) {
+    if (!this.rules.enabled) return
+    const state = this.trading.getState(mint)
+    if (!state || state.trades.length < 3) return
+
+    const decision = this.trading.evaluateMint(mint, 'snipe')
+    if (!decision?.allowed) return
+
+    const signal = this.buildSignalFromDecision(mint, decision, {
+      mint,
+      symbol: state.symbol,
+      name: state.name,
+      vSolInBondingCurve: state.liquidity,
+      marketCapSol: state.marketCapUsd / 200,
+      vTokensInBondingCurve: undefined,
+    } as PumpPortalNewTokenEvent)
+    if (!signal || !this.passesLegacyRules(signal)) return
+    this.pinTradeStream(mint)
+    this.emitSignal(signal)
   }
 
   getRules(): AutoTradeRules {
@@ -81,6 +100,26 @@ export class AutoTraderService {
 
   getSignals(limit = 50): AutoTradeSignal[] {
     return this.recentSignals.slice(0, limit)
+  }
+
+  getDiagnostics() {
+    const states = [...this.pinnedTradeMints].map((mint) => {
+      const s = this.trading.getState(mint)
+      const decision = s ? this.trading.evaluateMint(mint, 'snipe') : null
+      return {
+        mint,
+        tradeCount: s?.trades.length ?? 0,
+        evScore: decision?.metrics.evScore,
+        allowed: decision?.allowed,
+        blockReasons: decision?.blockReasons,
+      }
+    })
+    return {
+      enabled: this.rules.enabled,
+      pinnedMints: this.pinnedTradeMints.size,
+      recentSignals: this.recentSignals.length,
+      sample: states.slice(0, 15),
+    }
   }
 
   /** Mints to prioritize for PumpPortal `subscribeTokenTrade`. */
@@ -113,7 +152,7 @@ export class AutoTraderService {
       traderPublicKey: event.traderPublicKey,
     })
 
-    const decision = this.trading.evaluateMint(event.mint)
+    const decision = this.trading.evaluateMint(event.mint, 'snipe')
     if (!decision?.allowed) return null
 
     const signal = this.buildSignalFromDecision(event.mint, decision, event)
@@ -149,17 +188,22 @@ export class AutoTraderService {
     event?: PumpPortalNewTokenEvent,
   ): AutoTradeSignal | null {
     const legacy = this.trading.toLegacyScores(decision.metrics)
-    const sol = event?.vSolInBondingCurve ?? event?.marketCapSol ?? 0
-    const curve = Math.min(99, Math.round((Number(sol) / 85) * 100))
+    const state = this.trading.getState(mint)
+    const sol = event?.vSolInBondingCurve ?? event?.marketCapSol ?? state?.liquidity ?? 0
+    const curve =
+      state?.bondingCurvePercent ??
+      Math.min(99, Math.round((Number(sol) / 85) * 100))
+    const marketCap =
+      state?.marketCapUsd ?? (Number(event?.marketCapSol) ?? 0) * 200
     const { mqi, lsi, rrm, sis } = decision.metrics.components
 
     return {
       mint,
-      symbol: event?.symbol,
-      name: event?.name,
+      symbol: event?.symbol ?? state?.symbol,
+      name: event?.name ?? state?.name,
       reason: `EV=${decision.metrics.evScore.toFixed(2)} MQI=${mqi.toFixed(2)} LSI=${lsi.toFixed(2)} RRM=${rrm.toFixed(2)} SIS=${sis.toFixed(2)}`,
       bondingCurvePercent: curve,
-      marketCap: (Number(event?.marketCapSol) ?? 0) * 200,
+      marketCap,
       signalScore: legacy.signalScore,
       evScore: decision.metrics.evScore,
       positionSizeSol: decision.positionSizeSol || this.rules.buyAmountSol,
@@ -184,6 +228,7 @@ export class AutoTraderService {
     this.logger.log(
       `EV entry signal: ${signal.mint} EV=${signal.evScore.toFixed(2)} size=${signal.positionSizeSol} SOL`,
     )
+    this.events.server?.emit('autotrader:signal', signal)
     return signal
   }
 }

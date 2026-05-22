@@ -124,8 +124,8 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
             )
       return payloadFromServer(ensureArray<PumpToken>(raw), lane)
     },
-    refetchInterval: 20_000,
-    staleTime: 5_000,
+    refetchInterval: 12_000,
+    staleTime: 3_000,
     refetchOnWindowFocus: true,
   })
 

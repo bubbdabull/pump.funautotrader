@@ -5,6 +5,7 @@ export { globalWalletTracker, WalletTracker } from './smartMoney/walletTracker'
 export {
   computeProbabilisticMetrics,
   evaluateEntry,
+  type EntryProfile,
   evScoreToSignalScore,
   momentumScoreFromMetrics,
   computeHDI,
@@ -39,10 +40,19 @@ export {
 } from './utils/holders'
 export {
   buildOhlcvFromTrades,
+  buildOhlcvFromLiquidityHistory,
+  buildChartPointsFromCandles,
+  enrichTradesWithMcap,
+  mcapToPriceUsd,
+  curveFromLiquiditySnapshot,
+  mcapFromLiquiditySnapshot,
+  candleChangePct,
   CHART_INTERVALS_MS,
   type OhlcvCandle,
+  type ChartPointLike,
   type ChartIntervalMs,
   type TradeTickLike,
+  type LiquiditySnapshotLike,
 } from './utils/candles'
 export { computeFeedActivity, type FeedActivityFields } from './utils/feedActivity'
 export {

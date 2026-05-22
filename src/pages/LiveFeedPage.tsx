@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { useScannerFeed } from '@/hooks/useScanner'
 import { sortTokens } from '@/hooks/useTokens'
 import { useBackendStatus } from '@/hooks/useBackendStatus'
+import { LiveSyncBar } from '@/components/shared/LiveSyncBar'
 import { ensureArray } from '@/lib/ensureArray'
 import type { PumpToken } from '@/types'
 import type { ScannerLane } from '@/lib/feedQuality'
@@ -33,7 +34,15 @@ export function LiveFeedPage() {
   const [lane, setLane] = useState<ScannerLane>('active')
   const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
-  const { data, isLoading, isError, displayMode, tradeableCount } = useScannerFeed(lane)
+  const {
+    data,
+    isLoading,
+    isError,
+    isFetching,
+    dataUpdatedAt,
+    displayMode,
+    tradeableCount,
+  } = useScannerFeed(lane)
   const holdersVerifiedCount = ensureArray<PumpToken>(data).filter((t) => t.holdersVerified).length
   const backend = useBackendStatus()
   const tokens = ensureArray<PumpToken>(data)
@@ -42,6 +51,7 @@ export function LiveFeedPage() {
     tokens.filter((t) => t.symbol.toLowerCase().includes(filter.toLowerCase())),
     sort === 'curve' ? 'curve' : sort,
   )
+  const activeCount = tokens.filter((t) => t.isActive).length
 
   return (
     <PageTransition>
@@ -57,6 +67,15 @@ export function LiveFeedPage() {
           <p className="text-zinc-600">{backend.backendHost}</p>
         </div>
       </div>
+
+      <LiveSyncBar
+        className="mb-4"
+        wsConnected={backend.socketConnected}
+        dataUpdatedAt={dataUpdatedAt}
+        isFetching={isFetching}
+        activeCount={activeCount}
+        totalCount={tokens.length}
+      />
 
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map(({ id, label, icon: Icon, desc }) => (

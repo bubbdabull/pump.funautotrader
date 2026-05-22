@@ -122,7 +122,8 @@ export function evaluateProbabilisticEntry(
   const state = globalMarketState.getState(mint)
   if (!state) return null
 
-  const decision = finalizeEntryDecision(evaluateEntry(state), baseSizeSol)
+  const profile = rules.snipeNewTokens ? 'snipe' : 'default'
+  const decision = finalizeEntryDecision(evaluateEntry(state, profile), baseSizeSol)
   if (!decision.allowed) return null
 
   if (state.bondingCurvePercent < rules.minBondingCurve) return null

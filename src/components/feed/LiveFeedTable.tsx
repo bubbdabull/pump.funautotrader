@@ -12,9 +12,11 @@ import {
 } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { ActivityPulse, TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
+import { LiveValue } from '@/components/shared/LiveValue'
 import { RugBadge } from '@/components/quant/RugBadge'
 import { useQuantStore } from '@/stores/quantStore'
 import { useAppStore } from '@/stores/appStore'
+import { useLiveTick, secondsSince, formatSecondsAgo } from '@/hooks/useLiveTick'
 import type { PumpToken } from '@/types'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -26,6 +28,7 @@ interface LiveFeedTableProps {
 export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProps) {
   const { watchlist, toggleWatchlist } = useAppStore()
   const byMint = useQuantStore((s) => s.byMint)
+  const tick = useLiveTick()
 
   if (tokens.length === 0) {
     return (
@@ -61,18 +64,28 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
             </tr>
           </thead>
           <tbody>
-            <AnimatePresence initial={false}>
+            <AnimatePresence initial={false} mode="popLayout">
               {tokens.map((token, i) => {
                 const score = token.signalScore ?? token.aiRiskScore ?? 50
+                const lastSec = secondsSince(token.lastTradeAt, tick)
+                const vol = tokenVolumeSol(token)
                 return (
                   <motion.tr
                     key={token.mint}
                     layout
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15, delay: Math.min(i * 0.02, 0.3) }}
-                    className="group border-b border-white/[0.03] transition-colors hover:bg-white/[0.03]"
+                    layoutId={token.mint}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{
+                      layout: { type: 'spring', stiffness: 400, damping: 35 },
+                      opacity: { duration: 0.2 },
+                      delay: Math.min(i * 0.015, 0.2),
+                    }}
+                    className={cn(
+                      'group border-b border-white/[0.03] transition-colors hover:bg-white/[0.04]',
+                      token.isActive && 'feed-row-live',
+                    )}
                   >
                     <td className="max-w-[220px] px-4 py-2.5">
                       <div className="flex min-w-0 items-center gap-2">
@@ -120,72 +133,94 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                       <RugBadge mint={token.mint} compact />
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-200">
-                      {formatUsd(token.marketCap)}
+                      <LiveValue value={token.marketCap}>{formatUsd(token.marketCap)}</LiveValue>
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs">
-                      <span
-                        className={cn(
-                          (token.mcapChange5m ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400',
-                        )}
-                      >
-                        {(token.mcapChange5m ?? 0) >= 0 ? '+' : ''}
-                        {(token.mcapChange5m ?? 0).toFixed(1)}%
-                      </span>
+                      <LiveValue value={token.mcapChange5m ?? 0}>
+                        <span
+                          className={cn(
+                            (token.mcapChange5m ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400',
+                          )}
+                        >
+                          {(token.mcapChange5m ?? 0) >= 0 ? '+' : ''}
+                          {(token.mcapChange5m ?? 0).toFixed(1)}%
+                        </span>
+                      </LiveValue>
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-300">
-                      {token.buyPressure1m ?? 50}%
+                      <LiveValue value={token.buyPressure1m ?? 50}>
+                        {token.buyPressure1m ?? 50}%
+                      </LiveValue>
                     </td>
-                    <td className="px-4 py-2.5 text-right font-mono text-[11px] text-zinc-500">
-                      {token.lastTradeAt
-                        ? `${Math.max(0, Math.round((Date.now() - token.lastTradeAt) / 1000))}s`
-                        : '—'}
+                    <td className="px-4 py-2.5 text-right font-mono text-[11px]">
+                      <span
+                        className={cn(
+                          'tabular-nums',
+                          lastSec != null && lastSec <= 15
+                            ? 'font-medium text-emerald-400'
+                            : lastSec != null && lastSec <= 60
+                              ? 'text-cyan-400/80'
+                              : 'text-zinc-500',
+                        )}
+                      >
+                        {formatSecondsAgo(lastSec)}
+                      </span>
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-2">
                         <div className="h-1 w-14 overflow-hidden rounded-full bg-white/10">
                           <div
-                            className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-violet-500"
+                            className="curve-bar-fill h-full rounded-full bg-gradient-to-r from-cyan-500 to-violet-500"
                             style={{ width: `${Math.min(100, token.bondingCurvePercent)}%` }}
                           />
                         </div>
-                        <span className="font-mono text-xs text-cyan-400/90">
+                        <LiveValue
+                          value={token.bondingCurvePercent}
+                          className="font-mono text-xs text-cyan-400/90"
+                        >
                           {token.bondingCurvePercent}%
-                        </span>
+                        </LiveValue>
                       </div>
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="inline-flex items-center justify-end gap-1 font-mono text-xs text-zinc-300">
                         <Users className="h-3 w-3 text-zinc-600" />
-                        {formatHolders(
-                          byMint[token.mint]?.holders ?? token.holders,
-                          byMint[token.mint]?.holdersVerified ?? token.holdersVerified,
-                        )}
+                        <LiveValue
+                          value={byMint[token.mint]?.holders ?? token.holders ?? 0}
+                        >
+                          {formatHolders(
+                            byMint[token.mint]?.holders ?? token.holders,
+                            byMint[token.mint]?.holdersVerified ?? token.holdersVerified,
+                          )}
+                        </LiveValue>
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-300">
-                      {formatSol(tokenVolumeSol(token))}
+                      <LiveValue value={vol}>{formatSol(vol)}</LiveValue>
                     </td>
                     <td className="px-4 py-2.5 text-center">
-                      <span
-                        className={cn(
-                          'inline-block min-w-[2rem] rounded-md border px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums',
-                          riskBg(score),
-                          riskColor(score),
-                        )}
-                      >
-                        {score}
-                      </span>
+                      <LiveValue value={score}>
+                        <span
+                          className={cn(
+                            'inline-block min-w-[2rem] rounded-md border px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums',
+                            riskBg(score),
+                            riskColor(score),
+                          )}
+                        >
+                          {score}
+                        </span>
+                      </LiveValue>
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <span className="inline-flex items-center justify-end gap-0.5 font-mono text-xs text-violet-400">
                         <TrendingUp className="h-3 w-3 opacity-70" />
-                        {token.momentumScore}
+                        <LiveValue value={token.momentumScore}>{token.momentumScore}</LiveValue>
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-center">
                       <span
                         className={cn(
-                          'rounded-full px-2 py-0.5 text-[10px] font-medium capitalize',
+                          'rounded-full px-2 py-0.5 text-[10px] font-medium capitalize transition-colors',
                           token.whaleActivity === 'high' && 'bg-violet-500/15 text-violet-300',
                           token.whaleActivity === 'medium' && 'bg-blue-500/15 text-blue-300',
                           token.whaleActivity === 'low' && 'bg-zinc-500/10 text-zinc-500',

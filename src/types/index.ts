@@ -63,6 +63,8 @@ export interface AutoTradeSignal {
   bondingCurvePercent: number
   marketCap: number
   signalScore: number
+  evScore?: number
+  positionSizeSol?: number
   timestamp: string
 }
 

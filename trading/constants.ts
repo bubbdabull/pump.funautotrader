@@ -5,6 +5,13 @@ export const ENTRY_SIS_MAX = 0.5
 export const ENTRY_LSI_MIN = 0.55
 export const ENTRY_MQI_MIN = 0.6
 
+/** Relaxed gates for bonding-curve snipes (autotrader / early curve). */
+export const SNIPE_ENTRY_EV_MIN = 0.58
+export const SNIPE_ENTRY_MQI_MIN = 0.42
+export const SNIPE_ENTRY_LSI_MIN = 0.38
+export const SNIPE_FILTER_MQI_MIN = 0.35
+export const SNIPE_FILTER_HDI_MIN = 0.28
+
 /** Trade quality hard filters */
 export const FILTER_MQI_MIN = 0.5
 export const FILTER_HDI_MIN = 0.4

@@ -1,6 +1,9 @@
 export interface ChartPoint {
   t: number
+  /** Market cap USD */
   price: number
+  /** Estimated USD per token */
+  priceUsd: number
   volume: number
   curve: number
 }
@@ -14,6 +17,8 @@ export interface OhlcvCandle {
   volume: number
   buys: number
   sells: number
+  curve?: number
+  priceUsd?: number
 }
 
 export interface TokenChartSeries {
@@ -23,8 +28,10 @@ export interface TokenChartSeries {
   points: ChartPoint[]
   tradeCount: number
   lastTradeAt?: number
-  /** PumpPortal trade stream queued/active for this mint */
+  currentMcap?: number
+  currentPriceUsd?: number
+  currentCurve?: number
+  changePct?: number
   tradeStreamSubscribed?: boolean
-  /** API key present on server */
   pumpportalKeyConfigured?: boolean
 }

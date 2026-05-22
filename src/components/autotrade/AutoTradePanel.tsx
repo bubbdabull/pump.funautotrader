@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Bot, Power, X, Zap, TrendingUp, AlertCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -114,28 +114,45 @@ export function AutoTradePanel() {
         </p>
         <div className="mb-4 space-y-2">
           {signals.length === 0 && (
-            <p className="text-xs text-zinc-600">Waiting for PumpPortal new tokens…</p>
+            <p className="text-xs text-zinc-600">Waiting for EV signals (≥3 trades per mint)…</p>
           )}
-          {signals.slice(0, 8).map((s) => (
-            <div key={s.timestamp + s.mint} className="rounded-lg border border-white/5 bg-white/[0.02] p-2 text-xs">
-              <p className="font-semibold text-white">{s.symbol ?? s.mint.slice(0, 8)}</p>
-              <p className="text-zinc-500">{s.reason}</p>
-            </div>
-          ))}
+          <AnimatePresence initial={false}>
+            {signals.slice(0, 8).map((s) => (
+              <motion.div
+                key={`${s.mint}-${s.timestamp}`}
+                initial={{ opacity: 0, x: 16, scale: 0.96 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, height: 0 }}
+                className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-2 text-xs shadow-[0_0_12px_rgba(16,185,129,0.08)]"
+              >
+                <p className="font-semibold text-white">{s.symbol ?? s.mint.slice(0, 8)}</p>
+                <p className="text-zinc-500">{s.reason}</p>
+                {(s as { evScore?: number }).evScore != null && (
+                  <p className="mt-1 font-mono text-[10px] text-emerald-400">
+                    EV {(s as { evScore: number }).evScore.toFixed(2)}
+                  </p>
+                )}
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
 
         <p className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">
           <TrendingUp className="h-3 w-3" /> Executions
         </p>
         <div className="space-y-2">
+          <AnimatePresence initial={false}>
           {executions.slice(0, 6).map((e) => (
-            <div
+            <motion.div
               key={e.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              layout
               className={cn(
                 'rounded-lg border p-2 text-xs',
                 e.status === 'confirmed' && 'border-emerald-500/20',
                 e.status === 'failed' && 'border-red-500/20',
-                e.status === 'pending' && 'border-amber-500/20',
+                e.status === 'pending' && 'border-amber-500/20 animate-pulse',
               )}
             >
               <div className="flex justify-between">
@@ -160,8 +177,9 @@ export function AutoTradePanel() {
                   <AlertCircle className="h-3 w-3" /> {e.error}
                 </p>
               )}
-            </div>
+            </motion.div>
           ))}
+          </AnimatePresence>
         </div>
       </div>
     </motion.aside>

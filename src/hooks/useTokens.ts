@@ -133,8 +133,8 @@ export function useTokenTrades(mint: string) {
     queryKey: ['tokens', mint, 'trades'],
     queryFn: () => tokenApi.trades(mint),
     enabled: !!mint,
-    refetchInterval: 8_000,
-    staleTime: 3_000,
+    refetchInterval: 4_000,
+    staleTime: 1_500,
   })
 }
 

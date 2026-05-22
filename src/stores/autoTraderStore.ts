@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { evaluateProbabilisticEntry } from '@/lib/probabilisticTrading'
+import { autoTraderApi } from '@/services/api'
 import type { AutoTradeRules, AutoTradeSignal, TradeExecution } from '@/types'
 
 const DEFAULT_RULES: AutoTradeRules = {
@@ -41,8 +42,16 @@ export const useAutoTraderStore = create<AutoTraderState>()(
       signals: [],
       executions: [],
       positions: {},
-      setRules: (r) => set({ rules: { ...get().rules, ...r } }),
-      toggleEnabled: () => set({ rules: { ...get().rules, enabled: !get().rules.enabled } }),
+      setRules: (r) => {
+        const next = { ...get().rules, ...r }
+        set({ rules: next })
+        void autoTraderApi.setRules(r).catch(() => undefined)
+      },
+      toggleEnabled: () => {
+        const enabled = !get().rules.enabled
+        set({ rules: { ...get().rules, enabled } })
+        void autoTraderApi.setRules({ enabled }).catch(() => undefined)
+      },
       setPanelOpen: (panelOpen) => set({ panelOpen }),
       addSignal: (s) =>
         set((state) => ({ signals: [s, ...state.signals].slice(0, 100) })),

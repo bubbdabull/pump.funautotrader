@@ -1,6 +1,9 @@
 export interface ChartPoint {
   t: number
+  /** Market cap USD */
   price: number
+  /** Estimated USD per token */
+  priceUsd: number
   volume: number
   curve: number
 }
@@ -14,6 +17,8 @@ export interface OhlcvCandle {
   volume: number
   buys: number
   sells: number
+  curve?: number
+  priceUsd?: number
 }
 
 export interface TokenChartSeries {
@@ -23,9 +28,15 @@ export interface TokenChartSeries {
   points: ChartPoint[]
   tradeCount: number
   lastTradeAt?: number
+  currentMcap?: number
+  currentPriceUsd?: number
+  currentCurve?: number
+  changePct?: number
   tradeStreamSubscribed?: boolean
   pumpportalKeyConfigured?: boolean
 }
+
+export type ChartMetric = 'mcap' | 'price' | 'curve'
 
 export const CHART_INTERVAL_OPTIONS = [
   { label: '1s', ms: 1_000 },
@@ -33,3 +44,9 @@ export const CHART_INTERVAL_OPTIONS = [
   { label: '15s', ms: 15_000 },
   { label: '1m', ms: 60_000 },
 ] as const
+
+export const CHART_METRIC_OPTIONS: { id: ChartMetric; label: string; unit: string }[] = [
+  { id: 'mcap', label: 'MCap', unit: 'USD' },
+  { id: 'price', label: 'Price', unit: 'USD' },
+  { id: 'curve', label: 'Curve', unit: '%' },
+]

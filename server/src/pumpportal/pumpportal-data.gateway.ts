@@ -490,18 +490,12 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     })
     void this.holderEnrichment.enrichMint(mint, true)
 
-    const mcapSol = Number(data.marketCapSol ?? 0)
-    if (initialSol >= 0.12 || mcapSol >= 28) {
-      this.autoTrader.pinTradeStream(mint)
-      this.queueTradeSubscription(mint, true)
-    }
+    this.autoTrader.pinTradeStream(mint)
+    this.queueTradeSubscription(mint, true)
 
     await this.publishIngest('token.launch', mint, { ...event, mint, ...data }, mint)
 
-    const signal = this.autoTrader.evaluateNewToken({ ...event, mint })
-    if (signal) {
-      this.events.server?.emit('autotrader:signal', signal)
-    }
+    void this.autoTrader.evaluateNewToken({ ...event, mint })
   }
 
   private async publishTokenUpdate(mint: string, whaleSol?: number) {

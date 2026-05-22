@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { useLiveTick, secondsSince, formatSecondsAgo } from '@/hooks/useLiveTick'
 import type { PumpToken } from '@/types'
 
 interface TokenActivityBadgesProps {
@@ -16,23 +17,19 @@ export function ActivityPulse({ active }: { active?: boolean }) {
   )
 }
 
-function formatLastTrade(ms?: number): string | null {
-  if (!ms) return null
-  const sec = Math.max(0, Math.round((Date.now() - ms) / 1000))
-  if (sec < 60) return `${sec}s`
-  return `${Math.round(sec / 60)}m`
-}
-
 export function TokenActivityBadges({ token, compact }: TokenActivityBadgesProps) {
+  const tick = useLiveTick()
   const delta = token.mcapChange5m ?? 0
   const buy = token.buyPressure1m ?? 50
-  const last = formatLastTrade(token.lastTradeAt)
+  const lastSec = secondsSince(token.lastTradeAt, tick)
+  const last = lastSec != null ? formatSecondsAgo(lastSec) : null
+  void tick
 
   if (compact) {
     return (
       <div className="flex items-center gap-1.5">
         <ActivityPulse active={token.isActive} />
-        {last && <span className="text-[10px] tabular-nums text-zinc-500">{last}</span>}
+        {last != null && <span className="text-[10px] tabular-nums text-zinc-500">{last}</span>}
         {token.trades1m != null && token.trades1m > 0 && (
           <span className="text-[10px] tabular-nums text-cyan-400/90">{token.trades1m}/m</span>
         )}

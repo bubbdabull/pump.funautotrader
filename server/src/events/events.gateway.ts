@@ -62,8 +62,8 @@ export class EventsGateway implements OnGatewayConnection {
     this.server.to(`token:${mint}`).emit('token:update', token)
   }
 
-  emitChartUpdate(mint: string) {
-    const series = this.tokens.getChartSeries(mint)
+  emitChartUpdate(mint: string, intervalMs = 5_000) {
+    const series = this.tokens.getChartSeries(mint, intervalMs)
     this.server.to(`token:${mint}`).emit('chart:update', series)
   }
 }

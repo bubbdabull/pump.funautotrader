@@ -6,6 +6,8 @@ import { useAlerts, useUnreadAlertCount } from '@/hooks/useAlerts'
 import { shortenAddress } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
 import { useAutoTraderStore } from '@/stores/autoTraderStore'
+import { useBackendStatus } from '@/hooks/useBackendStatus'
+import { cn } from '@/lib/utils'
 
 export function TopNavbar() {
   const { publicKey } = useWallet()
@@ -13,6 +15,7 @@ export function TopNavbar() {
   const enabled = useAutoTraderStore((s) => s.rules.enabled)
   const { data: alerts } = useAlerts()
   const unread = useUnreadAlertCount(alerts)
+  const backend = useBackendStatus()
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-white/5 glass px-6">
@@ -23,6 +26,29 @@ export function TopNavbar() {
           className="pl-10 bg-white/[0.03]"
         />
       </div>
+
+      <span
+        className={cn(
+          'hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium md:flex',
+          backend.socketConnected
+            ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400'
+            : 'border-amber-500/25 bg-amber-500/10 text-amber-400',
+        )}
+        title={backend.statusLine}
+      >
+        <span className="relative flex h-1.5 w-1.5">
+          {backend.socketConnected && (
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+          )}
+          <span
+            className={cn(
+              'relative h-1.5 w-1.5 rounded-full',
+              backend.socketConnected ? 'bg-emerald-400' : 'bg-amber-400',
+            )}
+          />
+        </span>
+        {backend.socketConnected ? 'Stream' : 'Offline'}
+      </span>
 
       {enabled && (
         <span className="hidden items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-400 md:flex">

@@ -7,6 +7,7 @@ import { TradingBridgeService } from '../trading/trading-bridge.service'
 import { LiveFeedService } from '../feed/live-feed.service'
 import { HotMintsService } from './hot-mints.service'
 import { TokensService } from '../tokens/tokens.service'
+import { AutoTraderService } from '../autotrader/autotrader.service'
 @Injectable()
 export class TradePersistService implements OnModuleInit {
   private readonly activityThrottle = new Map<string, number>()
@@ -20,6 +21,7 @@ export class TradePersistService implements OnModuleInit {
     private hotMints: HotMintsService,
     @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
+    private autoTrader: AutoTraderService,
   ) {}
 
   onModuleInit() {
@@ -44,6 +46,7 @@ export class TradePersistService implements OnModuleInit {
     const activity = computeFeedActivity(state)
     let feedToken = this.liveFeed.get(mint)
     void this.tokens.emitFeedPatch(mint)
+    this.autoTrader.onTradeTick(mint)
 
     if (!this.supabase.enabled) return
 

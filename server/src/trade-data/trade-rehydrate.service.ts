@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
 import { TradingBridgeService } from '../trading/trading-bridge.service'
 import { LiveFeedService } from '../feed/live-feed.service'
+import { HotMintsService } from './hot-mints.service'
 import { computeFeedActivity } from '@phronis/trading'
 
 @Injectable()
@@ -13,6 +14,7 @@ export class TradeRehydrateService implements OnModuleInit {
     private supabase: SupabaseDbService,
     private trading: TradingBridgeService,
     private liveFeed: LiveFeedService,
+    private hotMints: HotMintsService,
   ) {}
 
   onModuleInit() {
@@ -29,15 +31,20 @@ export class TradeRehydrateService implements OnModuleInit {
     if (this.done || !this.supabase.enabled) return
     this.done = true
 
-    const rows = await this.supabase.listTradeableTokensForRehydrate(45)
-    if (!rows.length) {
-      this.logger.log('Trade rehydrate: no tradeable rows in DB yet')
+    const feedMints = this.liveFeed.getAll(80).map((t) => t.mint)
+    const hot = this.hotMints.getHotMints(60)
+    const dbRows = await this.supabase.listTradeableTokensForRehydrate(45)
+    const mints = [...new Set([...hot, ...feedMints, ...dbRows.map((r) => r.mint as string)])].slice(
+      0,
+      80,
+    )
+    if (!mints.length) {
+      this.logger.log('Trade rehydrate: no mints to replay')
       return
     }
 
     let tradeCount = 0
-    for (const row of rows) {
-      const mint = row.mint as string
+    for (const mint of mints) {
       const activities = await this.supabase.loadRecentWalletActivity(mint, 120)
       const state = this.trading.getState(mint)
       const existingSigs = new Set(state?.trades.map((t) => t.signature) ?? [])
@@ -72,6 +79,6 @@ export class TradeRehydrateService implements OnModuleInit {
       }
     }
 
-    this.logger.log(`Trade rehydrate: replayed ${tradeCount} ticks for ${rows.length} token(s)`)
+    this.logger.log(`Trade rehydrate: replayed ${tradeCount} ticks for ${mints.length} token(s)`)
   }
 }

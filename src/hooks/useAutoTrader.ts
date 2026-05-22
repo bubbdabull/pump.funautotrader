@@ -7,6 +7,8 @@ import { usePumpPortalTrade } from './usePumpPortalTrade'
 import { buildSizedTransaction } from '@/services/execution'
 import type { PumpToken, AutoTradeSignal } from '@/types'
 import { evaluateProbabilisticEntry, pumpTokenFromMint } from '@/lib/probabilisticTrading'
+import { hydrateMarketStateFromApi } from '@/lib/hydrateMarketState'
+import { autoTraderApi } from '@/services/api'
 import { useDirectPumpPortalWs } from '@/lib/pumpportalConfig'
 import { globalMarketState, evScoreToSignalScore } from '@trading'
 
@@ -21,14 +23,40 @@ export function useAutoTrader() {
   const removePosition = useAutoTraderStore((s) => s.removePosition)
   const processing = useRef(new Set<string>())
 
-  const tryTrade = async (token: PumpToken, reason: string, amountSol?: number) => {
+  const passesLegacy = (token: PumpToken, signal?: AutoTradeSignal) => {
+    const curve = signal?.bondingCurvePercent ?? token.bondingCurvePercent
+    const mcap = signal?.marketCap ?? token.marketCap
+    const score = signal?.signalScore ?? token.signalScore ?? token.aiRiskScore ?? 50
+    if (curve < rules.minBondingCurve || curve > rules.maxBondingCurve) return false
+    if (mcap > rules.maxMarketCapUsd) return false
+    if (score > rules.maxSignalScore) return false
+    return true
+  }
+
+  const tryTrade = async (
+    token: PumpToken,
+    reason: string,
+    amountSol?: number,
+    serverSignal?: AutoTradeSignal,
+  ) => {
     if (!publicKey || !rules.enabled) return
     if (processing.current.has(token.mint)) return
 
-    const decision = evaluateProbabilisticEntry(token.mint, rules)
-    if (!decision?.allowed) return
+    await hydrateMarketStateFromApi(token.mint)
 
-    const sizeSol = amountSol ?? decision.positionSizeSol ?? rules.buyAmountSol
+    const decision = evaluateProbabilisticEntry(token.mint, rules)
+    const trustServer =
+      serverSignal &&
+      (serverSignal.evScore ?? 0) >= 0.58 &&
+      passesLegacy(token, serverSignal)
+
+    if (!decision?.allowed && !trustServer) return
+
+    const sizeSol =
+      amountSol ??
+      serverSignal?.positionSizeSol ??
+      decision?.positionSizeSol ??
+      rules.buyAmountSol
     processing.current.add(token.mint)
 
     const signal: AutoTradeSignal = {
@@ -38,7 +66,9 @@ export function useAutoTrader() {
       reason,
       bondingCurvePercent: token.bondingCurvePercent,
       marketCap: token.marketCap,
-      signalScore: evScoreToSignalScore(decision.metrics),
+      signalScore: decision
+        ? evScoreToSignalScore(decision.metrics)
+        : Math.round((serverSignal?.evScore ?? 0.6) * 100),
       timestamp: new Date().toISOString(),
     }
     addSignal(signal)
@@ -62,7 +92,7 @@ export function useAutoTrader() {
         slippage: rules.slippage,
         priorityFee: rules.priorityFee,
         pool: rules.pool,
-        evConfidence: decision.metrics.evScore,
+        evConfidence: decision?.metrics.evScore ?? serverSignal?.evScore ?? 0.6,
       })
 
       const sig = await execute({
@@ -84,15 +114,12 @@ export function useAutoTrader() {
         signature: sig,
         timestamp: new Date().toISOString(),
       })
-      globalMarketState.registerPosition(
-        token.mint,
-        sizeSol,
-        decision.metrics.evScore,
-      )
+      const ev = decision?.metrics.evScore ?? serverSignal?.evScore ?? 0.6
+      globalMarketState.registerPosition(token.mint, sizeSol, ev)
       setPosition(token.mint, {
         entrySol: sizeSol,
         symbol: token.symbol,
-        entryEvScore: decision.metrics.evScore,
+        entryEvScore: ev,
       })
     } catch (e) {
       addExecution({
@@ -181,8 +208,20 @@ export function useAutoTrader() {
     const unsubServer = wsService.onPumpPortalToken(onToken)
     const unsubSignal = wsService.onAutoTradeSignal((s) => {
       if (!rules.enabled) return
-      const token = pumpTokenFromMint(s.mint)
-      tryTrade(token, s.reason)
+      void (async () => {
+        await hydrateMarketStateFromApi(s.mint)
+        const token = pumpTokenFromMint(s.mint, {
+          symbol: s.symbol,
+          name: s.name,
+          marketCapSol: s.marketCap / 200,
+        })
+        await tryTrade(token, s.reason, s.positionSizeSol, s)
+      })()
+    })
+
+    const unsubFeedPatch = wsService.onFeedPatch((token) => {
+      if (!rules.enabled || !token.isActive) return
+      void hydrateMarketStateFromApi(token.mint)
     })
 
     const unsubExit = globalMarketState.onExit((mint, exit) => {
@@ -192,10 +231,18 @@ export function useAutoTrader() {
 
     wsService.connect()
 
+    void autoTraderApi
+      .getRules()
+      .then((serverRules) => {
+        useAutoTraderStore.setState({ rules: { ...useAutoTraderStore.getState().rules, ...serverRules } })
+      })
+      .catch(() => undefined)
+
     return () => {
       unsubDirect()
       unsubServer()
       unsubSignal()
+      unsubFeedPatch()
       unsubExit()
     }
   }, [rules.enabled, rules.snipeNewTokens, publicKey, positions, directPumpPortal])

@@ -19,4 +19,9 @@ export class AutoTraderController {
   getSignals() {
     return this.autoTrader.getSignals()
   }
+
+  @Get('diagnostics')
+  diagnostics() {
+    return this.autoTrader.getDiagnostics()
+  }
 }

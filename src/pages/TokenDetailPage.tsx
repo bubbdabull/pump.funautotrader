@@ -1,9 +1,9 @@
 import { useParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Shield, Users, MessageCircle, AlertTriangle } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { DexScreenerChart } from '@/components/charts/DexScreenerChart'
+import { TradingChart } from '@/components/charts/TradingChart'
 import { TradingPanel } from '@/components/trading/TradingPanel'
 import { Badge } from '@/components/ui/badge'
 import { useToken, useTokenTrades } from '@/hooks/useTokens'
@@ -60,7 +60,7 @@ export function TokenDetailPage() {
 
       <motion.div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
-          <DexScreenerChart mint={mint} />
+          <TradingChart mint={mint} />
           <div className="grid gap-4 sm:grid-cols-3">
             <GlassCard>
               <Users className="mb-2 h-5 w-5 text-purple-400" />
@@ -96,12 +96,15 @@ export function TokenDetailPage() {
                   No trades yet — connect the API server or wait for PumpPortal stream.
                 </p>
               ) : (
-                trades.map((tx) => (
+                <AnimatePresence initial={false}>
+                {trades.map((tx) => (
                   <motion.div
                     key={tx.signature}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-2 text-sm"
+                    layout
+                    initial={{ opacity: 0, x: -12, backgroundColor: 'rgba(20,184,166,0.12)' }}
+                    animate={{ opacity: 1, x: 0, backgroundColor: 'rgba(255,255,255,0.02)' }}
+                    transition={{ duration: 0.35 }}
+                    className="flex items-center justify-between rounded-lg px-3 py-2 text-sm"
                   >
                     <span className={tx.side === 'buy' ? 'text-emerald-400' : 'text-red-400'}>
                       {tx.side.toUpperCase()} {tx.solAmount.toFixed(3)} SOL
@@ -111,7 +114,8 @@ export function TokenDetailPage() {
                     </span>
                     {tx.solAmount >= 5 && <Badge>Whale</Badge>}
                   </motion.div>
-                ))
+                ))}
+                </AnimatePresence>
               )}
             </div>
           </GlassCard>
