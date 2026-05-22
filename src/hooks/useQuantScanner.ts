@@ -88,13 +88,20 @@ export function useMomentumRankingsState() {
 }
 
 /** Merge live holder counts from quant stream into token list. */
-export function mergeQuantHolders<T extends { mint: string; holders: number }>(
+export function mergeQuantHolders<T extends { mint: string; holders: number; holdersVerified?: boolean }>(
   tokens: T[] | undefined,
 ): T[] {
   if (!tokens?.length) return []
   const byMint = useQuantStore.getState().byMint
   return tokens.map((t) => {
-    const h = byMint[t.mint]?.holders
-    return h != null && h > t.holders ? { ...t, holders: h } : t
+    const q = byMint[t.mint]
+    if (q?.holders == null) return t
+    if (q.holdersVerified) {
+      return { ...t, holders: q.holders, holdersVerified: true }
+    }
+    if (t.holdersVerified) {
+      return { ...t, holders: Math.max(t.holders, q.holders) }
+    }
+    return q.holders > t.holders ? { ...t, holders: q.holders } : t
   })
 }

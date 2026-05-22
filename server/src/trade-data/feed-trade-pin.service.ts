@@ -22,8 +22,8 @@ export class FeedTradePinService {
     private hotMints: HotMintsService,
     config: ConfigService,
   ) {
-    const n = Number(config.get('FEED_TRADE_PIN_MAX') ?? 120)
-    this.maxPins = Number.isFinite(n) && n >= 20 ? Math.min(n, 300) : 120
+    const n = Number(config.get('FEED_TRADE_PIN_MAX') ?? 60)
+    this.maxPins = Number.isFinite(n) && n >= 20 ? Math.min(n, 120) : 60
   }
 
   getMandatoryMints(): string[] {
@@ -44,9 +44,8 @@ export class FeedTradePinService {
     }
 
     for (const m of pinned) push(m)
-    for (const m of hot) push(m)
+    for (const m of hot.slice(0, 40)) push(m)
     for (const m of activeInFeed) push(m)
-    for (const m of alpha.slice(0, 40)) push(m)
 
     return ordered.slice(0, this.maxPins)
   }

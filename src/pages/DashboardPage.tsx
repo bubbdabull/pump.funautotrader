@@ -37,6 +37,7 @@ export function DashboardPage() {
   useMomentumRankingsState()
 
   const usingFallback = displayMode === 'watchlist_fallback'
+  const holdersVerifiedCount = tokens.filter((t) => t.holdersVerified).length
   const top = [...tokens].sort((a, b) => b.momentumScore - a.momentumScore).slice(0, 3)
   const feedByMint = Object.fromEntries(tokens.map((t) => [t.mint, t]))
 
@@ -74,9 +75,9 @@ export function DashboardPage() {
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            No tokens pass the full tradeable bar yet (holders need on-chain verification via{' '}
-            <strong>HELIUS_API_KEY</strong> on the server). Showing top watchlist by quality until
-            holder enrichment catches up.
+            {holdersVerifiedCount > 0
+              ? `${tradeableCount} pass the strict tradeable bar · ${holdersVerifiedCount} have verified on-chain holders. Showing top watchlist until more tokens meet volume + holder depth.`
+              : `No tokens pass the full tradeable bar yet — Helius is enriching holder counts in the background (${tokens.length} on watchlist).`}
           </p>
         </div>
       )}

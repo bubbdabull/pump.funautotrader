@@ -75,11 +75,20 @@ export class DataHealthService {
       issues.push('Supabase not connected — trades not persisted')
     }
 
-    const mandatory = coverage.mandatoryCount
-    const activeMandatory = coverage.mandatoryWithRecentTrade
-    if (mandatory > 0 && activeMandatory / mandatory < 0.25) {
+    const feedLive = coverage.feedWithRecentTrade
+    const feedSize = Math.max(1, coverage.feedSize)
+    const liveRatio = feedLive / feedSize
+
+    if (liveRatio < 0.1 && feedSize >= 10) {
       issues.push(
-        `Low live coverage: ${activeMandatory}/${mandatory} pinned feed tokens traded in last 2m`,
+        `Low scanner live rate: ${feedLive}/${feedSize} feed tokens traded in last 2m`,
+      )
+    } else if (
+      coverage.mandatoryInFeed > 0 &&
+      coverage.mandatoryWithRecentTrade / coverage.mandatoryInFeed < 0.12
+    ) {
+      issues.push(
+        `Few pinned tokens trading: ${coverage.mandatoryWithRecentTrade}/${coverage.mandatoryInFeed} in feed active`,
       )
     }
 

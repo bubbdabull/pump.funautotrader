@@ -43,7 +43,9 @@ export const useQuantStore = create<QuantState>((set, get) => ({
           ...s.byMint,
           [patch.mint]: {
             ...prev,
-            holders: Math.max(prev.holders ?? 0, patch.holders),
+            holders: patch.holdersVerified
+              ? patch.holders
+              : Math.max(prev.holders ?? 0, patch.holders),
             holdersVerified: patch.holdersVerified ?? prev.holdersVerified,
           },
         },

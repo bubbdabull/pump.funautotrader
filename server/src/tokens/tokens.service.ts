@@ -558,14 +558,19 @@ export class TokensService {
 
     const metrics = evaluateEntry(state).metrics
     const volume24h = state.trades.reduce((a, t) => a + t.solAmount, 0)
-    const holders = resolveHolderCount(
-      {
-        walletBalances: state.walletBalances,
-        trades: state.trades,
-        onChainHolders: state.onChainHolders,
-      },
-      coin?.holder_count,
-    )
+    const chain = this.holderEnrichment.getCached(mint)
+    const { holders, holdersVerified } = this.resolveStableHolders(mint, {
+      mint,
+      holders: resolveHolderCount(
+        {
+          walletBalances: state.walletBalances,
+          trades: state.trades,
+          onChainHolders: chain?.verified ? chain : state.onChainHolders,
+        },
+        coin?.holder_count,
+      ),
+      holdersVerified: Boolean(chain?.verified),
+    } as FeedToken, chain)
 
     const mcaps = state.liquidityHistory.map((h) => h.marketCapSol).filter((m) => m > 0)
     let priceChange24h = coin?.price_change_24h ?? 0
@@ -592,7 +597,7 @@ export class TokensService {
       marketCap: state.marketCapUsd || (coin?.usd_market_cap ?? coin?.market_cap ?? 0),
       bondingCurvePercent: state.bondingCurvePercent,
       holders,
-      holdersVerified: Boolean(state.onChainHolders?.verified),
+      holdersVerified,
       volume24h,
       signalScore: evScoreToSignalScore(metrics),
       momentumScore: momentum,
@@ -626,6 +631,39 @@ export class TokensService {
     }
   }
 
+  /** Holders never drop after verification; stream estimates only increase until Helius confirms. */
+  private resolveStableHolders(
+    mint: string,
+    token: FeedToken,
+    chain: ReturnType<HolderEnrichmentService['getCached']>,
+  ): { holders: number; holdersVerified: boolean } {
+    if (chain?.verified) {
+      return { holders: chain.holders, holdersVerified: true }
+    }
+
+    const state = this.trading.getState(mint)
+    const prev = token.holders ?? 0
+    const verified = Boolean(token.holdersVerified || chain?.verified)
+    const onChainForCount =
+      chain && chain.holders > 0 ? chain : state?.onChainHolders
+
+    const computed = state
+      ? resolveHolderCount({
+          walletBalances: state.walletBalances,
+          trades: state.trades,
+          onChainHolders: onChainForCount,
+        })
+      : Math.max(prev, chain?.holders ?? 0)
+
+    if (verified) {
+      return { holders: Math.max(prev, computed), holdersVerified: true }
+    }
+    return {
+      holders: Math.max(prev, computed),
+      holdersVerified: false,
+    }
+  }
+
   private attachActivity(token: FeedToken, mint: string): FeedToken {
     const state = this.trading.getState(mint)
     if (!state) return token
@@ -649,23 +687,7 @@ export class TokensService {
   private enrichFromMarketState(mint: string, token: FeedToken): FeedToken {
     const fromState = this.tokenFromMarketState(mint)
     const chain = this.holderEnrichment.getCached(mint)
-    const state = this.trading.getState(mint)
-    const holdersFromChain = chain?.holders ?? 0
-    const holdersVerified = Boolean(
-      chain?.verified ?? token.holdersVerified ?? fromState?.holdersVerified,
-    )
-    const onChainForCount = chain?.verified
-      ? chain
-      : chain && chain.holders > 20
-        ? chain
-        : state?.onChainHolders
-    const holders = state
-      ? resolveHolderCount({
-          walletBalances: state.walletBalances,
-          trades: state.trades,
-          onChainHolders: onChainForCount,
-        })
-      : Math.max(token.holders ?? 0, holdersFromChain, fromState?.holders ?? 0)
+    const { holders, holdersVerified } = this.resolveStableHolders(mint, token, chain)
 
     if (!fromState) {
       const next = this.attachActivity({ ...token, holders, holdersVerified }, mint)
@@ -688,9 +710,11 @@ export class TokensService {
       telegram: token.telegram ?? fromState.telegram,
       website: token.website ?? fromState.website,
       bondingCurvePercent: Math.max(token.bondingCurvePercent ?? 0, fromState.bondingCurvePercent),
-      holders: holdersVerified
-        ? holders
-        : Math.max(holders, token.holders ?? 0, fromState.holders),
+      holders: Math.max(
+        holders,
+        holdersVerified ? (token.holders ?? 0) : 0,
+        fromState.holders ?? 0,
+      ),
       holdersVerified: holdersVerified || fromState.holdersVerified,
       volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,

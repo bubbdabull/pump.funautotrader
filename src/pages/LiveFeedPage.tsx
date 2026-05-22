@@ -34,6 +34,7 @@ export function LiveFeedPage() {
   const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
   const { data, isLoading, isError, displayMode, tradeableCount } = useScannerFeed(lane)
+  const holdersVerifiedCount = ensureArray<PumpToken>(data).filter((t) => t.holdersVerified).length
   const backend = useBackendStatus()
   const tokens = ensureArray<PumpToken>(data)
 
@@ -133,8 +134,9 @@ export function LiveFeedPage() {
         <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            {tradeableCount} pass the tradeable bar — showing top watchlist until holder verification
-            (HELIUS_API_KEY on server) promotes tokens.
+            {holdersVerifiedCount > 0
+              ? `${tradeableCount} pass tradeable filters · ${holdersVerifiedCount} verified on-chain — showing watchlist until more qualify.`
+              : 'Strict tradeable filters active — holder counts enriching on-chain in the background.'}
           </p>
         </div>
       )}
