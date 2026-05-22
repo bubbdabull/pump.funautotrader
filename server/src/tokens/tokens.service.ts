@@ -251,10 +251,20 @@ export class TokensService {
   applyHolderSnapshot(mint: string, snap: { holders: number; verified?: boolean }): FeedToken | null {
     const live = this.liveFeed.get(mint)
     if (!live) return null
+    const state = this.trading.getState(mint)
+    const streamHolders = state
+      ? resolveHolderCount({
+          walletBalances: state.walletBalances,
+          trades: state.trades,
+          onChainHolders: snap.verified ? snap : undefined,
+        })
+      : snap.holders
+    const holders = Math.max(snap.holders, streamHolders, live.holders ?? 0)
+    const holdersVerified = Boolean(snap.verified)
     const enriched = this.enrichFromMarketState(mint, {
       ...live,
-      holders: snap.holders,
-      holdersVerified: Boolean(snap.verified ?? true),
+      holders,
+      holdersVerified,
     })
     const saved = this.liveFeed.patch(enriched) ?? this.liveFeed.upsert(enriched)
     if (!saved) return null
@@ -316,7 +326,7 @@ export class TokensService {
     const enriched = this.enrichFromMarketState(mint, {
       ...base,
       holders,
-      holdersVerified: Boolean(chain?.verified ?? chain?.holders),
+      holdersVerified: Boolean(chain?.verified),
     })
     const saved = this.liveFeed.upsert(enriched) ?? this.liveFeed.patch(enriched)
     if (saved) this.persistFeedToken(saved)
@@ -695,8 +705,8 @@ export class TokensService {
     token: FeedToken,
     chain: ReturnType<HolderEnrichmentService['getCached']>,
   ): { holders: number; holdersVerified: boolean } {
-    if (chain?.verified) {
-      return { holders: chain.holders, holdersVerified: true }
+    if (chain?.verified && chain.holders >= 2) {
+      return { holders: Math.max(chain.holders, computed, prev), holdersVerified: true }
     }
 
     const state = this.trading.getState(mint)
