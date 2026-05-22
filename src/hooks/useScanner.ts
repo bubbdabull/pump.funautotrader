@@ -208,6 +208,7 @@ export function useTokenChart(mint: string, intervalMs = 5_000) {
     if (!mint) return
     wsService.connect()
     wsService.subscribeToken(mint)
+    void tokenApi.watchTrades(mint).catch(() => undefined)
     const unsub = wsService.onChartUpdate((series) => {
       if (series.mint !== mint) return
       if (series.intervalMs === intervalMs) {

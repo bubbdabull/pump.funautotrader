@@ -51,6 +51,10 @@ export const tokenApi = {
     api
       .get<TokenChartSeries>(`/tokens/${mint}/chart`, { params: { interval: intervalMs } })
       .then((r) => r.data),
+  watchTrades: (mint: string) =>
+    api.post<{ mint: string; queued: boolean; subscribed: boolean; tradeCount: number }>(
+      `/tokens/${mint}/watch-trades`,
+    ).then((r) => r.data),
   stats: () => api.get<FeedStats>('/tokens/stats').then((r) => r.data),
   trades: (mint: string) => api.get(`/tokens/${mint}/trades`).then((r) => ensureArray<FeedTrade>(r.data)),
 }

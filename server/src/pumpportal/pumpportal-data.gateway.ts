@@ -32,6 +32,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   private readonly tradeSubBatchSize: number
   private tradeSubFlushTimer?: NodeJS.Timeout
   private messageCount = 0
+  private tradeMessageCount = 0
   private lastMessageAt?: string
   private lastRotationAt?: string
   private connected = false
@@ -69,6 +70,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       liveFeedMax: this.liveFeed.getMaxFeed(),
       liveFeedCount: this.liveFeed.getAll().length,
       messagesReceived: this.messageCount,
+      tradeMessagesReceived: this.tradeMessageCount,
       lastMessageAt: this.lastMessageAt,
       lastTradeSubRotationAt: this.lastRotationAt,
       streams: ['subscribeNewToken', 'subscribeMigration', this.apiKey ? 'subscribeTokenTrade' : null].filter(
@@ -212,7 +214,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }, 400)
   }
 
-  private flushTradeSubscriptions() {
+  flushTradeSubscriptions() {
     const batch: string[] = []
     while (
       this.pendingTradeQueue.length > 0 &&
@@ -243,21 +245,68 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Force PumpPortal trade stream for a mint (token page / chart). */
+  ensureTradeSubscription(mint: string): { queued: boolean; subscribed: boolean } {
+    if (!this.apiKey) return { queued: false, subscribed: false }
+    this.autoTrader.pinTradeStream(mint)
+    const pinned = new Set([
+      mint,
+      ...this.autoTrader.getPriorityMints(),
+      ...this.feedTradePin.getMandatoryMints(),
+    ])
+    while (
+      this.subscribedMints.size >= this.maxTradeSubscriptions &&
+      !this.subscribedMints.has(mint)
+    ) {
+      if (!this.evictOneNonPinned(pinned)) break
+    }
+    this.queueTradeSubscription(mint, true)
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      void this.flushTradeSubscriptions()
+    }
+    return { queued: true, subscribed: this.subscribedMints.has(mint) }
+  }
+
+  isTradeSubscribed(mint: string): boolean {
+    return this.subscribedMints.has(mint)
+  }
+
+  private parseTradeSide(data: Record<string, unknown>): 'buy' | 'sell' | null {
+    const raw = String(data.txType ?? data.type ?? data.side ?? data.tradeType ?? '').toLowerCase()
+    if (raw === 'buy' || raw === 'sell') return raw
+    if (data.isBuy === true) return 'buy'
+    if (data.isBuy === false) return 'sell'
+    const sol = Number(data.solAmount ?? data.sol_amount ?? data.sol ?? 0)
+    const trader = data.traderPublicKey ?? data.trader ?? data.user ?? data.owner
+    if (sol > 0 && trader && !data.name && !data.symbol) {
+      return 'buy'
+    }
+    return null
+  }
+
+  private isLaunchMessage(data: Record<string, unknown>, txType: string): boolean {
+    if (txType === 'create' || txType === 'new') return true
+    if ((data.name || data.symbol) && !this.parseTradeSide(data)) return true
+    return false
+  }
+
   private handleMessage(data: Record<string, unknown>) {
     const mint = this.extractMint(data)
     if (!mint) return
 
     const txType = String(data.txType ?? data.type ?? '').toLowerCase()
+    const tradeSide = this.parseTradeSide(data)
 
-    if (txType === 'buy' || txType === 'sell') {
-      const sol = Number(data.solAmount ?? data.sol_amount ?? 0)
-      void this.ingestTrade(mint, data, txType as 'buy' | 'sell').then(() =>
+    if (tradeSide) {
+      this.tradeMessageCount++
+      const sol = Number(data.solAmount ?? data.sol_amount ?? data.sol ?? 0)
+      void this.ingestTrade(mint, data, tradeSide).then(() =>
         this.publishTokenUpdate(mint, sol),
       )
       return
     }
 
-    if (txType === 'create' || txType === 'new' || data.name || data.symbol) {
+    if (this.isLaunchMessage(data, txType)) {
       this.handleNewToken(mint, data)
       if (Number(data.solAmount ?? 0) > 0) {
         void this.ingestTrade(mint, data, 'buy')

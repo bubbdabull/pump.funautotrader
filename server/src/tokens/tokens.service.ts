@@ -174,10 +174,24 @@ export class TokensService {
     points.sort((a, b) => a.t - b.t)
     const lastTrade = state?.trades[state.trades.length - 1]
 
+    let outCandles = candles
+    if (!outCandles.length && points.length > 0) {
+      outCandles = points.slice(-120).map((p) => ({
+        t: p.t,
+        open: p.price,
+        high: p.price,
+        low: p.price,
+        close: p.price,
+        volume: p.volume,
+        buys: 0,
+        sells: 0,
+      }))
+    }
+
     return {
       mint,
       intervalMs: bucketMs,
-      candles,
+      candles: outCandles,
       points: points.slice(-120),
       tradeCount: state?.trades.length ?? 0,
       lastTradeAt: lastTrade?.timestamp,

@@ -23,4 +23,8 @@ export interface TokenChartSeries {
   points: ChartPoint[]
   tradeCount: number
   lastTradeAt?: number
+  /** PumpPortal trade stream queued/active for this mint */
+  tradeStreamSubscribed?: boolean
+  /** API key present on server */
+  pumpportalKeyConfigured?: boolean
 }

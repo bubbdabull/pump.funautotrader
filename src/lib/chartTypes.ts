@@ -23,6 +23,8 @@ export interface TokenChartSeries {
   points: ChartPoint[]
   tradeCount: number
   lastTradeAt?: number
+  tradeStreamSubscribed?: boolean
+  pumpportalKeyConfigured?: boolean
 }
 
 export const CHART_INTERVAL_OPTIONS = [

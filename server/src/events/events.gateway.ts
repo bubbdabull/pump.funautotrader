@@ -8,6 +8,7 @@ import { Server, Socket } from 'socket.io'
 import { Inject, Logger, forwardRef } from '@nestjs/common'
 import { TokensService } from '../tokens/tokens.service'
 import { AutoTraderService } from '../autotrader/autotrader.service'
+import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 
 @WebSocketGateway({ cors: { origin: '*' }, path: '/socket.io' })
 export class EventsGateway implements OnGatewayConnection {
@@ -21,6 +22,7 @@ export class EventsGateway implements OnGatewayConnection {
     @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
     private autoTrader: AutoTraderService,
+    private pumpportal: PumpPortalDataGateway,
   ) {}
 
   handleConnection(client: Socket) {
@@ -40,8 +42,10 @@ export class EventsGateway implements OnGatewayConnection {
   @SubscribeMessage('subscribe:token')
   async handleTokenSubscribe(client: Socket, data: { mint: string }) {
     client.join(`token:${data.mint}`)
+    this.pumpportal.ensureTradeSubscription(data.mint)
     const token = await this.tokens.getToken(data.mint)
     if (token) client.emit('token:update', token)
+    client.emit('chart:update', this.tokens.getChartSeries(data.mint))
   }
 
   async broadcastFeed() {

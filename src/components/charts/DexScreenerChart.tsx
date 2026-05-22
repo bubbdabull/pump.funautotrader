@@ -108,12 +108,20 @@ export function DexScreenerChart({ mint }: DexScreenerChartProps) {
   const candles = data?.candles ?? []
   const last = candles[candles.length - 1]
   const live = (data?.tradeCount ?? 0) > 0
+  const fromTrades = live
+  const streamOn = data?.tradeStreamSubscribed
+  const hasKey = data?.pumpportalKeyConfigured !== false
 
   return (
     <div className="panel p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-white">Live chart</h3>
+          <h3 className="text-sm font-semibold text-white">
+            Live chart
+            {!fromTrades && candles.length > 0 && (
+              <span className="ml-2 text-[10px] font-normal text-amber-400/90">mcap estimate</span>
+            )}
+          </h3>
           <p className="text-[11px] text-zinc-500">
             {live ? (
               <>
@@ -122,8 +130,12 @@ export function DexScreenerChart({ mint }: DexScreenerChartProps) {
                   ? ` · last ${Math.max(0, Math.round((Date.now() - data.lastTradeAt) / 1000))}s ago`
                   : ''}
               </>
+            ) : streamOn === false && hasKey ? (
+              'Subscribing to trade stream… (few seconds)'
+            ) : !hasKey ? (
+              'Server missing PUMPPORTAL_API_KEY — redeploy Fly with secret set'
             ) : (
-              'Waiting for trade stream — open token pins PumpPortal subscription'
+              'Waiting for trades on this mint (dead or not on bonding curve)'
             )}
           </p>
         </div>
@@ -154,9 +166,14 @@ export function DexScreenerChart({ mint }: DexScreenerChartProps) {
         <div className="h-[380px] animate-pulse rounded-lg bg-white/[0.02]" />
       ) : candles.length === 0 ? (
         <div className="flex h-[380px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-white/10 text-sm text-zinc-500">
-          <p>Candles appear when trades stream in for this mint.</p>
+          <p>No candle data for this mint yet.</p>
+          <p className="max-w-md text-center text-xs text-zinc-600">
+            {hasKey
+              ? 'PumpPortal key is configured. Trades must stream for this exact mint — pick a token with a green pulse in the feed, or wait ~10s after opening.'
+              : 'Set PUMPPORTAL_API_KEY on the API host (Fly secrets), not only in local .env.'}
+          </p>
           <p className="text-xs text-zinc-600">
-            Ensure PUMPPORTAL_API_KEY is set on the API — trade ticks build OHLCV every second.
+            PumpPortal also requires your linked wallet to have ~0.02 SOL for metered trade streams.
           </p>
         </div>
       ) : (

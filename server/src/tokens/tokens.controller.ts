@@ -1,5 +1,6 @@
-import { Controller, Get, Header, Param, Query } from '@nestjs/common'
+import { Controller, Get, Header, Param, Post, Query } from '@nestjs/common'
 import { TokensService } from './tokens.service'
+import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 import type { ScannerLane } from '@phronis/trading'
 
 function parseChartIntervalMs(raw?: string): number {
@@ -18,7 +19,10 @@ function parseChartIntervalMs(raw?: string): number {
 
 @Controller('tokens')
 export class TokensController {
-  constructor(private tokens: TokensService) {}
+  constructor(
+    private tokens: TokensService,
+    private pumpportal: PumpPortalDataGateway,
+  ) {}
 
   @Get('feed')
   @Header('Cache-Control', 'no-store')
@@ -45,7 +49,23 @@ export class TokensController {
   @Get(':mint/chart')
   @Header('Cache-Control', 'no-store')
   chart(@Param('mint') mint: string, @Query('interval') interval?: string) {
-    return this.tokens.getChartSeries(mint, parseChartIntervalMs(interval))
+    this.pumpportal.ensureTradeSubscription(mint)
+    const status = this.pumpportal.getStatus()
+    return {
+      ...this.tokens.getChartSeries(mint, parseChartIntervalMs(interval)),
+      tradeStreamSubscribed: this.pumpportal.isTradeSubscribed(mint),
+      pumpportalKeyConfigured: status.apiKeyConfigured,
+    }
+  }
+
+  @Post(':mint/watch-trades')
+  watchTrades(@Param('mint') mint: string) {
+    const sub = this.pumpportal.ensureTradeSubscription(mint)
+    return {
+      mint,
+      ...sub,
+      tradeCount: this.tokens.getChartSeries(mint).tradeCount,
+    }
   }
 
   @Get(':mint/trades')
