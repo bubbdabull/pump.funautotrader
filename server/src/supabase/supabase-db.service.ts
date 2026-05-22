@@ -4,8 +4,8 @@ import { ConfigService } from '@nestjs/config'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 import type { FeedToken } from '../feed/feed.types'
-import type { RugScoreBreakdown } from '@phronis/trading'
-import type { QuantitativeScores } from '@phronis/trading'
+import type { RugScoreBreakdown, QuantitativeScores } from '@phronis/trading'
+import { passesTradeableFilter, tradeQualityScore } from '@phronis/trading'
 
 @Injectable()
 export class SupabaseDbService implements OnModuleInit {
@@ -59,18 +59,27 @@ export class SupabaseDbService implements OnModuleInit {
 
   async upsertToken(token: FeedToken) {
     if (!this.client) return
+    const isTradeable = passesTradeableFilter(token)
+    if (!isTradeable) return
     const row = {
       id: randomUUID(),
       mint: token.mint,
       name: token.name,
       symbol: token.symbol,
       image: token.image,
+      metadataUri: token.metadataUri ?? null,
+      twitter: token.twitter ?? null,
+      telegram: token.telegram ?? null,
+      website: token.website ?? null,
       marketCap: token.marketCap,
       bondingCurvePercent: token.bondingCurvePercent,
       holders: token.holders,
+      holdersVerified: token.holdersVerified ?? false,
       volume24h: token.volume24h,
       aiRiskScore: token.signalScore,
       momentumScore: token.momentumScore,
+      tradeQualityScore: tradeQualityScore(token),
+      isTradeable,
       whaleActivity: token.whaleActivity,
       priceUsd: token.priceUsd,
       priceChange24h: token.priceChange24h,
@@ -88,12 +97,19 @@ export class SupabaseDbService implements OnModuleInit {
             name: row.name,
             symbol: row.symbol,
             image: row.image,
+            metadataUri: row.metadataUri,
+            twitter: row.twitter,
+            telegram: row.telegram,
+            website: row.website,
             marketCap: row.marketCap,
             bondingCurvePercent: row.bondingCurvePercent,
             holders: row.holders,
+            holdersVerified: row.holdersVerified,
             volume24h: row.volume24h,
             aiRiskScore: row.aiRiskScore,
             momentumScore: row.momentumScore,
+            tradeQualityScore: row.tradeQualityScore,
+            isTradeable: row.isTradeable,
             whaleActivity: row.whaleActivity,
             priceUsd: row.priceUsd,
             priceChange24h: row.priceChange24h,
@@ -233,6 +249,7 @@ export class SupabaseDbService implements OnModuleInit {
     top1Pct: number,
     top5Pct: number,
     entropy: number,
+    meta?: { holdersVerified?: boolean; suspiciousClusterPct?: number },
   ) {
     if (!this.client) return
     const { error } = await this.client.from('HolderSnapshot').insert({
@@ -242,6 +259,8 @@ export class SupabaseDbService implements OnModuleInit {
       top1Pct,
       top5Pct,
       entropy,
+      holdersVerified: meta?.holdersVerified ?? false,
+      suspiciousClusterPct: meta?.suspiciousClusterPct ?? 0,
       capturedAt: new Date().toISOString(),
     })
     if (error) this.logger.debug(`HolderSnapshot insert: ${error.message}`)
@@ -249,14 +268,25 @@ export class SupabaseDbService implements OnModuleInit {
 
   async patchTokenQuant(
     mint: string,
-    patch: { rugScore?: number; tradeConfidence?: number; holders?: number; creatorWallet?: string },
+    patch: {
+      rugScore?: number
+      tradeConfidence?: number
+      holders?: number
+      holdersVerified?: boolean
+      creatorWallet?: string
+      isTradeable?: boolean
+      tradeQualityScore?: number
+    },
   ) {
     if (!this.client) return
     const payload: Record<string, unknown> = { updatedAt: new Date().toISOString() }
     if (patch.holders != null) payload.holders = patch.holders
+    if (patch.holdersVerified != null) payload.holdersVerified = patch.holdersVerified
     if (patch.rugScore != null) payload.rugScore = patch.rugScore
     if (patch.tradeConfidence != null) payload.tradeConfidence = patch.tradeConfidence
     if (patch.creatorWallet != null) payload.creatorWallet = patch.creatorWallet
+    if (patch.isTradeable != null) payload.isTradeable = patch.isTradeable
+    if (patch.tradeQualityScore != null) payload.tradeQualityScore = patch.tradeQualityScore
     const { error } = await this.client.from('Token').update(payload).eq('mint', mint)
     if (error) this.logger.debug(`Token quant patch: ${error.message}`)
   }
@@ -266,17 +296,31 @@ export class SupabaseDbService implements OnModuleInit {
     scores: QuantitativeScores,
     rug: RugScoreBreakdown,
     holders: number,
-    holderMeta: { top1Pct: number; top5Pct: number; entropy: number },
+    holderMeta: {
+      top1Pct: number
+      top5Pct: number
+      entropy: number
+      holdersVerified?: boolean
+      suspiciousClusterPct?: number
+    },
     recentTrades: Parameters<SupabaseDbService['insertWalletActivities']>[1],
+    tokenPatch?: FeedToken,
   ) {
+    const tradeable = tokenPatch ? passesTradeableFilter(tokenPatch) : false
     await Promise.all([
       this.insertRugScore(mint, rug),
-      this.insertHolderSnapshot(mint, holders, holderMeta.top1Pct, holderMeta.top5Pct, holderMeta.entropy),
+      this.insertHolderSnapshot(mint, holders, holderMeta.top1Pct, holderMeta.top5Pct, holderMeta.entropy, {
+        holdersVerified: holderMeta.holdersVerified,
+        suspiciousClusterPct: holderMeta.suspiciousClusterPct,
+      }),
       this.insertWalletActivities(mint, recentTrades),
       this.patchTokenQuant(mint, {
         rugScore: rug.rugScore,
         tradeConfidence: scores.tradeConfidenceScore,
         holders,
+        holdersVerified: holderMeta.holdersVerified,
+        isTradeable: tradeable,
+        tradeQualityScore: tokenPatch ? tradeQualityScore(tokenPatch) : undefined,
       }),
     ])
   }

@@ -59,13 +59,38 @@ export class QuantPersistService {
       }
     }
 
+    const tokenPatch = {
+      mint,
+      name: state.name ?? 'Unknown',
+      symbol: state.symbol ?? mint.slice(0, 4),
+      image: '',
+      marketCap: state.marketCapUsd,
+      bondingCurvePercent: state.bondingCurvePercent,
+      holders,
+      holdersVerified: Boolean(chain?.verified),
+      volume24h: state.trades.reduce((a, t) => a + t.solAmount, 0),
+      signalScore: 50,
+      momentumScore: Math.round(scores.momentumScore),
+      whaleActivity: 'low' as const,
+      launchedAt: new Date(state.createdAt).toISOString(),
+      priceUsd: 0,
+      priceChange24h: 0,
+      liquidity: state.liquidity,
+    }
+
     try {
       await this.supabase.persistQuantSnapshot(
         mint,
         scores,
         rug,
         holders,
-        { top1Pct, top5Pct, entropy },
+        {
+          top1Pct,
+          top5Pct,
+          entropy,
+          holdersVerified: chain?.verified,
+          suspiciousClusterPct: chain?.suspiciousClusterPct,
+        },
         state.trades.slice(-15).map((t) => ({
           wallet: t.wallet,
           side: t.side,
@@ -74,6 +99,7 @@ export class QuantPersistService {
           slot: t.slot,
           timestamp: t.timestamp,
         })),
+        tokenPatch,
       )
     } catch (err) {
       this.logger.warn(`Quant persist ${mint.slice(0, 8)}: ${(err as Error).message}`)

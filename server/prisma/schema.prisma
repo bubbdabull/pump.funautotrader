@@ -26,6 +26,13 @@ model Token {
   creatorWallet       String?
   rugScore            Float    @default(0)
   tradeConfidence     Float    @default(0)
+  holdersVerified     Boolean  @default(false)
+  metadataUri         String?
+  twitter             String?
+  telegram            String?
+  website             String?
+  tradeQualityScore   Int      @default(0)
+  isTradeable         Boolean  @default(false)
   launchedAt          DateTime @default(now())
   updatedAt           DateTime @updatedAt
   trades              Trade[]
@@ -53,9 +60,11 @@ model HolderSnapshot {
   holders   Int
   top1Pct   Float    @default(0)
   top5Pct   Float    @default(0)
-  entropy   Float    @default(0)
-  capturedAt DateTime @default(now())
-  token     Token    @relation(fields: [mint], references: [mint])
+  entropy              Float    @default(0)
+  holdersVerified      Boolean  @default(false)
+  suspiciousClusterPct Float    @default(0)
+  capturedAt           DateTime @default(now())
+  token                Token    @relation(fields: [mint], references: [mint])
 
   @@index([mint, capturedAt])
 }
