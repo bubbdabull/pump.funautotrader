@@ -1,7 +1,8 @@
 /** Alpha feed gates — junk tokens never surface in the default scanner. */
 
-export const GRADUATING_CURVE_MIN = 78
-export const GRADUATING_CURVE_MAX = 99
+/** Strict “about to graduate” band (pump.fun ~85 SOL target). */
+export const GRADUATING_CURVE_MIN = 70
+export const GRADUATING_CURVE_MAX = 100
 
 export interface FeedQualityFields {
   mint: string
@@ -55,13 +56,30 @@ export function passesAlphaFilter(token: FeedQualityFields): boolean {
 
 export type ScannerLane = 'alpha' | 'graduating' | 'all'
 
+/** Top tokens by curve % when none are in the strict graduating band yet. */
+export function pickNearGraduation<T extends FeedQualityFields>(
+  tokens: T[],
+  limit = 40,
+  minCurve = 30,
+): T[] {
+  return [...tokens]
+    .filter((t) => t.bondingCurvePercent >= minCurve)
+    .sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
+    .slice(0, limit)
+}
+
 export function filterForLane<T extends FeedQualityFields>(
   tokens: T[],
   lane: ScannerLane,
 ): T[] {
   switch (lane) {
-    case 'graduating':
-      return tokens.filter(isGraduatingSoon).sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
+    case 'graduating': {
+      const strict = tokens
+        .filter(isGraduatingSoon)
+        .sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
+      if (strict.length >= 3) return strict
+      return pickNearGraduation(tokens)
+    }
     case 'alpha':
       return tokens.filter(passesAlphaFilter)
     default:

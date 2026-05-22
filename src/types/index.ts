@@ -13,6 +13,9 @@ export interface PumpToken {
   symbol: string
   image: string
   metadataUri?: string
+  twitter?: string
+  telegram?: string
+  website?: string
   marketCap: number
   bondingCurvePercent: number
   holders: number

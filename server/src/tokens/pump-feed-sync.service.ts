@@ -44,8 +44,14 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
       this.lastSyncCount = count
       this.lastSyncAt = new Date().toISOString()
       if (count > 0) {
-        const feed = await this.tokens.getFeed('all')
+        const [feed, graduating] = await Promise.all([
+          this.tokens.getFeed('all'),
+          this.tokens.getGraduatingFeed(),
+        ])
         this.events.server?.to('feed').emit('feed:update', feed)
+        if (graduating.length > 0) {
+          this.events.server?.emit('feed:graduating', graduating)
+        }
       }
     } catch (err) {
       this.logger.warn(`pump.fun sync failed: ${(err as Error).message}`)

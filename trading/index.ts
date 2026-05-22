@@ -26,6 +26,11 @@ export {
   isLikelyMetadataUri,
 } from './utils/tokenMedia'
 export {
+  parseTokenMetadataJson,
+  isDirectImageUrl,
+  type ParsedTokenMetadata,
+} from './utils/tokenMetadata'
+export {
   countUniqueHolders,
   resolveHolderCount,
   countWalletsWithBalance,
@@ -39,6 +44,7 @@ export {
   entrySignal,
   GRADUATING_CURVE_MIN,
   GRADUATING_CURVE_MAX,
+  pickNearGraduation,
   type FeedQualityFields,
   type ScannerLane,
 } from './utils/feedQuality'

@@ -15,7 +15,12 @@ import {
   bondingCurvePercentFromSol,
   type ScannerLane,
 } from '@phronis/trading'
-import { marketCapUsdFromSol, normalizeVirtualSol, resolveTokenImage } from '@phronis/trading'
+import {
+  marketCapUsdFromSol,
+  normalizeVirtualSol,
+  resolveTokenImage,
+  isDirectImageUrl,
+} from '@phronis/trading'
 import type { TokenChartSeries, ChartPoint } from './chart.types'
 import { TokenMetadataService } from './token-metadata.service'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
@@ -255,10 +260,24 @@ export class TokensService {
   }
 
   async syncFromPump() {
-    const coins = await this.pump.fetchLatestCoins(this.pumpBootstrapLimit())
-    for (const coin of coins) {
+    const limit = this.pumpBootstrapLimit()
+    const [latest, nearGrad] = await Promise.all([
+      this.pump.fetchLatestCoins(limit),
+      this.pump.fetchNearGraduation(30),
+    ])
+    const byMint = new Map<string, PumpCoin>()
+    for (const c of [...latest, ...nearGrad]) byMint.set(c.mint, c)
+
+    for (const coin of byMint.values()) {
       const mapped = await this.mapCoin(coin)
       this.liveFeed.upsert(mapped)
+      void this.enrichTokenMedia(mapped.mint, {
+        metadataUri: coin.metadata_uri,
+        image: coin.image_uri,
+        twitter: coin.twitter,
+        telegram: coin.telegram,
+        website: coin.website,
+      })
       if (this.supabase.enabled && !this.prisma.enabled) {
         await this.supabase.upsertToken(mapped)
         continue
@@ -293,7 +312,40 @@ export class TokensService {
         },
       })
     }
-    return coins.length
+    return byMint.size
+  }
+
+  private async enrichTokenMedia(
+    mint: string,
+    fields: {
+      metadataUri?: string
+      image?: string
+      twitter?: string
+      telegram?: string
+      website?: string
+    },
+  ) {
+    try {
+      const media = await this.metadata.enrichToken(mint, {
+        metadataUri: fields.metadataUri,
+        image: fields.image,
+        twitter: fields.twitter,
+        telegram: fields.telegram,
+        website: fields.website,
+      })
+      const current = this.liveFeed.get(mint)
+      if (!current) return
+      this.liveFeed.upsert({
+        ...current,
+        image: media.image,
+        metadataUri: media.metadataUri ?? current.metadataUri,
+        twitter: media.twitter ?? current.twitter,
+        telegram: media.telegram ?? current.telegram,
+        website: media.website ?? current.website,
+      })
+    } catch (err) {
+      this.logger.debug(`Media enrich ${mint}: ${(err as Error).message}`)
+    }
   }
 
   private async mapCoin(coin: PumpCoin): Promise<FeedToken> {
@@ -304,10 +356,19 @@ export class TokensService {
     }
 
     const bondingCurvePercent = this.pump.calculateBondingPercent(coin)
-    const marketCap = coin.usd_market_cap ?? 0
+    const marketCap = coin.usd_market_cap ?? coin.market_cap ?? 0
     const volume24h = coin.usd_24h_volume ?? 0
-    const holders = Math.max(coin.holder_count ?? 0, 1)
+    const state = this.trading.getState(coin.mint)
+    const holders = state
+      ? resolveHolderCount(state, coin.holder_count)
+      : Math.max(coin.holder_count ?? 0, 1)
     const liquidity = this.pump.solReservesToLiquidity(coin.virtual_sol_reserves ?? 0)
+    const imageField = coin.image_uri
+    const image =
+      imageField && isDirectImageUrl(imageField)
+        ? imageField
+        : this.metadata.getCached(coin.mint) ??
+          resolveTokenImage(coin.mint, { image: imageField, uri: coin.metadata_uri })
 
     const scores = this.pumpportal.ruleBasedSignal({
       mint: coin.mint,
@@ -322,7 +383,11 @@ export class TokensService {
       mint: coin.mint,
       name: coin.name,
       symbol: coin.symbol,
-      image: resolveTokenImage(coin.mint, { image: coin.image_uri }),
+      image,
+      metadataUri: coin.metadata_uri,
+      twitter: coin.twitter,
+      telegram: coin.telegram,
+      website: coin.website,
       marketCap,
       bondingCurvePercent,
       holders,
@@ -363,8 +428,14 @@ export class TokensService {
       symbol: state.symbol ?? coin?.symbol ?? mint.slice(0, 4).toUpperCase(),
       image:
         this.metadata.getCached(mint) ??
-        resolveTokenImage(mint, { image: coin?.image_uri }),
-      marketCap: state.marketCapUsd || (coin?.usd_market_cap ?? 0),
+        (coin?.image_uri && isDirectImageUrl(coin.image_uri)
+          ? coin.image_uri
+          : resolveTokenImage(mint, { image: coin?.image_uri, uri: coin?.metadata_uri })),
+      metadataUri: coin?.metadata_uri,
+      twitter: coin?.twitter ?? this.metadata.getEnrichment(mint)?.twitter,
+      telegram: coin?.telegram,
+      website: coin?.website ?? this.metadata.getEnrichment(mint)?.website,
+      marketCap: state.marketCapUsd || (coin?.usd_market_cap ?? coin?.market_cap ?? 0),
       bondingCurvePercent: state.bondingCurvePercent,
       holders,
       volume24h,
@@ -389,8 +460,18 @@ export class TokensService {
       ...fromState,
       name: fromState.name !== 'Unknown' ? fromState.name : token.name,
       symbol: fromState.symbol || token.symbol,
-      image: token.image || fromState.image,
+      image:
+        this.metadata.getCached(mint) ??
+        (fromState.image && isDirectImageUrl(fromState.image)
+          ? fromState.image
+          : token.image && isDirectImageUrl(token.image)
+            ? token.image
+            : fromState.image || token.image),
       metadataUri: token.metadataUri ?? fromState.metadataUri,
+      twitter: token.twitter ?? fromState.twitter,
+      telegram: token.telegram ?? fromState.telegram,
+      website: token.website ?? fromState.website,
+      bondingCurvePercent: Math.max(token.bondingCurvePercent ?? 0, fromState.bondingCurvePercent),
       holders: Math.max(token.holders ?? 0, fromState.holders),
       volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,

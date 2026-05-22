@@ -4,6 +4,8 @@ import {
   isLikelyMetadataUri,
   normalizeIpfsUrl,
   resolveTokenImageCandidates,
+  parseTokenMetadataJson,
+  isDirectImageUrl,
 } from '@trading'
 
 interface TokenImageProps {
@@ -23,17 +25,61 @@ const sizePx = {
   xl: 80,
 } as const
 
+const IPFS_GATEWAYS = ['https://ipfs.io/ipfs/', 'https://cloudflare-ipfs.com/ipfs/']
+
+async function fetchMetadataImage(uri: string): Promise<string | null> {
+  const normalized = normalizeIpfsUrl(uri)
+  const urls = [normalized]
+  if (uri.startsWith('ipfs://')) {
+    const cid = uri.slice(7)
+    for (const g of IPFS_GATEWAYS) urls.push(`${g}${cid}`)
+  }
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+      if (!res.ok) continue
+      const meta = (await res.json()) as Record<string, unknown>
+      const parsed = parseTokenMetadataJson(meta)
+      if (parsed.image && isDirectImageUrl(parsed.image)) {
+        return normalizeIpfsUrl(parsed.image)
+      }
+    } catch {
+      /* try next gateway */
+    }
+  }
+  return null
+}
+
 export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }: TokenImageProps) {
   const [resolvedFromMeta, setResolvedFromMeta] = useState<string | null>(null)
   const px = sizePx[size]
 
+  const effectiveUri = useMemo(() => {
+    if (uri && isLikelyMetadataUri(uri)) return uri
+    if (image && isLikelyMetadataUri(image)) return image
+    return uri
+  }, [uri, image])
+
+  const directImage = useMemo(() => {
+    if (image && isDirectImageUrl(image)) return normalizeIpfsUrl(image)
+    if (uri && isDirectImageUrl(uri)) return normalizeIpfsUrl(uri)
+    return undefined
+  }, [uri, image])
+
   const candidates = useMemo(() => {
-    const base = resolveTokenImageCandidates(mint, { uri, image })
-    if (resolvedFromMeta && !base.includes(resolvedFromMeta)) {
-      return [resolvedFromMeta, ...base]
+    const base = resolveTokenImageCandidates(mint, {
+      uri: effectiveUri,
+      image: directImage ?? image,
+    })
+    const ordered: string[] = []
+    if (resolvedFromMeta) ordered.push(resolvedFromMeta)
+    if (directImage && !ordered.includes(directImage)) ordered.push(directImage)
+    for (const u of base) {
+      if (!isLikelyMetadataUri(u) && !ordered.includes(u)) ordered.push(u)
     }
-    return base
-  }, [mint, uri, image, resolvedFromMeta])
+    return ordered
+  }, [mint, effectiveUri, image, directImage, resolvedFromMeta])
 
   const [index, setIndex] = useState(0)
   const [failed, setFailed] = useState(false)
@@ -47,25 +93,15 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
   }, [mint, uri, image])
 
   useEffect(() => {
-    if (!uri || !isLikelyMetadataUri(uri)) return
+    if (!effectiveUri || !isLikelyMetadataUri(effectiveUri)) return
     let cancelled = false
-    const url = normalizeIpfsUrl(uri)
-    fetch(url)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((meta: Record<string, unknown> | null) => {
-        if (cancelled || !meta) return
-        const raw =
-          (meta.image as string) ||
-          (meta.image_uri as string) ||
-          (meta.imageUri as string) ||
-          null
-        if (raw) setResolvedFromMeta(normalizeIpfsUrl(raw))
-      })
-      .catch(() => {})
+    void fetchMetadataImage(effectiveUri).then((img) => {
+      if (!cancelled && img) setResolvedFromMeta(img)
+    })
     return () => {
       cancelled = true
     }
-  }, [uri, mint])
+  }, [effectiveUri, mint])
 
   const label = (symbol ?? mint.slice(0, 2)).toUpperCase().slice(0, 2)
   const showFallback = failed || index >= candidates.length

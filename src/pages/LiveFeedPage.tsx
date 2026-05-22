@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
   { id: 'all', label: 'Live', icon: Activity, desc: 'All active Pump.fun launches' },
   { id: 'alpha', label: 'Alpha', icon: Sparkles, desc: 'Quality-filtered — junk hidden' },
-  { id: 'graduating', label: 'Graduating', icon: Rocket, desc: '78–99% curve — near PumpSwap' },
+  { id: 'graduating', label: 'Graduating', icon: Rocket, desc: 'Highest curve % — nearing PumpSwap' },
 ]
 
 export function LiveFeedPage() {

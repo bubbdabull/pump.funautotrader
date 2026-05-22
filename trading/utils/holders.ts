@@ -43,7 +43,9 @@ export function resolveHolderCount(
   const withBalance = countWalletsWithBalance(state)
   const buyers = countUniqueBuyers(state)
   const traders = countUniqueTraders(state)
-  const fromStream = Math.max(withBalance, buyers, traders, 1)
+  const tradeEvents = state.trades.length
+  const fromTrades = tradeEvents >= 4 ? Math.min(tradeEvents, buyers + Math.ceil(traders * 0.6)) : 0
+  const fromStream = Math.max(withBalance, buyers, traders, fromTrades, 1)
   const fromApi = pumpFunHolderCount != null && pumpFunHolderCount > 0 ? pumpFunHolderCount : 0
   return Math.max(fromStream, fromApi)
 }

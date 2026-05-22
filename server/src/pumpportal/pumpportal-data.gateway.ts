@@ -272,7 +272,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         txType: side,
         solAmount: Number(data.solAmount ?? data.sol_amount ?? 0),
         tokenAmount: Number(data.tokenAmount ?? data.token_amount ?? 0),
-        traderPublicKey: data.traderPublicKey ?? data.trader,
+        traderPublicKey:
+          data.traderPublicKey ?? data.trader ?? data.user ?? data.owner,
         signature: data.signature,
       },
       (data.signature as string) ?? undefined,
@@ -292,9 +293,10 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }
     this.logger.log(`New token: ${saved.symbol} (${mint.slice(0, 8)}…)`)
 
-    void this.enrichTokenImage(mint, {
+    void this.enrichTokenMedia(mint, {
       uri: (data.uri as string) ?? event.uri,
-      image: data.image as string | undefined,
+      image: (data.image as string) ?? undefined,
+      metadataUri: (data.metadata_uri as string) ?? (data.uri as string) ?? event.uri,
     })
 
     this.autoTrader.pinTradeStream(mint)
@@ -336,6 +338,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     })
 
     const uri = (data.uri as string) ?? undefined
+    const initialBuy = Number(data.initialBuy ?? 0)
+    const starterHolders = initialBuy > 0 ? 2 : 1
     return {
       mint: data.mint,
       name: (data.name as string) ?? 'Unknown',
@@ -343,11 +347,12 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       image: this.metadata.resolveSync(data.mint, {
         uri,
         image: data.image as string | undefined,
+        metadataUri: uri,
       }),
       metadataUri: uri,
       marketCap,
       bondingCurvePercent: curve,
-      holders: 1,
+      holders: starterHolders,
       volume24h: initialVol,
       signalScore: scores.signalScore,
       momentumScore: scores.momentumScore,
@@ -359,23 +364,30 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async enrichTokenImage(
+  private async enrichTokenMedia(
     mint: string,
-    fields: { uri?: string; image?: string },
+    fields: { uri?: string; image?: string; metadataUri?: string },
   ) {
     try {
-      const imageUrl = await this.metadata.enrichImage(mint, fields)
+      const media = await this.metadata.enrichToken(mint, {
+        uri: fields.uri ?? fields.metadataUri,
+        image: fields.image,
+        metadataUri: fields.metadataUri ?? fields.uri,
+      })
       const current = this.liveFeed.get(mint)
-      if (!current || current.image === imageUrl) return
+      if (!current) return
       const updated = this.tokens.upsertLiveToken({
         ...current,
-        image: imageUrl,
-        metadataUri: fields.uri ?? current.metadataUri,
+        image: media.image,
+        metadataUri: media.metadataUri ?? current.metadataUri,
+        twitter: media.twitter ?? current.twitter,
+        telegram: media.telegram ?? current.telegram,
+        website: media.website ?? current.website,
       })
       this.events.server?.to('feed').emit('feed:patch', updated)
       this.events.server?.emit('token:update', updated)
     } catch (err) {
-      this.logger.debug(`Image enrich failed for ${mint}: ${(err as Error).message}`)
+      this.logger.debug(`Media enrich failed for ${mint}: ${(err as Error).message}`)
     }
   }
 }

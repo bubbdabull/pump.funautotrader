@@ -60,11 +60,17 @@ export class IngestionOrchestratorService implements OnModuleInit {
           mint: event.mint,
           signature: p.signature as string | undefined,
           txType: (p.txType as 'buy' | 'sell') ?? undefined,
-          solAmount: Number(p.solAmount ?? 0),
-          tokenAmount: Number(p.tokenAmount ?? 0),
-          traderPublicKey: p.traderPublicKey as string | undefined,
-          vSolInBondingCurve: Number(p.vSolInBondingCurve ?? 0) || undefined,
-          marketCapSol: Number(p.marketCapSol ?? 0) || undefined,
+          solAmount: Number(p.solAmount ?? p.sol_amount ?? 0),
+          tokenAmount: Number(p.tokenAmount ?? p.token_amount ?? 0),
+          traderPublicKey: (p.traderPublicKey ??
+            p.trader ??
+            p.user ??
+            p.owner) as string | undefined,
+          vSolInBondingCurve:
+            Number(
+              p.vSolInBondingCurve ?? p.virtualSolReserves ?? p.virtual_sol_reserves ?? 0,
+            ) || undefined,
+          marketCapSol: Number(p.marketCapSol ?? p.market_cap_sol ?? 0) || undefined,
           slot: p.slot as number | undefined,
         })
         break

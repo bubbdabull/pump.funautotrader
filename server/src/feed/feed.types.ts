@@ -6,6 +6,9 @@ export interface FeedToken {
   image: string
   /** IPFS / metadata URI from PumpPortal (for image resolution) */
   metadataUri?: string
+  twitter?: string
+  telegram?: string
+  website?: string
   marketCap: number
   bondingCurvePercent: number
   holders: number
