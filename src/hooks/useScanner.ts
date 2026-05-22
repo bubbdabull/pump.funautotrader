@@ -184,10 +184,11 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
     const u5 = wsService.onFeedUpdate((tokens) => {
       const list = normalizePumpTokens(ensureArray(tokens))
       if (list.length === 0) return
-      queryClient.setQueryData(key, (prev) => {
+      queryClient.setQueryData<ScannerPayload>(key, (prev) => {
         const next = payloadFromServer(list, lane)
-        if (lane === 'active' && next.tokens.length < (prev?.tokens?.length ?? 0) / 2) {
-          return prev ?? next
+        const prevLen = prev?.tokens?.length ?? 0
+        if (lane === 'active' && prevLen > 0 && next.tokens.length < prevLen / 2) {
+          return prev
         }
         return next
       })
