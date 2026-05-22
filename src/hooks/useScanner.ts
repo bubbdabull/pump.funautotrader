@@ -8,6 +8,7 @@ import { passesTradeableFilter, type FeedDisplayMode } from '@/lib/feedQuality'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
 import type { TokenChartSeries } from '@/lib/chartTypes'
+import { API_BASE } from '@/lib/apiConfig'
 import { mergePumpTokens, normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 
 type ScannerPayload = {
@@ -47,11 +48,21 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
   const query = useQuery({
     queryKey: key,
     queryFn: async () => {
-      const raw =
-        lane === 'graduating'
-          ? await tokenApi.graduating()
-          : await tokenApi.feed(lane)
-      return buildPayload(ensureArray<PumpToken>(raw), lane)
+      try {
+        const raw =
+          lane === 'graduating'
+            ? await tokenApi.graduating()
+            : await tokenApi.feed(lane)
+        const payload = buildPayload(ensureArray<PumpToken>(raw), lane)
+        if (payload.tokens.length === 0 && lane !== 'graduating') {
+          const fallback = await tokenApi.feed('all')
+          return buildPayload(ensureArray<PumpToken>(fallback), lane)
+        }
+        return payload
+      } catch (err) {
+        const msg = (err as Error).message || 'Feed request failed'
+        throw new Error(`${msg} (${API_BASE}/tokens/feed?lane=${lane})`)
+      }
     },
     refetchInterval: 3_000,
     staleTime: 1_000,
@@ -83,11 +94,13 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
     }
   }, [queryClient, lane])
 
-  const tokens = query.data?.tokens ? mergeQuantHolders(query.data.tokens) : undefined
+  const tokens = query.data?.tokens?.length
+    ? mergeQuantHolders(query.data.tokens)
+    : query.data?.tokens ?? []
 
   return {
     ...query,
-    data: tokens,
+    data: query.isSuccess ? tokens : undefined,
     displayMode: query.data?.mode ?? 'watchlist_fallback',
     tradeableCount: query.data?.tradeableCount ?? 0,
   }

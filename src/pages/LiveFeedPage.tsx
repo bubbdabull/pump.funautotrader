@@ -13,7 +13,7 @@ import type { PumpToken } from '@/types'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { cn } from '@/lib/utils'
 import { useWsConnection } from '@/hooks/useWsConnection'
-import { backendLabel } from '@/lib/apiConfig'
+import { API_BASE, backendLabel } from '@/lib/apiConfig'
 import { isVercelSecurityCheckpoint, VERCEL_CHECKPOINT_HINT } from '@/lib/vercelCheckpoint'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
@@ -76,7 +76,7 @@ export function LiveFeedPage() {
         </div>
         <div className={cn('text-right text-xs', backend.statusTone === 'ok' ? 'text-emerald-400' : 'text-amber-400')}>
           <p className="font-medium">{backend.statusLine}</p>
-          <p className="text-zinc-600">{backend.backendHost}</p>
+          <p className="font-mono text-[10px] text-zinc-600">{API_BASE}</p>
         </div>
       </div>
 

@@ -9,7 +9,7 @@ function normalizeEnvUrl(raw: string | undefined, fallback: string): string {
   return v.replace(/^['"]|['"]$/g, '')
 }
 
-/** Deployed Nest API on Fly — use directly from browser (CORS enabled). */
+/** Deployed Nest API on Fly (PumpPortal + live feed). */
 export const FLY_API_ORIGIN = 'https://pump-funautotrader.fly.dev'
 export const FLY_API_BASE = `${FLY_API_ORIGIN}/api`
 
@@ -19,35 +19,21 @@ function isLocalDevHost(): boolean {
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]'
 }
 
-const envApi = normalizeEnvUrl(import.meta.env.VITE_API_URL, '/api')
-const envWs = normalizeEnvUrl(import.meta.env.VITE_WS_URL, '')
+const envApi = normalizeEnvUrl(import.meta.env.VITE_API_URL, FLY_API_BASE)
+const envWs = normalizeEnvUrl(import.meta.env.VITE_WS_URL, FLY_API_ORIGIN)
 
-/** Prefer Fly when env points at Fly (works from localhost without Vite proxy). */
-function envTargetsFly(): boolean {
-  return envApi.includes('pump-funautotrader.fly.dev') || envWs.includes('pump-funautotrader.fly.dev')
-}
-
-/**
- * Production: always Fly (PumpPortal lives on server, not Vercel).
- * Local: use .env Fly URLs if set, else Vite /api proxy.
- */
-export const API_BASE =
-  isLocalDevHost() && !envTargetsFly() ? envApi || '/api' : FLY_API_BASE
-export const WS_URL =
-  isLocalDevHost() && !envTargetsFly()
-    ? envWs || (typeof window !== 'undefined' ? window.location.origin : '')
-    : FLY_API_ORIGIN
+/** Local dev defaults to Fly unless you set VITE_API_URL=/api with local Nest on :3001. */
+export const API_BASE = isLocalDevHost() ? envApi : FLY_API_BASE
+export const WS_URL = isLocalDevHost() ? envWs : FLY_API_ORIGIN
 
 export function backendLabel(): string {
-  if (isLocalDevHost()) {
-    if (!API_BASE || API_BASE === '/api') return 'local proxy'
-    try {
-      return new URL(API_BASE).host
-    } catch {
-      return API_BASE.slice(0, 40)
-    }
+  try {
+    if (API_BASE.startsWith('http')) return new URL(API_BASE).host
+  } catch {
+    /* fall through */
   }
-  return 'pump-funautotrader.fly.dev'
+  if (API_BASE === '/api') return 'vite proxy → Fly'
+  return API_BASE.slice(0, 48)
 }
 
 export function apiConfigMisconfigured(): boolean {
