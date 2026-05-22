@@ -22,14 +22,21 @@ function isLocalDevHost(): boolean {
 const envApi = normalizeEnvUrl(import.meta.env.VITE_API_URL, '/api')
 const envWs = normalizeEnvUrl(import.meta.env.VITE_WS_URL, '')
 
+/** Prefer Fly when env points at Fly (works from localhost without Vite proxy). */
+function envTargetsFly(): boolean {
+  return envApi.includes('pump-funautotrader.fly.dev') || envWs.includes('pump-funautotrader.fly.dev')
+}
+
 /**
- * Vercel cannot proxy Socket.IO to Fly — WS must hit Fly directly.
- * HTTP also uses Fly in production (Vercel /api rewrites are unreliable).
+ * Production: always Fly (PumpPortal lives on server, not Vercel).
+ * Local: use .env Fly URLs if set, else Vite /api proxy.
  */
-export const API_BASE = isLocalDevHost() ? envApi || '/api' : FLY_API_BASE
-export const WS_URL = isLocalDevHost()
-  ? envWs || (typeof window !== 'undefined' ? window.location.origin : '')
-  : FLY_API_ORIGIN
+export const API_BASE =
+  isLocalDevHost() && !envTargetsFly() ? envApi || '/api' : FLY_API_BASE
+export const WS_URL =
+  isLocalDevHost() && !envTargetsFly()
+    ? envWs || (typeof window !== 'undefined' ? window.location.origin : '')
+    : FLY_API_ORIGIN
 
 export function backendLabel(): string {
   if (isLocalDevHost()) {

@@ -88,6 +88,17 @@ export function passesTradeableFilter(token: FeedQualityFields): boolean {
   const holders = token.holders ?? 0
   const mom = token.momentumScore ?? 0
   const verified = token.holdersVerified === true
+  const hasPumpPortalTicks =
+    token.isActive === true || (token.trades1m ?? 0) > 0 || (token.volume5mSol ?? 0) > 0.01
+
+  /** Live PumpPortal ticks — relaxed bar (bonding-curve tokens rarely have 18+ holders). */
+  if (hasPumpPortalTicks) {
+    if (token.marketCap < 4_000) return false
+    if (signal > 68) return false
+    if (vol < 0.12) return false
+    if (mom < 12) return false
+    return true
+  }
 
   if (token.marketCap < TRADEABLE_MIN_MARKET_CAP_USD) return false
   if (signal > TRADEABLE_MAX_SIGNAL) return false

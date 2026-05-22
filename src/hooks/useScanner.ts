@@ -45,7 +45,10 @@ function payloadFromServer(tokens: PumpToken[] | unknown, lane: ScannerLane): Sc
   if (lane === 'active') {
     return { tokens: list, mode: 'active', tradeableCount }
   }
-  if (lane === 'tradeable' || lane === 'all') {
+  if (lane === 'all') {
+    return { tokens: list, mode: 'active', tradeableCount }
+  }
+  if (lane === 'tradeable') {
     const mode: FeedDisplayMode = tradeableCount > 0 ? 'tradeable' : 'watchlist_fallback'
     return { tokens: list, mode, tradeableCount }
   }
@@ -89,9 +92,7 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       const raw =
         lane === 'graduating'
           ? await tokenApi.graduating()
-          : await tokenApi.feed(
-              lane === 'alpha' ? 'alpha' : lane === 'active' ? 'active' : 'tradeable',
-            )
+          : await tokenApi.feed(lane === 'tradeable' ? 'tradeable' : lane)
       return payloadFromServer(ensureArray<PumpToken>(raw), lane)
     },
     refetchInterval: 4_000,
@@ -115,19 +116,28 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       })
     }
 
-    const onTradeable = (token: PumpToken) => {
+    const onStreamToken = (raw: PumpToken) => {
+      const token = normalizePumpToken(raw)
+      const hasLive =
+        token.isActive ||
+        (token.trades1m ?? 0) > 0 ||
+        (token.volume5mSol ?? 0) > 0 ||
+        Boolean(token.lastTradeAt)
+
+      if (lane === 'all' || lane === 'active') {
+        if (hasLive || token.marketCap >= 3_000) pushToken(token)
+      } else if (lane === 'alpha' && passesAlphaFilter(token)) {
+        pushToken(token)
+      } else if (lane === 'tradeable' && passesTradeableFilter(token)) {
+        pushToken(token)
+      }
+
       if (passesTradeableFilter(token)) {
         queryClient.setQueryData<ScannerPayload>(['tokens', 'scanner', 'tradeable'], (old) => {
           const merged = upsert(old?.tokens ?? [], token)
           return applyLane(merged, 'tradeable')
         })
       }
-      if (lane === 'active') {
-        if (token.isActive || (token.trades1m ?? 0) > 0 || (token.volume5mSol ?? 0) > 0) {
-          pushToken(token)
-        }
-      } else if (lane === 'tradeable' || lane === 'all') pushToken(token)
-      else if (lane === 'alpha' && passesAlphaFilter(token)) pushToken(token)
     }
 
     const onGraduating = (token: PumpToken) => {
@@ -173,10 +183,10 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       if (isGraduatingSoon(token)) onGraduating(token)
     }
 
-    const u1 = wsService.onFeedPrepend(onTradeable)
+    const u1 = wsService.onFeedPrepend(onStreamToken)
     const u2 = wsService.onPumpPortalToken((t) => {
       if (isGraduatingSoon(t)) onGraduating(t)
-      else onTradeable(t)
+      else onStreamToken(t)
     })
     const u3 = wsService.onFeedPatch(onPatch)
     const u3b = wsService.onTokenUpdate(onPatch)
@@ -187,7 +197,11 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       queryClient.setQueryData<ScannerPayload>(key, (prev) => {
         const next = payloadFromServer(list, lane)
         const prevLen = prev?.tokens?.length ?? 0
-        if (lane === 'active' && prevLen > 0 && next.tokens.length < prevLen / 2) {
+        if (
+          (lane === 'active' || lane === 'all') &&
+          prevLen > 5 &&
+          next.tokens.length < prevLen / 2
+        ) {
           return prev
         }
         return next

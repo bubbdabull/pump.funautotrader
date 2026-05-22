@@ -36,7 +36,7 @@ export class EventsGateway implements OnGatewayConnection {
   @SubscribeMessage('subscribe:feed')
   async handleFeedSubscribe(client: Socket) {
     client.join('feed')
-    const feed = await this.tokens.getFeed()
+    const feed = await this.tokens.getFeed('all')
     client.emit('feed:update', feed)
   }
 
@@ -51,7 +51,7 @@ export class EventsGateway implements OnGatewayConnection {
 
   async broadcastFeed() {
     try {
-      const feed = await this.tokens.getFeed()
+      const feed = await this.tokens.getFeed('all')
       this.server.to('feed').emit('feed:update', feed)
     } catch (err) {
       this.logger.warn(`Feed broadcast error: ${(err as Error).message}`)

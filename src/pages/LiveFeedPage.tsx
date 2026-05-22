@@ -18,23 +18,29 @@ import { isVercelSecurityCheckpoint, VERCEL_CHECKPOINT_HINT } from '@/lib/vercel
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
   {
-    id: 'active',
-    label: 'Live',
+    id: 'all',
+    label: 'All Live',
     icon: Radio,
-    desc: 'Traded in last 2m — real ticks, not dead bootstrap',
+    desc: 'Full PumpPortal feed (~80) — primary data source',
+  },
+  {
+    id: 'active',
+    label: 'Hot',
+    icon: Activity,
+    desc: 'Traded in last 2m — ranked by live ticks',
   },
   {
     id: 'tradeable',
     label: 'Tradeable',
     icon: Sparkles,
-    desc: 'Trade-grade · falls back to watchlist if none qualify',
+    desc: 'Stricter filters for auto-trade candidates',
   },
   { id: 'alpha', label: 'Watchlist', icon: Activity, desc: '$3k+ mcap — broader, still filtered' },
   { id: 'graduating', label: 'Graduating', icon: Rocket, desc: 'Highest curve % — nearing PumpSwap' },
 ]
 
 export function LiveFeedPage() {
-  const [lane, setLane] = useState<ScannerLane>('tradeable')
+  const [lane, setLane] = useState<ScannerLane>('all')
   const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
   const {
@@ -168,7 +174,10 @@ export function LiveFeedPage() {
           )}
         </select>
         <span className="text-xs text-zinc-600">
-          {filtered.length} shown · junk filtered server-side
+          {filtered.length} shown
+          {backend.feedTokensOnServer > 0
+            ? ` · ${backend.feedTokensOnServer} on PumpPortal stream`
+            : ''}
         </span>
       </div>
 
