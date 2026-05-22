@@ -1,4 +1,15 @@
-import { Controller, Get, Header, Inject, Param, Post, Query, forwardRef } from '@nestjs/common'
+import {
+  Controller,
+  Get,
+  Header,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Res,
+  forwardRef,
+} from '@nestjs/common'
+import type { Response } from 'express'
 import { TokensService } from './tokens.service'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 import type { ScannerLane } from '@phronis/trading'
@@ -73,6 +84,18 @@ export class TokensController {
   @Header('Cache-Control', 'no-store')
   trades(@Param('mint') mint: string) {
     return this.tokens.getTrades(mint)
+  }
+
+  @Get(':mint/icon')
+  @Header('Cache-Control', 'public, max-age=300')
+  async icon(@Param('mint') mint: string, @Res() res: Response) {
+    const result = await this.tokens.getTokenIcon(mint)
+    if (!result) {
+      res.status(404).end()
+      return
+    }
+    res.setHeader('Content-Type', result.contentType)
+    res.send(result.data)
   }
 
   @Get(':mint')

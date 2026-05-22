@@ -1,4 +1,5 @@
 import { Injectable, Inject, Logger, forwardRef } from '@nestjs/common'
+import axios from 'axios'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../prisma/prisma.service'
 import { PumpService, type PumpCoin } from '../pump/pump.service'
@@ -28,7 +29,11 @@ import {
   normalizeVirtualSol,
   resolveTokenImage,
   resolveDisplayImage,
+  coalesceTokenImage,
   isDirectImageUrl,
+  isUsableTokenImageUrl,
+  isBrokenPumpFunImageUrl,
+  isLikelyMetadataUri,
   isPlaceholderTokenImage,
 } from '@phronis/trading'
 import type { TokenChartSeries, ChartPoint, OhlcvCandle } from './chart.types'
@@ -40,6 +45,10 @@ import { EventsGateway } from '../events/events.gateway'
 @Injectable()
 export class TokensService {
   private readonly logger = new Logger(TokensService.name)
+  private readonly iconCache = new Map<
+    string,
+    { data: Buffer; contentType: string; at: number }
+  >()
 
   constructor(
     private config: ConfigService,
@@ -529,9 +538,18 @@ export class TokensService {
     },
   ) {
     try {
+      let image = fields.image
+      let metadataUri = fields.metadataUri
+      if (!isUsableTokenImageUrl(image) || isBrokenPumpFunImageUrl(image)) {
+        const coin = await this.pump.getCoin(mint)
+        if (coin?.image_uri && isUsableTokenImageUrl(coin.image_uri)) {
+          image = coin.image_uri
+          metadataUri = metadataUri ?? coin.metadata_uri
+        }
+      }
       const media = await this.metadata.enrichToken(mint, {
-        metadataUri: fields.metadataUri,
-        image: fields.image,
+        metadataUri,
+        image,
         twitter: fields.twitter,
         telegram: fields.telegram,
         website: fields.website,
@@ -580,6 +598,7 @@ export class TokensService {
     const liquidity = this.pump.solReservesToLiquidity(coin.virtual_sol_reserves ?? 0)
     const image =
       this.metadata.getCached(coin.mint) ||
+      coalesceTokenImage(coin.mint, { image: coin.image_uri, uri: coin.metadata_uri }) ||
       resolveDisplayImage(coin.mint, { image: coin.image_uri, uri: coin.metadata_uri })
 
     const scores = this.pumpportal.ruleBasedSignal({
@@ -652,6 +671,7 @@ export class TokensService {
       symbol: state.symbol ?? coin?.symbol ?? mint.slice(0, 4).toUpperCase(),
       image:
         this.metadata.getCached(mint) ||
+        coalesceTokenImage(mint, { image: coin?.image_uri, uri: coin?.metadata_uri }) ||
         resolveDisplayImage(mint, { image: coin?.image_uri, uri: coin?.metadata_uri }),
       metadataUri: coin?.metadata_uri,
       twitter: coin?.twitter ?? this.metadata.getEnrichment(mint)?.twitter,
@@ -679,22 +699,77 @@ export class TokensService {
   /** Resolve IPFS/metadata images for rows still on placeholder URLs. */
   private pickFeedImage(mint: string, ...urls: (string | undefined)[]): string {
     const cached = this.metadata.getCached(mint)
-    if (cached && !isPlaceholderTokenImage(cached)) return cached
+    if (cached && isUsableTokenImageUrl(cached)) return cached
     for (const u of urls) {
-      if (u && !isPlaceholderTokenImage(u) && isDirectImageUrl(u)) return u
+      if (u && isUsableTokenImageUrl(u)) return u
     }
-    return ''
+    return coalesceTokenImage(mint, { image: urls.find(Boolean) })
+  }
+
+  /** Serve token image bytes (resolves IPFS / pump.fun metadata server-side). */
+  async getTokenIcon(mint: string): Promise<{ data: Buffer; contentType: string } | null> {
+    const hit = this.iconCache.get(mint)
+    if (hit && Date.now() - hit.at < 300_000) {
+      return { data: hit.data, contentType: hit.contentType }
+    }
+
+    const live = this.liveFeed.get(mint)
+    let media = await this.metadata.enrichToken(mint, {
+      metadataUri: live?.metadataUri,
+      image: live?.image,
+      twitter: live?.twitter,
+      telegram: live?.telegram,
+      website: live?.website,
+    })
+
+    if (!media.image || isPlaceholderTokenImage(media.image)) {
+      const coin = await this.pump.getCoin(mint)
+      if (coin) {
+        media = await this.metadata.enrichToken(mint, {
+          metadataUri: coin.metadata_uri,
+          image: coin.image_uri,
+        })
+      }
+    }
+
+    const url =
+      media.image && !isPlaceholderTokenImage(media.image)
+        ? media.image
+        : resolveDisplayImage(mint, { uri: media.metadataUri, image: live?.image })
+
+    if (!url || isPlaceholderTokenImage(url) || isLikelyMetadataUri(url)) {
+      return null
+    }
+
+    try {
+      const res = await axios.get(url, {
+        timeout: 12_000,
+        maxRedirects: 5,
+        responseType: 'arraybuffer',
+        maxContentLength: 2_000_000,
+        headers: { Accept: 'image/*', Referer: 'https://pump.fun/' },
+      })
+      const ct = String(res.headers['content-type'] ?? 'image/jpeg')
+      if (!ct.startsWith('image/')) return null
+      const data = Buffer.from(res.data as ArrayBuffer)
+      if (data.length < 48) return null
+      this.iconCache.set(mint, { data, contentType: ct, at: Date.now() })
+      return { data, contentType: ct }
+    } catch (err) {
+      this.logger.debug(`Icon ${mint.slice(0, 8)}: ${(err as Error).message}`)
+      return null
+    }
   }
 
   private kickImageEnrich(tokens: FeedToken[]) {
     const batch = tokens
       .filter((t) => {
         const cached = this.metadata.getCached(t.mint)
-        if (cached && !isPlaceholderTokenImage(cached)) return false
-        if (t.image && !isPlaceholderTokenImage(t.image)) return false
-        return Boolean(t.metadataUri || t.image)
+        if (cached && isUsableTokenImageUrl(cached)) return false
+        if (t.image && isUsableTokenImageUrl(t.image)) return false
+        return true
       })
-      .slice(0, 18)
+      .slice(0, 40)
     for (const t of batch) {
       void this.enrichTokenMedia(t.mint, {
         metadataUri: t.metadataUri,

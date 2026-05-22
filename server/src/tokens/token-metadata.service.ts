@@ -3,10 +3,12 @@ import axios from 'axios'
 import {
   isLikelyMetadataUri,
   normalizeIpfsUrl,
+  coalesceTokenImage,
   resolveDisplayImage,
   resolveTokenImageCandidates,
   parseTokenMetadataJson,
   isDirectImageUrl,
+  isUsableTokenImageUrl,
   isPlaceholderTokenImage,
   type ParsedTokenMetadata,
 } from '@phronis/trading'
@@ -54,7 +56,9 @@ export class TokenMetadataService {
       return img
     }
 
-    const img = resolveDisplayImage(mint, { uri: metaUri, image: direct })
+    const img =
+      coalesceTokenImage(mint, { uri: metaUri, image: direct }) ||
+      resolveDisplayImage(mint, { uri: metaUri, image: direct })
     if (img) this.imageCache.set(mint, img)
     return img
   }
@@ -116,7 +120,8 @@ export class TokenMetadataService {
     }
 
     const image =
-      (parsed.image && !isPlaceholderTokenImage(parsed.image) ? parsed.image : '') ||
+      (parsed.image && isUsableTokenImageUrl(parsed.image) ? parsed.image : '') ||
+      coalesceTokenImage(mint, { uri: metadataUri, image: fields?.image }) ||
       resolveDisplayImage(mint, { uri: metadataUri, image: fields?.image })
     const result: TokenMediaEnrichment = {
       image: image || '',

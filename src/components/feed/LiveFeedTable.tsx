@@ -12,6 +12,7 @@ import {
   cn,
 } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
+import { tokenMediaProps } from '@/lib/tokenMediaProps'
 import { ActivityPulse, TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 import { LiveValue } from '@/components/shared/LiveValue'
 import { RugBadge } from '@/components/quant/RugBadge'
@@ -105,13 +106,7 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                             fill={watchlist.includes(token.mint) ? 'currentColor' : 'none'}
                           />
                         </button>
-                        <TokenImage
-                          mint={token.mint}
-                          symbol={token.symbol}
-                          image={token.image}
-                          uri={token.metadataUri}
-                          size="sm"
-                        />
+                        <TokenImage {...tokenMediaProps(token)} size="sm" />
                         <Link
                           to={`/token/${token.mint}`}
                           className="min-w-0 flex-1 overflow-hidden hover:text-violet-300"

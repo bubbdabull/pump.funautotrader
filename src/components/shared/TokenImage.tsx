@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { API_BASE } from '@/lib/apiConfig'
 import {
   isLikelyMetadataUri,
+  isUsableTokenImageUrl,
   normalizeIpfsUrl,
   resolveTokenImageCandidates,
   parseTokenMetadataJson,
-  isDirectImageUrl,
 } from '@trading'
 
 interface TokenImageProps {
@@ -42,47 +41,14 @@ async function fetchMetadataImage(uri: string): Promise<string | null> {
       if (!res.ok) continue
       const meta = (await res.json()) as Record<string, unknown>
       const parsed = parseTokenMetadataJson(meta)
-      if (parsed.image && isDirectImageUrl(parsed.image)) {
+      if (parsed.image && isUsableTokenImageUrl(parsed.image)) {
         return normalizeIpfsUrl(parsed.image)
       }
     } catch {
-      /* try next gateway */
+      /* next */
     }
   }
   return null
-}
-
-async function fetchPumpFunImageUri(mint: string): Promise<string | null> {
-  try {
-    const res = await fetch(`https://frontend-api-v3.pump.fun/coins/${mint}`, {
-      signal: AbortSignal.timeout(6000),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { image_uri?: string; metadata_uri?: string }
-    if (data.image_uri && isDirectImageUrl(data.image_uri)) {
-      return normalizeIpfsUrl(data.image_uri)
-    }
-    if (data.metadata_uri) return data.metadata_uri
-  } catch {
-    /* CORS or network — fall through */
-  }
-  return null
-}
-
-async function fetchTokenMetaFromApi(mint: string): Promise<{ uri?: string; image?: string } | null> {
-  try {
-    const res = await fetch(`${API_BASE}/tokens/${mint}`, {
-      signal: AbortSignal.timeout(8000),
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { metadataUri?: string; image?: string; uri?: string }
-    return {
-      uri: data.metadataUri || data.uri,
-      image: data.image,
-    }
-  } catch {
-    return null
-  }
 }
 
 export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }: TokenImageProps) {
@@ -95,28 +61,20 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
     return uri
   }, [uri, image])
 
-  const directImage = useMemo(() => {
-    if (image && isDirectImageUrl(image)) return normalizeIpfsUrl(image)
-    if (uri && isDirectImageUrl(uri)) return normalizeIpfsUrl(uri)
-    return undefined
-  }, [uri, image])
-
   const candidates = useMemo(() => {
-    const base = resolveTokenImageCandidates(mint, {
-      uri: effectiveUri,
-      image: directImage ?? image,
-    })
     const ordered: string[] = []
-    if (resolvedFromMeta) ordered.push(resolvedFromMeta)
-    if (image?.includes('pump.fun/coin/') && !ordered.includes(image)) {
-      ordered.push(image)
+    const add = (u?: string | null) => {
+      if (!u || !isUsableTokenImageUrl(u)) return
+      const n = normalizeIpfsUrl(u)
+      if (!ordered.includes(n)) ordered.push(n)
     }
-    if (directImage && !ordered.includes(directImage)) ordered.push(directImage)
-    for (const u of base) {
-      if (!isLikelyMetadataUri(u) && !ordered.includes(u)) ordered.push(u)
+    add(image)
+    add(resolvedFromMeta)
+    for (const u of resolveTokenImageCandidates(mint, { uri: effectiveUri, image })) {
+      add(u)
     }
     return ordered
-  }, [mint, effectiveUri, image, directImage, resolvedFromMeta])
+  }, [mint, effectiveUri, image, resolvedFromMeta])
 
   const [index, setIndex] = useState(0)
   const [failed, setFailed] = useState(false)
@@ -140,39 +98,9 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
     }
   }, [effectiveUri, mint])
 
-  useEffect(() => {
-    if (effectiveUri || resolvedFromMeta || (image && isDirectImageUrl(image))) return
-    let cancelled = false
-    void (async () => {
-      const fromApi = await fetchTokenMetaFromApi(mint)
-      if (cancelled) return
-      if (fromApi?.uri && isLikelyMetadataUri(fromApi.uri)) {
-        const img = await fetchMetadataImage(fromApi.uri)
-        if (!cancelled && img) {
-          setResolvedFromMeta(img)
-          return
-        }
-      }
-      if (fromApi?.image && isDirectImageUrl(fromApi.image) && !cancelled) {
-        setResolvedFromMeta(normalizeIpfsUrl(fromApi.image))
-        return
-      }
-      const pump = await fetchPumpFunImageUri(mint)
-      if (!cancelled && pump) {
-        if (isDirectImageUrl(pump)) setResolvedFromMeta(pump)
-        else {
-          const img = await fetchMetadataImage(pump)
-          if (!cancelled && img) setResolvedFromMeta(img)
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [mint, effectiveUri, image, resolvedFromMeta])
-
   const label = (symbol ?? mint.slice(0, 2)).toUpperCase().slice(0, 2)
   const showFallback = failed || index >= candidates.length
+  const src = candidates[index]
 
   return (
     <div
@@ -184,9 +112,9 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
       aria-label={symbol ?? mint}
     >
       {showFallback ? (
-        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-600/35 via-slate-800 to-cyan-600/25">
+        <div className="flex h-full w-full items-center justify-center bg-slate-800/90">
           <span
-            className="font-bold tracking-tight text-white"
+            className="font-bold tracking-tight text-zinc-500"
             style={{ fontSize: Math.max(10, px * 0.32) }}
           >
             {label}
@@ -195,17 +123,11 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
       ) : (
         <>
           {!loaded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-800/80">
-              <span
-                className="font-bold text-zinc-500"
-                style={{ fontSize: Math.max(9, px * 0.28) }}
-              >
-                {label}
-              </span>
-            </div>
+            <div className="absolute inset-0 animate-pulse bg-slate-800/80" />
           )}
           <img
-            src={candidates[index]}
+            key={`${mint}-${index}-${src.slice(0, 48)}`}
+            src={src}
             alt=""
             loading="lazy"
             decoding="async"
@@ -219,7 +141,9 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
               if (index + 1 < candidates.length) {
                 setIndex((i) => i + 1)
                 setLoaded(false)
-              } else setFailed(true)
+              } else {
+                setFailed(true)
+              }
             }}
           />
         </>

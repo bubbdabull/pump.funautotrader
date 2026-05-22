@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Users } from 'lucide-react'
 import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor, cn } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
+import { tokenMediaProps } from '@/lib/tokenMediaProps'
 import { ActivityPulse, TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 import { LiveValue } from '@/components/shared/LiveValue'
 import { RugBadge } from '@/components/quant/RugBadge'
@@ -52,13 +53,7 @@ export function LiveFeedCards({ tokens }: LiveFeedCardsProps) {
                 )}
               >
                 <div className="relative shrink-0">
-                  <TokenImage
-                    mint={token.mint}
-                    symbol={token.symbol}
-                    image={token.image}
-                    uri={token.metadataUri}
-                    size="md"
-                  />
+                  <TokenImage {...tokenMediaProps(token)} size="md" />
                   {token.isActive && (
                     <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />

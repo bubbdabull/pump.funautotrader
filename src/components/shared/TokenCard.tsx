@@ -5,6 +5,7 @@ import { GlassCard } from './GlassCard'
 import { Badge } from '@/components/ui/badge'
 import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
+import { tokenMediaProps } from '@/lib/tokenMediaProps'
 import { ActivityPulse } from '@/components/shared/TokenActivityBadges'
 import type { PumpToken } from '@/types'
 
@@ -24,13 +25,7 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
         <GlassCard hover className="group">
           <div className="flex items-center gap-3">
             <div className="shrink-0">
-              <TokenImage
-                mint={token.mint}
-                symbol={token.symbol}
-                image={token.image}
-                uri={token.metadataUri}
-                size="md"
-              />
+              <TokenImage {...tokenMediaProps(token)} size="md" />
             </div>
             <div className="min-w-0 flex-1 overflow-hidden">
               <div className="flex min-w-0 items-center gap-2">

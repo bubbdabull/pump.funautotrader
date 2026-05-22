@@ -1,4 +1,4 @@
-import { isPlaceholderTokenImage } from '@trading'
+import { isUsableTokenImageUrl } from '@trading'
 import type { PumpToken } from '@/types'
 
 /** Light touch only — keep server image/uri; fix false verified flags. */
@@ -7,7 +7,7 @@ export function normalizePumpToken(raw: PumpToken): PumpToken {
   const holders = Math.max(0, Math.round(t.holders ?? 0))
   t.holders = holders
   t.holdersVerified = Boolean(t.holdersVerified) && holders >= 2
-  if (t.image && isPlaceholderTokenImage(t.image)) {
+  if (t.image && !isUsableTokenImageUrl(t.image)) {
     t.image = ''
   }
   return t

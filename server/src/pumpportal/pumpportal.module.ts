@@ -10,9 +10,11 @@ import { IngestionModule } from '../ingestion/ingestion.module'
 import { QuantModule } from '../quant/quant.module'
 import { HoldersModule } from '../holders/holders.module'
 import { TradeDataModule } from '../trade-data/trade-data.module'
+import { PumpModule } from '../pump/pump.module'
 
 @Module({
   imports: [
+    PumpModule,
     TradingModule,
     IngestionModule,
     HoldersModule,

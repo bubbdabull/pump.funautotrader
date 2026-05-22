@@ -15,20 +15,11 @@ import {
 import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
 import type { TokenChartSeries } from '@/lib/chartTypes'
-
-function isPlaceholderImage(url?: string): boolean {
-  if (!url?.trim()) return true
-  const u = url.toLowerCase()
-  return (
-    u.includes('dexscreener.com/ds-data') ||
-    u.includes('imagedelivery.net/wl1joijim_na') ||
-    (u.includes('pump.fun/coin/') && u.endsWith('.png'))
-  )
-}
+import { isUsableTokenImageUrl } from '@trading'
 
 function preferImage(next?: string, prev?: string): string {
-  if (next && !isPlaceholderImage(next)) return next
-  if (prev && !isPlaceholderImage(prev)) return prev
+  if (next && isUsableTokenImageUrl(next)) return next
+  if (prev && isUsableTokenImageUrl(prev)) return prev
   return next || prev || ''
 }
 

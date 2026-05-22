@@ -16,6 +16,13 @@ export function isDirectImageUrl(url: string): boolean {
   if (!u) return false
   if (isLikelyMetadataUri(u)) return false
   if (IMAGE_EXT.test(u)) return true
+  if (
+    /(arweave\.net|digitaloceanspaces|assets\.pump\.fun|mypinata|cloudflare-ipfs|ipfs\.io)/i.test(
+      u,
+    )
+  ) {
+    return !u.endsWith('.json')
+  }
   if (u.includes('/ipfs/') && !u.endsWith('.json') && !u.includes('metadata')) {
     const path = u.split('/ipfs/')[1] ?? ''
     if (path.length < 60 && !path.includes('/')) return true

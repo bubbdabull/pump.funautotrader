@@ -21,54 +21,14 @@ export function marketCapUsdFromSol(marketCapSol: number): number {
   return sol * SOL_USD_ESTIMATE
 }
 
-export function resolveTokenImageCandidates(
-  mint: string,
-  fields?: { uri?: string; image?: string; imageUri?: string },
-): string[] {
-  const out: string[] = []
-  const push = (u?: string) => {
-    if (!u || out.includes(u)) return
-    out.push(u)
-  }
-
-  const uri = fields?.uri
-  if (uri) {
-    push(normalizeIpfsUrl(uri))
-  }
-
-  if (fields?.image && !isPlaceholderTokenImage(fields.image)) {
-    push(fields.image)
-  }
-  if (fields?.imageUri && !isPlaceholderTokenImage(fields.imageUri)) {
-    push(fields.imageUri)
-  }
-
-  push(`https://pump.fun/coin/${mint}/image`)
-  push(`https://assets.pump.fun/coins/${mint}.png`)
-  push(`https://pump.fun/coin/${mint}.png`)
-
-  if (uri?.startsWith('ipfs://')) {
-    const cid = uri.slice(7).split('/')[0]
-    push(`https://cloudflare-ipfs.com/ipfs/${cid}`)
-    push(`https://gateway.pinata.cloud/ipfs/${cid}`)
-  }
-
-  // Last-resort CDNs (often 404 on fresh mints — do not use as primary `image` field)
-  push(`https://dd.dexscreener.com/ds-data/tokens/solana/${mint}.png`)
-  push(`https://imagedelivery.net/WL1JOIJiM_NAChp6rtB6Q/coin-image/${mint}/600x600`)
-
-  return out
-}
-
-/** Best URL to store on feed rows — never a known placeholder CDN. */
-export function resolveDisplayImage(
-  mint: string,
-  fields?: { uri?: string; image?: string; imageUri?: string },
-): string {
-  for (const u of resolveTokenImageCandidates(mint, fields)) {
-    if (!isPlaceholderTokenImage(u) && !isLikelyMetadataUri(u)) return u
-  }
-  return ''
+/** pump.fun page URLs — not real image files (usually 404). */
+export function isBrokenPumpFunImageUrl(url?: string): boolean {
+  if (!url?.trim()) return false
+  const u = url.toLowerCase()
+  return (
+    u.includes('pump.fun/coin/') &&
+    (u.endsWith('/image') || u.endsWith('.png') || u.endsWith('.jpg'))
+  )
 }
 
 /** Generic CDN fallbacks — not a real token image until metadata resolves. */
@@ -76,10 +36,77 @@ export function isPlaceholderTokenImage(url?: string): boolean {
   if (!url?.trim()) return true
   const u = url.toLowerCase()
   return (
+    isBrokenPumpFunImageUrl(u) ||
     u.includes('dexscreener.com/ds-data') ||
-    u.includes('imagedelivery.net/wl1joijim_na') ||
-    (u.includes('pump.fun/coin/') && u.endsWith('.png'))
+    u.includes('imagedelivery.net/wl1joijim_na')
   )
+}
+
+/** Real display URL from pump.fun API / IPFS / Arweave / CDN — safe for <img src>. */
+export function isUsableTokenImageUrl(url?: string): boolean {
+  if (!url?.trim()) return false
+  if (isPlaceholderTokenImage(url)) return false
+  if (isLikelyMetadataUri(url)) return false
+  const u = url.trim().toLowerCase()
+  if (/\.(png|jpe?g|gif|webp|svg|avif)(\?|$)/i.test(u)) return true
+  if (
+    /(arweave\.net|ipfs\.io|cloudflare-ipfs|pinata|mypinata|digitaloceanspaces|amazonaws\.com|assets\.pump\.fun|pbs\.twimg|blob:)/i.test(
+      u,
+    )
+  ) {
+    return true
+  }
+  if (u.includes('/ipfs/') && !u.endsWith('.json')) return true
+  return false
+}
+
+/** Prefer pump.fun `image_uri` / PumpPortal `image` before broken page URLs. */
+export function coalesceTokenImage(
+  _mint: string,
+  fields?: { uri?: string; image?: string; imageUri?: string },
+): string {
+  for (const raw of [fields?.image, fields?.imageUri]) {
+    if (raw && isUsableTokenImageUrl(raw)) return normalizeIpfsUrl(raw)
+  }
+  return ''
+}
+
+export function resolveTokenImageCandidates(
+  mint: string,
+  fields?: { uri?: string; image?: string; imageUri?: string },
+): string[] {
+  const out: string[] = []
+  const push = (u?: string) => {
+    if (!u || out.includes(u)) return
+    if (!isUsableTokenImageUrl(u)) return
+    out.push(normalizeIpfsUrl(u))
+  }
+
+  push(coalesceTokenImage(mint, fields))
+
+  const uri = fields?.uri
+  if (uri?.startsWith('ipfs://')) {
+    const cid = uri.slice(7).split('/')[0]
+    push(`https://cloudflare-ipfs.com/ipfs/${cid}`)
+    push(`https://gateway.pinata.cloud/ipfs/${cid}`)
+  }
+
+  push(`https://assets.pump.fun/coins/${mint}.png`)
+
+  return out
+}
+
+/** Best URL to store on feed rows — real image_uri only, never broken pump.fun page URLs. */
+export function resolveDisplayImage(
+  mint: string,
+  fields?: { uri?: string; image?: string; imageUri?: string },
+): string {
+  const direct = coalesceTokenImage(mint, fields)
+  if (direct) return direct
+  for (const u of resolveTokenImageCandidates(mint, fields)) {
+    if (isUsableTokenImageUrl(u)) return u
+  }
+  return ''
 }
 
 export function resolveTokenImage(

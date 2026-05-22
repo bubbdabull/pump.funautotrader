@@ -11,7 +11,10 @@ import {
   bondingCurvePercentFromSol,
   marketCapUsdFromSol,
   normalizeVirtualSol,
+  coalesceTokenImage,
+  isUsableTokenImageUrl,
 } from '@phronis/trading'
+import { PumpService } from '../pump/pump.service'
 import type { PumpPortalNewTokenEvent } from './pumpportal.types'
 import type { FeedToken } from '../feed/feed.types'
 import { pickMintsForTradeSubscription } from './trade-subscription.util'
@@ -50,6 +53,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     private tokens: TokensService,
     private liveFeed: LiveFeedService,
     private metadata: TokenMetadataService,
+    private pump: PumpService,
     private ingestion: IngestionOrchestratorService,
     @Inject(forwardRef(() => QuantEngineService))
     private quant: QuantEngineService,
@@ -537,11 +541,16 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       mint: data.mint,
       name: (data.name as string) ?? 'Unknown',
       symbol: (data.symbol as string) ?? data.mint.slice(0, 4).toUpperCase(),
-      image: this.metadata.resolveSync(data.mint, {
-        uri,
-        image: data.image as string | undefined,
-        metadataUri: uri,
-      }),
+      image:
+        coalesceTokenImage(data.mint, {
+          image: data.image as string | undefined,
+          uri,
+        }) ||
+        this.metadata.resolveSync(data.mint, {
+          uri,
+          image: data.image as string | undefined,
+          metadataUri: uri,
+        }),
       metadataUri: uri,
       marketCap,
       bondingCurvePercent: curve,
@@ -562,10 +571,19 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     fields: { uri?: string; image?: string; metadataUri?: string },
   ) {
     try {
+      let image = fields.image
+      let metadataUri = fields.metadataUri ?? fields.uri
+      if (!isUsableTokenImageUrl(image)) {
+        const coin = await this.pump.getCoin(mint)
+        if (coin?.image_uri && isUsableTokenImageUrl(coin.image_uri)) {
+          image = coin.image_uri
+          metadataUri = metadataUri ?? coin.metadata_uri
+        }
+      }
       const media = await this.metadata.enrichToken(mint, {
-        uri: fields.uri ?? fields.metadataUri,
-        image: fields.image,
-        metadataUri: fields.metadataUri ?? fields.uri,
+        uri: metadataUri,
+        image,
+        metadataUri,
       })
       const current = this.liveFeed.get(mint)
       const base = current ?? (await this.tokens.getToken(mint))
