@@ -12,17 +12,21 @@ interface TokenImageProps {
   uri?: string
   image?: string
   className?: string
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 }
 
-const sizeClass = {
-  sm: 'h-9 w-9 text-[10px]',
-  md: 'h-12 w-12 text-sm',
-  lg: 'h-16 w-16 text-base',
-}
+const sizePx = {
+  xs: 28,
+  sm: 36,
+  md: 48,
+  lg: 64,
+  xl: 80,
+} as const
 
 export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }: TokenImageProps) {
   const [resolvedFromMeta, setResolvedFromMeta] = useState<string | null>(null)
+  const px = sizePx[size]
+
   const candidates = useMemo(() => {
     const base = resolveTokenImageCandidates(mint, { uri, image })
     if (resolvedFromMeta && !base.includes(resolvedFromMeta)) {
@@ -33,10 +37,12 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
 
   const [index, setIndex] = useState(0)
   const [failed, setFailed] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     setIndex(0)
     setFailed(false)
+    setLoaded(false)
     setResolvedFromMeta(null)
   }, [mint, uri, image])
 
@@ -61,38 +67,59 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
     }
   }, [uri, mint])
 
-  const label = (symbol ?? mint.slice(0, 2)).toUpperCase()
-
-  if (failed || index >= candidates.length) {
-    return (
-      <div
-        className={cn(
-          'flex shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-gradient-to-br from-violet-600/30 via-slate-800/80 to-cyan-600/20 font-bold tracking-tight text-white shadow-inner',
-          sizeClass[size],
-          className,
-        )}
-      >
-        {label.slice(0, 2)}
-      </div>
-    )
-  }
+  const label = (symbol ?? mint.slice(0, 2)).toUpperCase().slice(0, 2)
+  const showFallback = failed || index >= candidates.length
 
   return (
-    <img
-      src={candidates[index]}
-      alt={symbol ?? mint}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
+    <div
       className={cn(
-        'shrink-0 rounded-lg border border-white/[0.08] object-cover bg-slate-900/80 shadow-sm',
-        sizeClass[size],
+        'relative shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-slate-900/90',
         className,
       )}
-      onError={() => {
-        if (index + 1 < candidates.length) setIndex((i) => i + 1)
-        else setFailed(true)
-      }}
-    />
+      style={{ width: px, height: px, minWidth: px, minHeight: px }}
+      aria-label={symbol ?? mint}
+    >
+      {showFallback ? (
+        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-violet-600/35 via-slate-800 to-cyan-600/25">
+          <span
+            className="font-bold tracking-tight text-white"
+            style={{ fontSize: Math.max(10, px * 0.32) }}
+          >
+            {label}
+          </span>
+        </div>
+      ) : (
+        <>
+          {!loaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-800/80">
+              <span
+                className="font-bold text-zinc-500"
+                style={{ fontSize: Math.max(9, px * 0.28) }}
+              >
+                {label}
+              </span>
+            </div>
+          )}
+          <img
+            src={candidates[index]}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className={cn(
+              'absolute inset-0 h-full w-full object-cover object-center',
+              loaded ? 'opacity-100' : 'opacity-0',
+            )}
+            onLoad={() => setLoaded(true)}
+            onError={() => {
+              if (index + 1 < candidates.length) {
+                setIndex((i) => i + 1)
+                setLoaded(false)
+              } else setFailed(true)
+            }}
+          />
+        </>
+      )}
+    </div>
   )
 }

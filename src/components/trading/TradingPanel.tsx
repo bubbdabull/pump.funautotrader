@@ -44,19 +44,21 @@ export function TradingPanel({ token }: TradingPanelProps) {
     <GlassCard glow="purple" className="space-y-4 p-0 overflow-hidden">
       <div className="border-b border-white/[0.06] bg-white/[0.02] px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {token ? (
-              <TokenImage
-                mint={token.mint}
-                symbol={token.symbol}
-                image={token.image}
-                uri={token.metadataUri}
-                size="md"
-              />
-            ) : (
-              <div className="h-12 w-12 rounded-lg bg-white/5" />
-            )}
-            <div>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="shrink-0">
+              {token ? (
+                <TokenImage
+                  mint={token.mint}
+                  symbol={token.symbol}
+                  image={token.image}
+                  uri={token.metadataUri}
+                  size="md"
+                />
+              ) : (
+                <div className="h-12 w-12 shrink-0 rounded-lg bg-white/5" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1 overflow-hidden">
               <h3 className="text-base font-semibold text-white">
                 {token?.symbol ?? 'Select token'}
               </h3>

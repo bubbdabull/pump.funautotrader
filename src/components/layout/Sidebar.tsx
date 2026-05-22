@@ -17,7 +17,7 @@ import { useAutoTraderStore } from '@/stores/autoTraderStore'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/feed', icon: Radio, label: 'Live Feed' },
+  { to: '/feed', icon: Radio, label: 'Pro Scanner' },
   { to: '/autotrader', icon: Bot, label: 'Auto Trader' },
   { to: '/wallets', icon: Wallet, label: 'Smart Wallets' },
   { to: '/portfolio', icon: Briefcase, label: 'Portfolio' },

@@ -10,6 +10,8 @@ import {
   evScoreToSignalScore,
   momentumScoreFromMetrics,
 } from '../decision/evEngine'
+import { computeQuantitativeScores } from '../quantitative/scores'
+import { bestStrategySignal } from '../strategies/engine'
 import { finalizeEntryDecision } from '../execution/positionSizer'
 import { evaluateExit } from '../execution/exitEngine'
 import {
@@ -21,6 +23,7 @@ import {
 type EntryListener = (mint: string, decision: EntryDecision) => void
 type ExitListener = (mint: string, decision: ReturnType<typeof evaluateExit>) => void
 type UpdateListener = (mint: string, state: TokenMarketState) => void
+type StrategyListener = (mint: string, signal: NonNullable<ReturnType<typeof bestStrategySignal>>) => void
 
 export class MarketStateManager {
   private readonly states = new Map<string, TokenMarketState>()
@@ -28,6 +31,7 @@ export class MarketStateManager {
   private entryListeners = new Set<EntryListener>()
   private exitListeners = new Set<ExitListener>()
   private updateListeners = new Set<UpdateListener>()
+  private strategyListeners = new Set<StrategyListener>()
 
   getState(mint: string): TokenMarketState | undefined {
     return this.states.get(mint)
@@ -46,6 +50,17 @@ export class MarketStateManager {
   onUpdate(listener: UpdateListener) {
     this.updateListeners.add(listener)
     return () => this.updateListeners.delete(listener)
+  }
+
+  onStrategySignal(listener: StrategyListener) {
+    this.strategyListeners.add(listener)
+    return () => this.strategyListeners.delete(listener)
+  }
+
+  getQuantScores(mint: string) {
+    const state = this.states.get(mint)
+    if (!state) return null
+    return computeQuantitativeScores(state)
   }
 
   ingestNewToken(event: NewTokenEvent): TokenMarketState {
@@ -167,6 +182,11 @@ export class MarketStateManager {
     const entry = finalizeEntryDecision(evaluateEntry(state))
     if (entry.allowed) {
       for (const fn of this.entryListeners) fn(mint, entry)
+    }
+
+    const strat = bestStrategySignal(state)
+    if (strat) {
+      for (const fn of this.strategyListeners) fn(mint, strat)
     }
 
     const pos = this.positions.get(mint)

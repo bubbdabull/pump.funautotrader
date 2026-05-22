@@ -1,12 +1,21 @@
 import { Injectable } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { normalizeVirtualSol } from '@phronis/trading'
 import type { FeedToken, FeedStats } from './feed.types'
 
-const MAX_FEED = 120
-
 @Injectable()
 export class LiveFeedService {
+  private readonly maxFeed: number
   private readonly tokens = new Map<string, FeedToken>()
+
+  constructor(config: ConfigService) {
+    const n = Number(config.get('LIVE_FEED_MAX') ?? 300)
+    this.maxFeed = Number.isFinite(n) && n >= 50 ? Math.min(n, 2000) : 300
+  }
+
+  getMaxFeed(): number {
+    return this.maxFeed
+  }
 
   upsert(token: FeedToken): FeedToken {
     const prev = this.tokens.get(token.mint)
@@ -44,7 +53,7 @@ export class LiveFeedService {
     return this.tokens.get(mint)
   }
 
-  getAll(limit = MAX_FEED): FeedToken[] {
+  getAll(limit = this.maxFeed): FeedToken[] {
     return [...this.tokens.values()]
       .sort((a, b) => new Date(b.launchedAt).getTime() - new Date(a.launchedAt).getTime())
       .slice(0, limit)
@@ -74,8 +83,8 @@ export class LiveFeedService {
   }
 
   private trim() {
-    if (this.tokens.size <= MAX_FEED) return
-    const sorted = this.getAll(MAX_FEED)
+    if (this.tokens.size <= this.maxFeed) return
+    const sorted = this.getAll(this.maxFeed)
     this.tokens.clear()
     for (const t of sorted) this.tokens.set(t.mint, t)
   }

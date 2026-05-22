@@ -31,7 +31,7 @@ export function useTokenFeed() {
 
   const query = useQuery({
     queryKey: ['tokens', 'feed'],
-    queryFn: () => tokenApi.feed(),
+    queryFn: () => tokenApi.feed('alpha'),
     refetchInterval: 60_000,
     staleTime: 15_000,
     retry: 2,
@@ -150,7 +150,11 @@ export function sortTokens(tokens: PumpToken[], sort: string): PumpToken[] {
       return copy.sort(
         (a, b) => new Date(b.launchedAt).getTime() - new Date(a.launchedAt).getTime(),
       )
+    case 'curve':
+      return copy.sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
     default:
       return copy
   }
 }
+
+export { useScannerFeed, useTokenChart } from './useScanner'

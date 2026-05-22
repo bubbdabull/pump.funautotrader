@@ -1,109 +1,129 @@
 import { useState } from 'react'
+import { Rocket, Shield, Sparkles } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { LiveFeedTable } from '@/components/feed/LiveFeedTable'
+import { LiveFeedCards } from '@/components/feed/LiveFeedCards'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { useTokenFeed, sortTokens } from '@/hooks/useTokens'
+import { useScannerFeed } from '@/hooks/useScanner'
+import { sortTokens } from '@/hooks/useTokens'
+import { useBackendStatus } from '@/hooks/useBackendStatus'
 import { ensureArray } from '@/lib/ensureArray'
 import type { PumpToken } from '@/types'
-import { useBackendStatus } from '@/hooks/useBackendStatus'
-import { Filter } from 'lucide-react'
+import type { ScannerLane } from '@/lib/feedQuality'
+import { cn } from '@/lib/utils'
+
+const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
+  { id: 'alpha', label: 'Alpha', icon: Sparkles, desc: 'Quality-filtered — junk hidden' },
+  { id: 'graduating', label: 'Graduating', icon: Rocket, desc: '78–99% curve — near PumpSwap' },
+]
 
 export function LiveFeedPage() {
-  const { data: feedData, isLoading, isError: feedError } = useTokenFeed()
-  const tokens = ensureArray<PumpToken>(feedData)
-  const backend = useBackendStatus()
-  const [sort, setSort] = useState('newest')
+  const [lane, setLane] = useState<ScannerLane>('alpha')
+  const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
-  const [riskMax, setRiskMax] = useState(100)
+  const { data, isLoading, isError } = useScannerFeed(lane)
+  const backend = useBackendStatus()
+  const tokens = ensureArray<PumpToken>(data)
 
   const filtered = sortTokens(
-    tokens.filter(
-      (t) =>
-        t.symbol.toLowerCase().includes(filter.toLowerCase()) &&
-        (t.signalScore ?? t.aiRiskScore ?? 50) <= riskMax,
-    ),
-    sort,
+    tokens.filter((t) => t.symbol.toLowerCase().includes(filter.toLowerCase())),
+    sort === 'curve' ? 'curve' : sort,
   )
 
   return (
     <PageTransition>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Live Feed</h1>
-          <p className="text-sm text-zinc-500">Real-time Pump.fun token discovery</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Pro Scanner</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            Institutional filters · real charts · graduation radar
+          </p>
         </div>
-        <div
-          className={`flex flex-col items-end gap-0.5 text-xs ${
-            backend.statusTone === 'ok'
-              ? 'text-emerald-400'
-              : backend.statusTone === 'error'
-                ? 'text-red-400'
-                : 'text-amber-400'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              {backend.statusTone === 'ok' && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              )}
-              <span
-                className={`relative inline-flex h-2 w-2 rounded-full ${
-                  backend.statusTone === 'ok' ? 'bg-emerald-500' : backend.statusTone === 'error' ? 'bg-red-500' : 'bg-amber-500'
-                }`}
-              />
-            </span>
-            {backend.statusLine}
-          </div>
-          <span className="text-zinc-500">
-            {backend.backendHost}
-            {backend.socketConnected ? ' · realtime on' : ' · realtime connecting'}
-            {' · '}
-            {tokens.length} in UI
-            {backend.feedTokensOnServer > 0 ? ` · ${backend.feedTokensOnServer} on server` : ''}
-          </span>
-          {backend.configMisconfigured && (
-            <span className="max-w-sm text-right text-amber-400/90">
-              Vercel env typo: value must be only the URL (not{' '}
-              <code className="text-[10px]">VITE_API_URL=...</code>). Redeploy after fix.
-            </span>
-          )}
-          {(backend.statusTone === 'error' || feedError) && !backend.configMisconfigured && (
-            <span className="max-w-xs text-right text-red-400/90">
-              {feedError
-                ? 'Feed request failed — check Fly API and redeploy Vercel'
-                : 'Cannot reach API — set VITE_API_URL on Vercel and redeploy'}
-            </span>
-          )}
-          {backend.apiReachable && tokens.length === 0 && !feedError && !isLoading && (
-            <span className="max-w-xs text-right text-zinc-500">
-              Stream is up; new launches appear in a few seconds.
-            </span>
-          )}
+        <div className={cn('text-right text-xs', backend.statusTone === 'ok' ? 'text-emerald-400' : 'text-amber-400')}>
+          <p className="font-medium">{backend.statusLine}</p>
+          <p className="text-zinc-600">{backend.backendHost}</p>
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-3">
-        <Input placeholder="Filter by symbol..." value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-xs" />
+      <div className="mb-4 flex flex-wrap gap-2">
+        {TABS.map(({ id, label, icon: Icon, desc }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => {
+              setLane(id)
+              setSort(id === 'graduating' ? 'curve' : 'momentum')
+            }}
+            className={cn(
+              'flex min-w-[140px] flex-col rounded-xl border px-4 py-3 text-left transition-all',
+              lane === id
+                ? 'border-violet-500/40 bg-violet-500/10 shadow-lg shadow-violet-900/20'
+                : 'border-white/[0.06] bg-white/[0.02] hover:border-white/10',
+            )}
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Icon className="h-4 w-4" />
+              {label}
+            </span>
+            <span className="mt-0.5 text-[10px] text-zinc-500">{desc}</span>
+          </button>
+        ))}
+        <div className="flex flex-1 items-center justify-end gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-400/90">
+          <Shield className="h-3.5 w-3.5 shrink-0" />
+          Low-signal & illiquid tokens never appear in Alpha
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <Input
+          placeholder="Search symbol…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="max-w-xs border-white/10 bg-black/20"
+        />
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value)}
-          className="rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-zinc-300"
+          className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-300"
         >
-          <option value="newest">Newest</option>
-          <option value="marketCap">Market Cap</option>
-          <option value="volume">Volume</option>
-          <option value="momentum">Momentum</option>
-          <option value="risk">Risk (low first)</option>
+          {lane === 'graduating' ? (
+            <>
+              <option value="curve">Curve % (high first)</option>
+              <option value="marketCap">Market cap</option>
+              <option value="volume">Volume</option>
+            </>
+          ) : (
+            <>
+              <option value="momentum">Momentum</option>
+              <option value="risk">Best signal</option>
+              <option value="volume">Volume</option>
+              <option value="marketCap">Market cap</option>
+              <option value="newest">Newest</option>
+            </>
+          )}
         </select>
-        <Button variant="outline" size="sm"><Filter className="mr-1 h-3 w-3" /> Risk &lt; {riskMax}</Button>
-        <input type="range" min={20} max={100} value={riskMax} onChange={(e) => setRiskMax(+e.target.value)} className="w-24" />
+        <span className="text-xs text-zinc-600">
+          {filtered.length} shown · junk filtered server-side
+        </span>
       </div>
 
+      {isError && (
+        <p className="mb-3 text-sm text-red-400">Scanner API unreachable — check Fly deploy & Vercel env.</p>
+      )}
+
       {isLoading ? (
-        <div className="space-y-2">{[1,2,3,4,5].map((i) => <div key={i} className="h-14 animate-pulse rounded-lg bg-white/5" />)}</div>
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="h-12 animate-pulse rounded-lg bg-white/5" />
+          ))}
+        </div>
       ) : (
-        <LiveFeedTable tokens={filtered} />
+        <>
+          <LiveFeedCards tokens={filtered} />
+          <div className="mt-3 hidden md:block">
+            <LiveFeedTable tokens={filtered} highlightGraduating={lane === 'graduating'} />
+          </div>
+        </>
       )}
     </PageTransition>
   )

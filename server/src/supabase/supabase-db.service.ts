@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 import type { FeedToken } from '../feed/feed.types'
+import type { RugScoreBreakdown } from '@phronis/trading'
+import type { QuantitativeScores } from '@phronis/trading'
 
 @Injectable()
 export class SupabaseDbService implements OnModuleInit {
@@ -158,6 +160,105 @@ export class SupabaseDbService implements OnModuleInit {
       .single()
     if (error) throw new Error(error.message)
     return data
+  }
+
+  async insertRugScore(mint: string, rug: RugScoreBreakdown) {
+    if (!this.client) return
+    const { error } = await this.client.from('RugScore').insert({
+      id: randomUUID(),
+      mint,
+      rugScore: rug.rugScore,
+      creatorRisk: rug.creatorRisk,
+      holderConcentration: rug.holderConcentration,
+      liquidityWeakness: rug.liquidityWeakness,
+      suspiciousWallets: rug.suspiciousWallets,
+      fakeVolumeProb: rug.fakeVolumeProbability,
+      blocked: rug.blocked,
+      reasons: rug.reasons,
+      capturedAt: new Date().toISOString(),
+    })
+    if (error) this.logger.debug(`RugScore insert: ${error.message}`)
+  }
+
+  async insertWalletActivities(
+    mint: string,
+    trades: Array<{
+      wallet: string
+      side: string
+      solAmount: number
+      signature?: string
+      slot?: number
+      timestamp: number
+    }>,
+  ) {
+    if (!this.client || trades.length === 0) return
+    const rows = trades.slice(-20).map((t) => ({
+      id: randomUUID(),
+      mint,
+      wallet: t.wallet,
+      side: t.side,
+      solAmount: t.solAmount,
+      signature: t.signature ?? null,
+      slot: t.slot ?? null,
+      actedAt: new Date(t.timestamp).toISOString(),
+    }))
+    const { error } = await this.client.from('WalletActivity').insert(rows)
+    if (error) this.logger.debug(`WalletActivity insert: ${error.message}`)
+  }
+
+  async insertHolderSnapshot(
+    mint: string,
+    holders: number,
+    top1Pct: number,
+    top5Pct: number,
+    entropy: number,
+  ) {
+    if (!this.client) return
+    const { error } = await this.client.from('HolderSnapshot').insert({
+      id: randomUUID(),
+      mint,
+      holders,
+      top1Pct,
+      top5Pct,
+      entropy,
+      capturedAt: new Date().toISOString(),
+    })
+    if (error) this.logger.debug(`HolderSnapshot insert: ${error.message}`)
+  }
+
+  async patchTokenQuant(
+    mint: string,
+    patch: { rugScore?: number; tradeConfidence?: number; holders?: number; creatorWallet?: string },
+  ) {
+    if (!this.client) return
+    const { error } = await this.client
+      .from('Token')
+      .update({
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('mint', mint)
+    if (error) this.logger.debug(`Token quant patch: ${error.message}`)
+  }
+
+  async persistQuantSnapshot(
+    mint: string,
+    scores: QuantitativeScores,
+    rug: RugScoreBreakdown,
+    holders: number,
+    holderMeta: { top1Pct: number; top5Pct: number; entropy: number },
+    recentTrades: Parameters<SupabaseDbService['insertWalletActivities']>[1],
+  ) {
+    await Promise.all([
+      this.insertRugScore(mint, rug),
+      this.insertHolderSnapshot(mint, holders, holderMeta.top1Pct, holderMeta.top5Pct, holderMeta.entropy),
+      this.insertWalletActivities(mint, recentTrades),
+      this.patchTokenQuant(mint, {
+        rugScore: rug.rugScore,
+        tradeConfidence: scores.tradeConfidenceScore,
+        holders,
+      }),
+    ])
   }
 
   async listSmartWallets(limit = 20) {

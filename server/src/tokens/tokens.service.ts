@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../prisma/prisma.service'
 import { PumpService, type PumpCoin } from '../pump/pump.service'
 import { PumpPortalService } from '../pumpportal/pumpportal.service'
@@ -9,9 +10,13 @@ import {
   evScoreToSignalScore,
   momentumScoreFromMetrics,
   evaluateEntry,
-  countUniqueHolders,
+  resolveHolderCount,
+  filterForLane,
+  bondingCurvePercentFromSol,
+  type ScannerLane,
 } from '@phronis/trading'
 import { marketCapUsdFromSol, normalizeVirtualSol, resolveTokenImage } from '@phronis/trading'
+import type { TokenChartSeries, ChartPoint } from './chart.types'
 import { TokenMetadataService } from './token-metadata.service'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
 
@@ -20,6 +25,7 @@ export class TokensService {
   private readonly logger = new Logger(TokensService.name)
 
   constructor(
+    private config: ConfigService,
     private prisma: PrismaService,
     private pump: PumpService,
     private pumpportal: PumpPortalService,
@@ -29,23 +35,90 @@ export class TokensService {
     private supabase: SupabaseDbService,
   ) {}
 
-  async getFeed(): Promise<FeedToken[]> {
-    const cached = this.liveFeed.getAll(80)
+  private pumpBootstrapLimit(): number {
+    const n = Number(this.config.get('PUMP_FUN_BOOTSTRAP_LIMIT') ?? 100)
+    return Number.isFinite(n) && n >= 10 ? Math.min(n, 200) : 100
+  }
+
+  async getFeed(lane: ScannerLane = 'alpha'): Promise<FeedToken[]> {
+    const all = await this.getAllTokens()
+    return filterForLane(all, lane)
+  }
+
+  async getGraduatingFeed(): Promise<FeedToken[]> {
+    return this.getFeed('graduating')
+  }
+
+  private async getAllTokens(): Promise<FeedToken[]> {
+    const cached = this.liveFeed.getAll()
     if (cached.length > 0) {
       void this.bootstrapFeedFromPump().catch((err) =>
         this.logger.debug(`Pump.fun bootstrap skipped: ${(err as Error).message}`),
       )
-      return cached
+      return cached.map((t) => this.enrichFromMarketState(t.mint, t))
     }
-    return this.bootstrapFeedFromPump()
+    const boot = await this.bootstrapFeedFromPump()
+    return boot.map((t) => this.enrichFromMarketState(t.mint, t))
   }
 
   private async bootstrapFeedFromPump(): Promise<FeedToken[]> {
-    const coins = await this.pump.fetchLatestCoins(50)
+    const limit = this.pumpBootstrapLimit()
+    const coins = await this.pump.fetchLatestCoins(limit)
     const mapped = await Promise.all(coins.map((c) => this.mapCoin(c)))
     this.liveFeed.mergeBootstrap(mapped)
-    return this.liveFeed.getAll(80)
+    return this.liveFeed.getAll()
   }
+
+  getChartSeries(mint: string): TokenChartSeries {
+    const state = this.trading.getState(mint)
+    const token = this.liveFeed.get(mint)
+    const points: ChartPoint[] = []
+
+    if (state?.liquidityHistory.length) {
+      for (const h of state.liquidityHistory) {
+        const mc = marketCapUsdFromSol(h.marketCapSol)
+        points.push({
+          t: h.timestamp,
+          price: mc > 0 ? mc : 0,
+          volume: 0,
+          curve: bondingCurvePercentFromSol(h.virtualSolReserves || h.marketCapSol),
+        })
+      }
+    }
+
+    if (state?.trades.length) {
+      const buckets = new Map<number, number>()
+      for (const tr of state.trades) {
+        const bucket = Math.floor(tr.timestamp / 20_000) * 20_000
+        buckets.set(bucket, (buckets.get(bucket) ?? 0) + tr.solAmount)
+      }
+      for (const [t, volume] of buckets) {
+        const near = points.find((p) => Math.abs(p.t - t) < 25_000)
+        if (near) near.volume += volume
+        else {
+          points.push({
+            t,
+            price: token?.marketCap ?? state.marketCapUsd ?? 0,
+            volume,
+            curve: token?.bondingCurvePercent ?? state.bondingCurvePercent,
+          })
+        }
+      }
+    }
+
+    if (!points.length && token) {
+      points.push({
+        t: Date.now(),
+        price: token.marketCap,
+        volume: token.volume24h,
+        curve: token.bondingCurvePercent,
+      })
+    }
+
+    points.sort((a, b) => a.t - b.t)
+    return { mint, points: points.slice(-96) }
+  }
+
 
   async getToken(mint: string): Promise<FeedToken | null> {
     const live = this.liveFeed.get(mint)
@@ -182,7 +255,7 @@ export class TokensService {
   }
 
   async syncFromPump() {
-    const coins = await this.pump.fetchLatestCoins(50)
+    const coins = await this.pump.fetchLatestCoins(this.pumpBootstrapLimit())
     for (const coin of coins) {
       const mapped = await this.mapCoin(coin)
       this.liveFeed.upsert(mapped)
@@ -233,7 +306,7 @@ export class TokensService {
     const bondingCurvePercent = this.pump.calculateBondingPercent(coin)
     const marketCap = coin.usd_market_cap ?? 0
     const volume24h = coin.usd_24h_volume ?? 0
-    const holders = coin.holder_count ?? 0
+    const holders = Math.max(coin.holder_count ?? 0, 1)
     const liquidity = this.pump.solReservesToLiquidity(coin.virtual_sol_reserves ?? 0)
 
     const scores = this.pumpportal.ruleBasedSignal({
@@ -273,7 +346,7 @@ export class TokensService {
 
     const metrics = evaluateEntry(state).metrics
     const volume24h = state.trades.reduce((a, t) => a + t.solAmount, 0)
-    const holders = countUniqueHolders(state)
+    const holders = resolveHolderCount(state, coin?.holder_count)
 
     const mcaps = state.liquidityHistory.map((h) => h.marketCapSol).filter((m) => m > 0)
     let priceChange24h = coin?.price_change_24h ?? 0

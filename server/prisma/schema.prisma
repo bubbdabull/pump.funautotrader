@@ -23,10 +23,131 @@ model Token {
   priceUsd            Float    @default(0)
   priceChange24h      Float    @default(0)
   liquidity           Float    @default(0)
+  creatorWallet       String?
+  rugScore            Float    @default(0)
+  tradeConfidence     Float    @default(0)
   launchedAt          DateTime @default(now())
   updatedAt           DateTime @updatedAt
   trades              Trade[]
   alerts              Alert[]
+  holderSnapshots     HolderSnapshot[]
+  liquidityHistory    LiquidityHistory[]
+  rugScores           RugScore[]
+  migrations          MigrationTracking[]
+  walletActivity      WalletActivity[]
+}
+
+model CreatorWallet {
+  id            String   @id @default(cuid())
+  address       String   @unique
+  tokensCreated Int      @default(0)
+  rugCount      Int      @default(0)
+  rugRate       Float    @default(0)
+  lastSeenAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model HolderSnapshot {
+  id        String   @id @default(cuid())
+  mint      String
+  holders   Int
+  top1Pct   Float    @default(0)
+  top5Pct   Float    @default(0)
+  entropy   Float    @default(0)
+  capturedAt DateTime @default(now())
+  token     Token    @relation(fields: [mint], references: [mint])
+
+  @@index([mint, capturedAt])
+}
+
+model LiquidityHistory {
+  id                  String   @id @default(cuid())
+  mint                String
+  virtualSolReserves  Float
+  marketCapSol        Float
+  bondingCurvePercent Float    @default(0)
+  capturedAt          DateTime @default(now())
+  token               Token    @relation(fields: [mint], references: [mint])
+
+  @@index([mint, capturedAt])
+}
+
+model RugScore {
+  id                   String   @id @default(cuid())
+  mint                 String
+  rugScore             Float
+  creatorRisk          Float
+  holderConcentration  Float
+  liquidityWeakness    Float
+  suspiciousWallets    Float
+  fakeVolumeProb       Float
+  blocked              Boolean  @default(false)
+  reasons              String[]
+  capturedAt           DateTime @default(now())
+  token                Token    @relation(fields: [mint], references: [mint])
+
+  @@index([mint, capturedAt])
+}
+
+model MigrationTracking {
+  id          String   @id @default(cuid())
+  mint        String
+  migratedAt  DateTime @default(now())
+  curvePct    Float    @default(100)
+  pool        String?
+  token       Token    @relation(fields: [mint], references: [mint])
+
+  @@index([mint])
+}
+
+model WalletActivity {
+  id        String   @id @default(cuid())
+  mint      String
+  wallet    String
+  side      String
+  solAmount Float
+  signature String?
+  slot      Int?
+  actedAt   DateTime @default(now())
+  token     Token    @relation(fields: [mint], references: [mint])
+
+  @@index([mint, actedAt])
+  @@index([wallet])
+}
+
+model PnlTracking {
+  id          String   @id @default(cuid())
+  wallet      String
+  mint        String?
+  strategyId  String?
+  entrySol    Float
+  exitSol     Float?
+  pnlSol      Float    @default(0)
+  status      String   @default("open")
+  openedAt    DateTime @default(now())
+  closedAt    DateTime?
+
+  @@index([wallet, status])
+}
+
+model ExecutionLog {
+  id           String   @id @default(cuid())
+  mint         String
+  wallet       String
+  side         String
+  amountSol    Float
+  slippagePct  Float    @default(10)
+  priorityFee  Float    @default(0.0001)
+  pool         String   @default("auto")
+  strategyId   String?
+  status       String   @default("pending")
+  txSig        String?
+  latencyMs    Int?
+  error        String?
+  createdAt    DateTime @default(now())
+
+  @@index([mint, createdAt])
+  @@index([status])
 }
 
 model SmartWallet {
@@ -74,4 +195,17 @@ model CopilotLog {
   role      String
   content   String
   createdAt DateTime @default(now())
+}
+
+model BacktestRun {
+  id           String   @id @default(cuid())
+  strategyId   String?
+  trades       Int      @default(0)
+  winRate      Float    @default(0)
+  expectancy   Float    @default(0)
+  sharpeRatio  Float    @default(0)
+  totalPnlSol  Float    @default(0)
+  maxDrawdown  Float    @default(0)
+  configJson   String?
+  createdAt    DateTime @default(now())
 }

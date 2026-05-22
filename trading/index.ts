@@ -25,4 +25,35 @@ export {
   normalizeIpfsUrl,
   isLikelyMetadataUri,
 } from './utils/tokenMedia'
-export { countUniqueHolders } from './utils/holders'
+export {
+  countUniqueHolders,
+  resolveHolderCount,
+  countWalletsWithBalance,
+  countUniqueBuyers,
+} from './utils/holders'
+export {
+  passesAlphaFilter,
+  isGraduatingSoon,
+  filterForLane,
+  activitySol,
+  entrySignal,
+  GRADUATING_CURVE_MIN,
+  GRADUATING_CURVE_MAX,
+  type FeedQualityFields,
+  type ScannerLane,
+} from './utils/feedQuality'
+export * from './quantitative/indicators'
+export { computeQuantitativeScores, type QuantitativeScores } from './quantitative/scores'
+export { computeRugScore, RUG_BLOCK_THRESHOLD, type RugScoreBreakdown } from './rug/rugScoreEngine'
+export {
+  ALL_STRATEGIES,
+  evaluateAllStrategies,
+  bestStrategySignal,
+  buildStrategyContext,
+} from './strategies/engine'
+export type { StrategySignal, StrategyId, DeterministicStrategy } from './strategies/types'
+export { GlobalRiskManager, globalRiskManager, type GlobalRiskConfig } from './risk/globalRisk'
+export { replayStrategyBacktest, type ReplayEvent, type ReplayOptions } from './backtest/replay'
+export { computeBacktestMetrics, type BacktestMetrics, type BacktestTrade } from './backtest/metrics'
+export { clamp01, clamp, ema, logistic01 } from './utils/math'
+export { sharpeLikeScore } from './quantitative/indicators'

@@ -103,3 +103,7 @@ export interface TradeStreamEvent {
   vSolInBondingCurve?: number
   marketCapSol?: number
 }
+
+export type { QuantitativeScores } from './quantitative/scores'
+export type { RugScoreBreakdown } from './rug/rugScoreEngine'
+export type { StrategySignal, StrategyId } from './strategies/types'

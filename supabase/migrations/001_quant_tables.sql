@@ -1,0 +1,46 @@
+-- Run in Supabase SQL Editor if using REST-only (no Prisma migrate)
+
+CREATE TABLE IF NOT EXISTS "RugScore" (
+  id TEXT PRIMARY KEY,
+  mint TEXT NOT NULL,
+  "rugScore" DOUBLE PRECISION NOT NULL,
+  "creatorRisk" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "holderConcentration" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "liquidityWeakness" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "suspiciousWallets" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "fakeVolumeProb" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  blocked BOOLEAN NOT NULL DEFAULT false,
+  reasons TEXT[] DEFAULT '{}',
+  "capturedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_rugscore_mint ON "RugScore"(mint, "capturedAt" DESC);
+
+CREATE TABLE IF NOT EXISTS "WalletActivity" (
+  id TEXT PRIMARY KEY,
+  mint TEXT NOT NULL,
+  wallet TEXT NOT NULL,
+  side TEXT NOT NULL,
+  "solAmount" DOUBLE PRECISION NOT NULL,
+  signature TEXT,
+  slot INTEGER,
+  "actedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_walletactivity_mint ON "WalletActivity"(mint, "actedAt" DESC);
+
+CREATE TABLE IF NOT EXISTS "HolderSnapshot" (
+  id TEXT PRIMARY KEY,
+  mint TEXT NOT NULL,
+  holders INTEGER NOT NULL,
+  "top1Pct" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "top5Pct" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  entropy DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "capturedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_holdersnapshot_mint ON "HolderSnapshot"(mint, "capturedAt" DESC);
+
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "creatorWallet" TEXT;
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "rugScore" DOUBLE PRECISION DEFAULT 0;
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "tradeConfidence" DOUBLE PRECISION DEFAULT 0;

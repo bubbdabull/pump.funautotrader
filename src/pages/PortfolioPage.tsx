@@ -1,5 +1,6 @@
 import { PageTransition } from '@/components/shared/PageTransition'
 import { GlassCard } from '@/components/shared/GlassCard'
+import { TokenImage } from '@/components/shared/TokenImage'
 import { MOCK_PORTFOLIO } from '@/lib/mock-data'
 import { formatUsd } from '@/lib/utils'
 
@@ -18,10 +19,12 @@ export function PortfolioPage() {
       <div className="space-y-3">
         {MOCK_PORTFOLIO.map((p) => (
           <GlassCard key={p.mint}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img src={p.image} alt="" className="h-10 w-10 rounded-lg" />
-                <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="shrink-0">
+                  <TokenImage mint={p.mint} symbol={p.symbol} image={p.image} size="sm" />
+                </div>
+                <div className="min-w-0 overflow-hidden">
                   <p className="font-semibold text-white">{p.symbol}</p>
                   <p className="text-xs text-zinc-500">{p.amount.toLocaleString()} tokens</p>
                 </div>

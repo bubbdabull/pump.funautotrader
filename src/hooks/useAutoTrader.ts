@@ -4,6 +4,7 @@ import { pumpPortalWs } from '@/services/pumpportal-ws'
 import { wsService } from '@/services/websocket'
 import { useAutoTraderStore } from '@/stores/autoTraderStore'
 import { usePumpPortalTrade } from './usePumpPortalTrade'
+import { buildSizedTransaction } from '@/services/execution'
 import type { PumpToken, AutoTradeSignal } from '@/types'
 import { evaluateProbabilisticEntry, pumpTokenFromMint } from '@/lib/probabilisticTrading'
 import { useDirectPumpPortalWs } from '@/lib/pumpportalConfig'
@@ -53,13 +54,25 @@ export function useAutoTrader() {
     })
 
     try {
-      const sig = await execute({
-        mint: token.mint,
+      const { base64, positionSizeSol } = await buildSizedTransaction({
+        publicKey: publicKey.toBase58(),
         action: 'buy',
+        mint: token.mint,
         amountSol: sizeSol,
         slippage: rules.slippage,
         priorityFee: rules.priorityFee,
         pool: rules.pool,
+        evConfidence: decision.metrics.evScore,
+      })
+
+      const sig = await execute({
+        mint: token.mint,
+        action: 'buy',
+        amountSol: positionSizeSol,
+        slippage: rules.slippage,
+        priorityFee: rules.priorityFee,
+        pool: rules.pool,
+        serializedTxBase64: base64,
       })
 
       addExecution({

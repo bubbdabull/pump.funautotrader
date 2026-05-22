@@ -2,6 +2,8 @@ import axios from 'axios'
 import type { PumpToken, SmartWallet, AutoTradeRules, AutoTradeSignal, Alert } from '@/types'
 import { ensureArray } from '@/lib/ensureArray'
 import { API_BASE } from '@/lib/apiConfig'
+import type { ScannerLane } from '@/lib/feedQuality'
+import type { TokenChartSeries } from '@/lib/chartTypes'
 
 export const api = axios.create({
   baseURL: API_BASE,
@@ -42,13 +44,56 @@ export const pumpportalApi = {
 export const tokenApi = {
   list: () => api.get('/tokens/feed').then((r) => ensureArray<PumpToken>(r.data)),
   get: (mint: string) => api.get<PumpToken>(`/tokens/${mint}`).then((r) => r.data),
-  feed: () => api.get('/tokens/feed').then((r) => ensureArray<PumpToken>(r.data)),
+  feed: (lane: ScannerLane = 'alpha') =>
+    api.get('/tokens/feed', { params: { lane } }).then((r) => ensureArray<PumpToken>(r.data)),
+  graduating: () => api.get('/tokens/graduating').then((r) => ensureArray<PumpToken>(r.data)),
+  chart: (mint: string) => api.get<TokenChartSeries>(`/tokens/${mint}/chart`).then((r) => r.data),
   stats: () => api.get<FeedStats>('/tokens/stats').then((r) => r.data),
   trades: (mint: string) => api.get(`/tokens/${mint}/trades`).then((r) => ensureArray<FeedTrade>(r.data)),
 }
 
 export const walletApi = {
   list: () => api.get('/wallets/smart').then((r) => ensureArray<SmartWallet>(r.data)),
+}
+
+export interface ExecutionBuildResult {
+  ok: boolean
+  transaction?: string
+  slippageUsed?: number
+  priorityFee?: number
+  positionSizeSol?: number
+  latencyMs?: number
+  error?: string
+}
+
+export const executionApi = {
+  build: (body: {
+    publicKey: string
+    action: 'buy' | 'sell'
+    mint: string
+    amountSol: number
+    slippage?: number
+    priorityFee?: number
+    pool?: string
+    strategyId?: string
+    evConfidence?: number
+  }) => api.post<ExecutionBuildResult>('/execution/build', body).then((r) => r.data),
+}
+
+export const quantApi = {
+  rankings: () =>
+    api.get<{ mint: string; confidence: number }[]>('/quant/rankings').then((r) => r.data),
+  analyze: (mint: string) => api.get(`/quant/analyze/${mint}`).then((r) => r.data),
+}
+
+export const riskApi = {
+  state: () => api.get('/risk/state').then((r) => r.data),
+  setConfig: (body: Record<string, number>) => api.put('/risk/config', body).then((r) => r.data),
+}
+
+export const backtestApi = {
+  replay: (body: { events: unknown[]; latencyMs?: number; slippagePct?: number }) =>
+    api.post('/backtest/replay', body).then((r) => r.data),
 }
 
 export const autoTraderApi = {

@@ -49,6 +49,8 @@ export class AutoTraderService {
 
   private recentSignals: AutoTradeSignal[] = []
   private signaledMints = new Set<string>()
+  /** Mints that must keep PumpPortal trade streams (signals + open interest). */
+  private readonly pinnedTradeMints = new Set<string>()
 
   constructor(private trading: TradingBridgeService) {
     this.trading.onEntrySignal((mint, decision) => {
@@ -62,6 +64,7 @@ export class AutoTraderService {
         marketCapSol: (state?.marketCapUsd ?? 0) / 200,
       } as PumpPortalNewTokenEvent)
       if (signal && this.passesLegacyRules(signal)) {
+        this.pinTradeStream(mint)
         this.emitSignal(signal)
       }
     })
@@ -78,6 +81,19 @@ export class AutoTraderService {
 
   getSignals(limit = 50): AutoTradeSignal[] {
     return this.recentSignals.slice(0, limit)
+  }
+
+  /** Mints to prioritize for PumpPortal `subscribeTokenTrade`. */
+  getPriorityMints(): string[] {
+    return [...this.pinnedTradeMints]
+  }
+
+  pinTradeStream(mint: string) {
+    this.pinnedTradeMints.add(mint)
+    if (this.pinnedTradeMints.size > 80) {
+      const drop = [...this.pinnedTradeMints].slice(0, this.pinnedTradeMints.size - 80)
+      for (const m of drop) this.pinnedTradeMints.delete(m)
+    }
   }
 
   /** Seed market state; entry fires on subsequent trade ticks via EV engine. */
@@ -162,6 +178,7 @@ export class AutoTraderService {
   private emitSignal(signal: AutoTradeSignal): AutoTradeSignal {
     if (this.signaledMints.has(signal.mint)) return signal
     this.signaledMints.add(signal.mint)
+    this.pinTradeStream(signal.mint)
     this.recentSignals.unshift(signal)
     this.recentSignals = this.recentSignals.slice(0, 100)
     this.logger.log(

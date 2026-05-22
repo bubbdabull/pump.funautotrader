@@ -19,6 +19,8 @@ export function usePumpPortalTrade() {
       priorityFee: number
       pool?: PumpPortalPool
       sellPercent?: string
+      /** Pre-built tx from /api/execution/build (server-sized). */
+      serializedTxBase64?: string
     }) => {
       if (!publicKey || !signTransaction) {
         throw new Error('Connect wallet first')
@@ -28,10 +30,12 @@ export function usePumpPortalTrade() {
       setError(null)
 
       try {
-        const b64 = await buildPumpPortalTransaction({
-          publicKey: publicKey.toBase58(),
-          ...params,
-        })
+        const b64 =
+          params.serializedTxBase64 ??
+          (await buildPumpPortalTransaction({
+            publicKey: publicKey.toBase58(),
+            ...params,
+          }))
 
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
         const tx = VersionedTransaction.deserialize(bytes)

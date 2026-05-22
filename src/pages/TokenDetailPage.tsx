@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Shield, Users, MessageCircle, AlertTriangle } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { TokenChart } from '@/components/charts/TokenChart'
+import { ProTokenChart } from '@/components/charts/ProTokenChart'
 import { TradingPanel } from '@/components/trading/TradingPanel'
 import { Badge } from '@/components/ui/badge'
 import { useToken, useTokenTrades } from '@/hooks/useTokens'
@@ -25,22 +25,30 @@ export function TokenDetailPage() {
 
   return (
     <PageTransition>
-      <motion.div className="mb-6 flex flex-wrap items-center gap-4">
-        <TokenImage mint={token.mint} symbol={token.symbol} image={token.image} size="lg" />
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-white">{token.symbol}</h1>
-            <Badge variant={token.priceChange24h >= 0 ? 'success' : 'danger'}>
+      <motion.div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="shrink-0">
+          <TokenImage
+            mint={token.mint}
+            symbol={token.symbol}
+            image={token.image}
+            uri={token.metadataUri}
+            size="xl"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="truncate text-xl font-bold text-white sm:text-2xl">{token.symbol}</h1>
+            <Badge variant={token.priceChange24h >= 0 ? 'success' : 'danger'} className="shrink-0">
               {token.priceChange24h >= 0 ? '+' : ''}
               {token.priceChange24h.toFixed(1)}%
             </Badge>
             <span
-              className={`rounded-lg border px-2 py-0.5 font-mono text-sm font-bold ${riskBg(token.signalScore ?? token.aiRiskScore ?? 50)} ${riskColor(token.signalScore ?? token.aiRiskScore ?? 50)}`}
+              className={`shrink-0 rounded-lg border px-2 py-0.5 font-mono text-sm font-bold ${riskBg(token.signalScore ?? token.aiRiskScore ?? 50)} ${riskColor(token.signalScore ?? token.aiRiskScore ?? 50)}`}
             >
               Signal {token.signalScore ?? token.aiRiskScore}
             </span>
           </div>
-          <p className="text-zinc-500">
+          <p className="mt-1 truncate text-sm text-zinc-500">
             {token.name} · {formatUsd(token.marketCap)} MCap
           </p>
         </div>
@@ -48,7 +56,7 @@ export function TokenDetailPage() {
 
       <motion.div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
-          <TokenChart mint={mint} />
+          <ProTokenChart mint={mint} />
           <div className="grid gap-4 sm:grid-cols-3">
             <GlassCard>
               <Users className="mb-2 h-5 w-5 text-purple-400" />

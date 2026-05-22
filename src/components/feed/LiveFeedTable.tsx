@@ -11,16 +11,20 @@ import {
   cn,
 } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
+import { RugBadge } from '@/components/quant/RugBadge'
+import { useQuantStore } from '@/stores/quantStore'
 import { useAppStore } from '@/stores/appStore'
 import type { PumpToken } from '@/types'
 import { formatDistanceToNow } from 'date-fns'
 
 interface LiveFeedTableProps {
   tokens: PumpToken[]
+  highlightGraduating?: boolean
 }
 
-export function LiveFeedTable({ tokens }: LiveFeedTableProps) {
+export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProps) {
   const { watchlist, toggleWatchlist } = useAppStore()
+  const byMint = useQuantStore((s) => s.byMint)
 
   if (tokens.length === 0) {
     return (
@@ -35,12 +39,13 @@ export function LiveFeedTable({ tokens }: LiveFeedTableProps) {
   }
 
   return (
-    <div className="panel overflow-hidden">
+    <div className="panel hidden overflow-hidden md:block">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[960px] border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-[#0d0f14]/95 backdrop-blur-md">
             <tr className="border-b border-white/[0.06] text-left text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
               <th className="px-4 py-3">Token</th>
+              <th className="px-4 py-3 text-center">Rug</th>
               <th className="px-4 py-3 text-right">Market cap</th>
               <th className="px-4 py-3 text-right">Curve</th>
               <th className="px-4 py-3 text-right">Holders</th>
@@ -65,20 +70,20 @@ export function LiveFeedTable({ tokens }: LiveFeedTableProps) {
                     transition={{ duration: 0.15, delay: Math.min(i * 0.02, 0.3) }}
                     className="group border-b border-white/[0.03] transition-colors hover:bg-white/[0.03]"
                   >
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2.5">
+                    <td className="max-w-[220px] px-4 py-2.5">
+                      <div className="flex min-w-0 items-center gap-2">
                         <button
                           type="button"
                           onClick={() => toggleWatchlist(token.mint)}
                           className={cn(
-                            'opacity-60 transition-opacity group-hover:opacity-100',
+                            'flex h-9 w-5 shrink-0 items-center justify-center opacity-60 transition-opacity group-hover:opacity-100',
                             watchlist.includes(token.mint)
                               ? 'text-amber-400'
                               : 'text-zinc-600 hover:text-amber-400',
                           )}
                         >
                           <Star
-                            className="h-3.5 w-3.5"
+                            className="h-3.5 w-3.5 shrink-0"
                             fill={watchlist.includes(token.mint) ? 'currentColor' : 'none'}
                           />
                         </button>
@@ -91,12 +96,22 @@ export function LiveFeedTable({ tokens }: LiveFeedTableProps) {
                         />
                         <Link
                           to={`/token/${token.mint}`}
-                          className="min-w-0 hover:text-violet-300"
+                          className="min-w-0 flex-1 overflow-hidden hover:text-violet-300"
                         >
-                          <div className="truncate font-semibold text-white">{token.symbol}</div>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate font-semibold text-white">{token.symbol}</span>
+                            {(highlightGraduating || token.bondingCurvePercent >= 78) && (
+                              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">
+                                grad
+                              </span>
+                            )}
+                          </div>
                           <div className="truncate text-[11px] text-zinc-500">{token.name}</div>
                         </Link>
                       </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-center">
+                      <RugBadge mint={token.mint} compact />
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-200">
                       {formatUsd(token.marketCap)}
@@ -117,7 +132,7 @@ export function LiveFeedTable({ tokens }: LiveFeedTableProps) {
                     <td className="px-4 py-2.5 text-right">
                       <span className="inline-flex items-center justify-end gap-1 font-mono text-xs text-zinc-300">
                         <Users className="h-3 w-3 text-zinc-600" />
-                        {formatHolders(token.holders)}
+                        {formatHolders(byMint[token.mint]?.holders ?? token.holders)}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-300">

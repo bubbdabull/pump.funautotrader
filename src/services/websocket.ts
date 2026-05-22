@@ -1,11 +1,14 @@
 import { io, type Socket } from 'socket.io-client'
 import type { PumpToken, AutoTradeSignal } from '@/types'
+import type { QuantUpdate, StrategySignal } from '@/lib/quantTypes'
 
 import { WS_URL } from '@/lib/apiConfig'
 
 type TokenUpdateHandler = (token: PumpToken) => void
 type FeedHandler = (tokens: PumpToken[]) => void
 type SignalHandler = (signal: AutoTradeSignal) => void
+type QuantUpdateHandler = (payload: QuantUpdate) => void
+type QuantStrategyHandler = (payload: { mint: string; signal: StrategySignal }) => void
 
 class WebSocketService {
   private socket: Socket | null = null
@@ -14,7 +17,11 @@ class WebSocketService {
   private feedPrependHandlers = new Set<TokenUpdateHandler>()
   private feedPatchHandlers = new Set<TokenUpdateHandler>()
   private pumpPortalHandlers = new Set<TokenUpdateHandler>()
+  private graduatingHandlers = new Set<TokenUpdateHandler>()
   private signalHandlers = new Set<SignalHandler>()
+  private quantUpdateHandlers = new Set<QuantUpdateHandler>()
+  private quantStrategyHandlers = new Set<QuantStrategyHandler>()
+  private rugWarningHandlers = new Set<(payload: { mint: string; rug: QuantUpdate['rug'] }) => void>()
 
   connect() {
     if (this.socket?.connected) return this.socket
@@ -47,6 +54,22 @@ class WebSocketService {
 
     this.socket.on('autotrader:signal', (signal: AutoTradeSignal) => {
       this.signalHandlers.forEach((h) => h(signal))
+    })
+
+    this.socket.on('token:graduating', (token: PumpToken) => {
+      this.graduatingHandlers.forEach((h) => h(token))
+    })
+
+    this.socket.on('quant:update', (payload: QuantUpdate) => {
+      this.quantUpdateHandlers.forEach((h) => h(payload))
+    })
+
+    this.socket.on('quant:strategy', (payload: { mint: string; signal: StrategySignal }) => {
+      this.quantStrategyHandlers.forEach((h) => h(payload))
+    })
+
+    this.socket.on('quant:rug_warning', (payload: { mint: string; rug: QuantUpdate['rug'] }) => {
+      this.rugWarningHandlers.forEach((h) => h(payload))
     })
 
     this.socket.on('connect', () => {
@@ -94,9 +117,29 @@ class WebSocketService {
     return () => this.pumpPortalHandlers.delete(handler)
   }
 
+  onTokenGraduating(handler: TokenUpdateHandler) {
+    this.graduatingHandlers.add(handler)
+    return () => this.graduatingHandlers.delete(handler)
+  }
+
   onAutoTradeSignal(handler: SignalHandler) {
     this.signalHandlers.add(handler)
     return () => this.signalHandlers.delete(handler)
+  }
+
+  onQuantUpdate(handler: QuantUpdateHandler) {
+    this.quantUpdateHandlers.add(handler)
+    return () => this.quantUpdateHandlers.delete(handler)
+  }
+
+  onQuantStrategy(handler: QuantStrategyHandler) {
+    this.quantStrategyHandlers.add(handler)
+    return () => this.quantStrategyHandlers.delete(handler)
+  }
+
+  onRugWarning(handler: (payload: { mint: string; rug: QuantUpdate['rug'] }) => void) {
+    this.rugWarningHandlers.add(handler)
+    return () => this.rugWarningHandlers.delete(handler)
   }
 }
 

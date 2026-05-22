@@ -71,6 +71,12 @@ body::before {
   font-variant-numeric: tabular-nums;
 }
 
+/* Token avatars — fixed box, no layout shift or overlap */
+.token-avatar img {
+  display: block;
+  max-width: none;
+}
+
 /* Glass card utility */
 .glass {
   background: rgba(17, 19, 24, 0.65);

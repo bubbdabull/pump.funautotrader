@@ -22,25 +22,31 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
       <Link to={`/token/${token.mint}`}>
         <GlassCard hover className="group">
           <div className="flex items-center gap-3">
-            <TokenImage
-              mint={token.mint}
-              symbol={token.symbol}
-              image={token.image}
-              uri={token.metadataUri}
-              size="md"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-white">{token.symbol}</span>
-                <Badge variant={token.priceChange24h >= 0 ? 'success' : 'danger'}>
+            <div className="shrink-0">
+              <TokenImage
+                mint={token.mint}
+                symbol={token.symbol}
+                image={token.image}
+                uri={token.metadataUri}
+                size="md"
+              />
+            </div>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-semibold text-white">{token.symbol}</span>
+                <Badge variant={token.priceChange24h >= 0 ? 'success' : 'danger'} className="shrink-0">
                   {token.priceChange24h >= 0 ? '+' : ''}
                   {token.priceChange24h.toFixed(1)}%
                 </Badge>
               </div>
               <p className="truncate text-xs text-zinc-500">{token.name}</p>
             </div>
-            <div className={`rounded-lg border px-2 py-1 text-xs font-mono font-bold ${riskBg(token.signalScore ?? token.aiRiskScore ?? 50)}`}>
-              <span className={riskColor(token.signalScore ?? token.aiRiskScore ?? 50)}>{token.signalScore ?? token.aiRiskScore}</span>
+            <div
+              className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-mono font-bold ${riskBg(token.signalScore ?? token.aiRiskScore ?? 50)}`}
+            >
+              <span className={riskColor(token.signalScore ?? token.aiRiskScore ?? 50)}>
+                {token.signalScore ?? token.aiRiskScore}
+              </span>
             </div>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs">

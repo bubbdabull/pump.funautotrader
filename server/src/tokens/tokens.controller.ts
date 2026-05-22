@@ -1,13 +1,19 @@
-import { Controller, Get, Param } from '@nestjs/common'
+import { Controller, Get, Param, Query } from '@nestjs/common'
 import { TokensService } from './tokens.service'
+import type { ScannerLane } from '@phronis/trading'
 
 @Controller('tokens')
 export class TokensController {
   constructor(private tokens: TokensService) {}
 
   @Get('feed')
-  feed() {
-    return this.tokens.getFeed()
+  feed(@Query('lane') lane?: ScannerLane) {
+    return this.tokens.getFeed(lane ?? 'alpha')
+  }
+
+  @Get('graduating')
+  graduating() {
+    return this.tokens.getGraduatingFeed()
   }
 
   @Get('stats')
@@ -16,8 +22,13 @@ export class TokensController {
   }
 
   @Get()
-  list() {
-    return this.tokens.getFeed()
+  list(@Query('lane') lane?: ScannerLane) {
+    return this.tokens.getFeed(lane ?? 'alpha')
+  }
+
+  @Get(':mint/chart')
+  chart(@Param('mint') mint: string) {
+    return this.tokens.getChartSeries(mint)
   }
 
   @Get(':mint/trades')

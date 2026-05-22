@@ -6,6 +6,9 @@ import {
   evScoreToSignalScore,
   momentumScoreFromMetrics,
   scoreFromStaticFields,
+  computeQuantitativeScores,
+  computeRugScore,
+  evaluateAllStrategies,
 } from '@phronis/trading'
 import type { NewTokenEvent, TradeStreamEvent, EntryDecision } from '@phronis/trading'
 
@@ -49,6 +52,16 @@ export class TradingBridgeService implements OnModuleInit {
     return {
       signalScore: evScoreToSignalScore(metrics),
       momentumScore: momentumScoreFromMetrics(metrics),
+    }
+  }
+
+  getQuantAnalysis(mint: string) {
+    const state = globalMarketState.getState(mint)
+    if (!state) return null
+    return {
+      scores: computeQuantitativeScores(state),
+      rug: computeRugScore(state),
+      strategies: evaluateAllStrategies(state),
     }
   }
 }

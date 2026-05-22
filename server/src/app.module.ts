@@ -17,6 +17,11 @@ import { TradingModule } from './trading/trading.module'
 import { FeedModule } from './feed/feed.module'
 import { FeedProcessor } from './jobs/feed.processor'
 import { HealthController } from './health.controller'
+import { IngestionModule } from './ingestion/ingestion.module'
+import { QuantModule } from './quant/quant.module'
+import { ExecutionModule } from './execution/execution.module'
+import { RiskModule } from './risk/risk.module'
+import { BacktestModule } from './backtest/backtest.module'
 
 /** Bull/Redis is optional — live feed uses PumpPortal WS, not the job queue. */
 function redisEnabled(): boolean {
@@ -51,6 +56,11 @@ const bullImports: (Type | DynamicModule)[] = redisEnabled()
     TradeModule,
     AlertsModule,
     EventsModule,
+    IngestionModule,
+    QuantModule,
+    ExecutionModule,
+    RiskModule,
+    BacktestModule,
   ],
   controllers: [HealthController],
   providers: redisEnabled() ? [FeedProcessor] : [],
