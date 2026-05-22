@@ -53,6 +53,7 @@ export interface QuantUpdate {
   strategies: StrategySignal[]
   risk: { allowed: boolean; reason?: string }
   holders?: number
+  holdersVerified?: boolean
   at: string
 }
 
