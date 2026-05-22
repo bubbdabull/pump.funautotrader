@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { globalMarketState, resolveHolderCount, type OnChainHolderSnapshot } from '@phronis/trading'
 import { HeliusService } from '../helius/helius.service'
@@ -40,6 +40,7 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
     private helius: HeliusService,
     private bubblemaps: BubblemapsService,
     private liveFeed: LiveFeedService,
+    @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
     private events: EventsGateway,
     private pump: PumpService,

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Inject, Logger, forwardRef } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { PrismaService } from '../prisma/prisma.service'
 import { PumpService, type PumpCoin } from '../pump/pump.service'
@@ -40,6 +40,7 @@ export class TokensService {
     private liveFeed: LiveFeedService,
     private metadata: TokenMetadataService,
     private supabase: SupabaseDbService,
+    @Inject(forwardRef(() => HolderEnrichmentService))
     private holderEnrichment: HolderEnrichmentService,
   ) {}
 

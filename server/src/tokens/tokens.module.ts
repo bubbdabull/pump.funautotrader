@@ -14,7 +14,7 @@ import { HoldersModule } from '../holders/holders.module'
     PumpModule,
     TradingModule,
     EventsModule,
-    HoldersModule,
+    forwardRef(() => HoldersModule),
     forwardRef(() => PumpPortalModule),
   ],
   controllers: [TokensController],
