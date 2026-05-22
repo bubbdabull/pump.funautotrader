@@ -17,9 +17,9 @@ const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: strin
     id: 'tradeable',
     label: 'Tradeable',
     icon: Sparkles,
-    desc: 'Tokens we would actually trade — volume, holders, signal',
+    desc: 'Anti-rug bar: $10k+ mcap, 18+ verified holders, signal ≤58',
   },
-  { id: 'alpha', label: 'Watchlist', icon: Activity, desc: 'Broader quality filter' },
+  { id: 'alpha', label: 'Watchlist', icon: Activity, desc: '$3k+ mcap — broader, still filtered' },
   { id: 'graduating', label: 'Graduating', icon: Rocket, desc: 'Highest curve % — nearing PumpSwap' },
 ]
 

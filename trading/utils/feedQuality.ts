@@ -4,6 +4,16 @@
 export const GRADUATING_CURVE_MIN = 70
 export const GRADUATING_CURVE_MAX = 100
 
+/** Tradeable lane thresholds (tuned anti-rug — conservative). */
+export const TRADEABLE_MIN_MARKET_CAP_USD = 10_000
+export const TRADEABLE_MAX_SIGNAL = 58
+export const TRADEABLE_MIN_VOL_SOL = 0.5
+export const TRADEABLE_MIN_MOMENTUM = 22
+/** On-chain verified holder floor (Helius / Bubblemaps). */
+export const TRADEABLE_MIN_HOLDERS_VERIFIED = 18
+/** Unverified stream estimate — only if very strong distribution. */
+export const TRADEABLE_MIN_HOLDERS_UNVERIFIED = 40
+
 export interface FeedQualityFields {
   mint: string
   symbol?: string
@@ -39,28 +49,30 @@ export function passesIngestGate(token: FeedQualityFields): boolean {
   if (!token.mint || token.mint.length < 32) return false
   if (!token.symbol?.trim() || token.symbol === 'UNKNOWN') return false
   const vol = activitySol(token)
-  return token.marketCap >= 400 || vol >= 0.15 || token.holders >= 2
+  return token.marketCap >= 800 || vol >= 0.2 || token.holders >= 3
 }
 
-/** Base quality — filters obvious junk / empty launches. */
+/** Watchlist — broader than tradeable but still filters junk. */
 export function passesAlphaFilter(token: FeedQualityFields): boolean {
   const signal = entrySignal(token)
   const vol = activitySol(token)
   const curve = token.bondingCurvePercent
+  const holders = token.holders ?? 0
 
   if (!passesIngestGate(token)) return false
-  if (curve < 3 || curve > 99) return false
+  if (curve < 5 || curve > 99) return false
   if (isGraduatingSoon(token)) return false
-  if (signal > 76) return false
-  if (vol < 0.08 && token.holders < 3) return false
-  if ((token.momentumScore ?? 0) < 10 && vol < 0.2 && token.holders < 5) return false
+  if (signal > 72) return false
+  if (token.marketCap < 3_000) return false
+  if (vol < 0.12 && holders < 8) return false
+  if ((token.momentumScore ?? 0) < 12 && vol < 0.3 && holders < 12) return false
 
   return true
 }
 
 /**
- * Tokens we would actually consider trading — stricter than alpha.
- * Requires real activity + holder depth (on-chain or stream).
+ * Tokens we would actually trade — conservative anti-rug bar.
+ * Prefer on-chain holder verification; high mcap + volume + holder depth.
  */
 export function passesTradeableFilter(token: FeedQualityFields): boolean {
   if (!passesAlphaFilter(token)) return false
@@ -69,19 +81,30 @@ export function passesTradeableFilter(token: FeedQualityFields): boolean {
   const vol = activitySol(token)
   const holders = token.holders ?? 0
   const mom = token.momentumScore ?? 0
+  const verified = token.holdersVerified === true
 
-  if (token.marketCap < 1_500) return false
-  if (signal > 68) return false
+  if (token.marketCap < TRADEABLE_MIN_MARKET_CAP_USD) return false
+  if (signal > TRADEABLE_MAX_SIGNAL) return false
+  if (vol < TRADEABLE_MIN_VOL_SOL) return false
+  if (mom < TRADEABLE_MIN_MOMENTUM) return false
 
-  const holderOk =
-    holders >= 8 ||
-    (holders >= 5 && vol >= 0.2) ||
-    (holders >= 3 && vol >= 0.5 && mom >= 22) ||
-    (token.holdersVerified === true && holders >= 3 && vol >= 0.15)
+  // Bonding curve band: skip brand-new illiquid launches (common rug window)
+  const curve = token.bondingCurvePercent
+  if (curve < 8 && vol < 1.0) return false
 
-  if (!holderOk) return false
-  if (vol < 0.15 && mom < 25) return false
-  if (mom < 15 && vol < 0.35) return false
+  if (verified) {
+    if (holders < TRADEABLE_MIN_HOLDERS_VERIFIED) return false
+    if (holders < 30 && vol < 0.85) return false
+    if (holders < 50 && signal > 52) return false
+    return true
+  }
+
+  // Without on-chain proof, demand very strong social proof from stream
+  if (holders < TRADEABLE_MIN_HOLDERS_UNVERIFIED) return false
+  if (vol < 1.25) return false
+  if (mom < 35) return false
+  if (signal > 52) return false
+  if (token.marketCap < 15_000) return false
 
   return true
 }
@@ -94,14 +117,15 @@ export function tradeQualityScore(token: FeedQualityFields): number {
   const mom = token.momentumScore ?? 0
   const curve = token.bondingCurvePercent
 
-  const signalPts = Math.min(22, Math.max(0, (72 - signal) * 0.55))
-  const momPts = Math.min(28, mom * 0.38)
-  const volPts = Math.min(22, Math.log10(vol + 0.05) * 11)
-  const holderPts = Math.min(18, Math.log10(holders + 1) * 9)
-  const curvePts = Math.min(10, curve * 0.08)
-  const verifiedBonus = token.holdersVerified ? 5 : 0
+  const signalPts = Math.min(25, Math.max(0, (65 - signal) * 0.65))
+  const momPts = Math.min(22, mom * 0.32)
+  const volPts = Math.min(22, Math.log10(vol + 0.05) * 12)
+  const holderPts = Math.min(22, Math.log10(holders + 1) * 11)
+  const mcapPts = Math.min(8, Math.log10(token.marketCap + 1) * 2)
+  const curvePts = Math.min(6, curve * 0.05)
+  const verifiedBonus = token.holdersVerified ? 8 : 0
 
-  return Math.round(signalPts + momPts + volPts + holderPts + curvePts + verifiedBonus)
+  return Math.round(signalPts + momPts + volPts + holderPts + mcapPts + curvePts + verifiedBonus)
 }
 
 export function rankTradeable<T extends FeedQualityFields>(tokens: T[], limit = 80): T[] {
