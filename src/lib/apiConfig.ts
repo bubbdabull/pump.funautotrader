@@ -9,34 +9,38 @@ function normalizeEnvUrl(raw: string | undefined, fallback: string): string {
   return v.replace(/^['"]|['"]$/g, '')
 }
 
-/** On Vercel production, always use same-origin /api + socket proxy (vercel.json → Fly). */
-function isVercelProductionHost(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    (/\.vercel\.app$/i.test(window.location.hostname) ||
-      /\.vercel\.app$/i.test(window.location.host))
-  )
+/** Deployed Nest API on Fly — use directly from browser (CORS enabled). */
+export const FLY_API_ORIGIN = 'https://pump-funautotrader.fly.dev'
+export const FLY_API_BASE = `${FLY_API_ORIGIN}/api`
+
+function isLocalDevHost(): boolean {
+  if (typeof window === 'undefined') return true
+  const h = window.location.hostname
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]'
 }
 
 const envApi = normalizeEnvUrl(import.meta.env.VITE_API_URL, '/api')
 const envWs = normalizeEnvUrl(import.meta.env.VITE_WS_URL, '')
 
-/** Runtime: Vercel host uses proxy; local dev uses env or /api fallback. */
-export const API_BASE = isVercelProductionHost() ? '/api' : envApi
-export const WS_URL = isVercelProductionHost() ? '' : envWs
+/**
+ * Vercel cannot proxy Socket.IO to Fly — WS must hit Fly directly.
+ * HTTP also uses Fly in production (Vercel /api rewrites are unreliable).
+ */
+export const API_BASE = isLocalDevHost() ? envApi || '/api' : FLY_API_BASE
+export const WS_URL = isLocalDevHost()
+  ? envWs || (typeof window !== 'undefined' ? window.location.origin : '')
+  : FLY_API_ORIGIN
 
 export function backendLabel(): string {
-  if (!API_BASE || API_BASE === '/api') {
-    if (typeof window !== 'undefined' && /vercel\.app$/i.test(window.location.hostname)) {
-      return 'Vercel → Fly proxy'
+  if (isLocalDevHost()) {
+    if (!API_BASE || API_BASE === '/api') return 'local proxy'
+    try {
+      return new URL(API_BASE).host
+    } catch {
+      return API_BASE.slice(0, 40)
     }
-    return 'local proxy'
   }
-  try {
-    return new URL(API_BASE).host
-  } catch {
-    return API_BASE.slice(0, 40)
-  }
+  return 'pump-funautotrader.fly.dev'
 }
 
 export function apiConfigMisconfigured(): boolean {

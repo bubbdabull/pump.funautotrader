@@ -39,6 +39,9 @@ class WebSocketService {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 1000,
+      timeout: 20_000,
     })
 
     this.socket.on('token:update', (token: PumpToken) => {

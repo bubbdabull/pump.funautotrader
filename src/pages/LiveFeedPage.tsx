@@ -13,7 +13,7 @@ import type { PumpToken } from '@/types'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { cn } from '@/lib/utils'
 import { useWsConnection } from '@/hooks/useWsConnection'
-import { API_BASE } from '@/lib/apiConfig'
+import { backendLabel } from '@/lib/apiConfig'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
   {
@@ -33,7 +33,7 @@ const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: strin
 ]
 
 export function LiveFeedPage() {
-  const [lane, setLane] = useState<ScannerLane>('active')
+  const [lane, setLane] = useState<ScannerLane>('tradeable')
   const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
   const {
@@ -71,12 +71,23 @@ export function LiveFeedPage() {
         </div>
       </div>
 
-      {!wsLive && backend.apiReachable && (
+      {!wsLive && backend.apiReachable && tokens.length > 0 && (
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/90">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            Live socket off — feed still polls every 4s from{' '}
+            <span className="font-mono text-xs">{backendLabel()}</span>. Hard refresh after deploy
+            if this persists.
+          </p>
+        </div>
+      )}
+
+      {!backend.apiReachable && (
         <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            Live socket disconnected — prices, holders, and charts will look frozen. Hard refresh
-            after deploy; API is proxied via <span className="font-mono text-xs">{API_BASE}</span>.
+            Cannot reach Fly API at pump-funautotrader.fly.dev — run{' '}
+            <span className="font-mono">fly deploy</span> in server/ and check env secrets.
           </p>
         </div>
       )}

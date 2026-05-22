@@ -94,9 +94,11 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
             )
       return payloadFromServer(ensureArray<PumpToken>(raw), lane)
     },
-    refetchInterval: 5_000,
-    staleTime: 2_000,
+    refetchInterval: 4_000,
+    staleTime: 1_500,
     refetchOnWindowFocus: true,
+    retry: 3,
+    retryDelay: (n) => Math.min(1000 * 2 ** n, 8000),
   })
 
   useEffect(() => {
@@ -180,7 +182,15 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
     const u3b = wsService.onTokenUpdate(onPatch)
     const u4 = wsService.onTokenGraduating(onGraduating)
     const u5 = wsService.onFeedUpdate((tokens) => {
-      queryClient.setQueryData(key, payloadFromServer(ensureArray(tokens), lane))
+      const list = normalizePumpTokens(ensureArray(tokens))
+      if (list.length === 0) return
+      queryClient.setQueryData(key, (prev) => {
+        const next = payloadFromServer(list, lane)
+        if (lane === 'active' && next.tokens.length < (prev?.tokens?.length ?? 0) / 2) {
+          return prev ?? next
+        }
+        return next
+      })
     })
 
     return () => {

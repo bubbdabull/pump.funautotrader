@@ -5,14 +5,6 @@
   "installCommand": "npm install",
   "framework": "vite",
   "rewrites": [
-    {
-      "source": "/socket.io/:path*",
-      "destination": "https://pump-funautotrader.fly.dev/socket.io/:path*"
-    },
-    {
-      "source": "/api/:path*",
-      "destination": "https://pump-funautotrader.fly.dev/api/:path*"
-    },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }
