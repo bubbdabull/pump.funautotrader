@@ -5,6 +5,7 @@ import {
   formatUsd,
   formatSol,
   formatHolders,
+  displayHolderCount,
   tokenVolumeSol,
   riskBg,
   riskColor,
@@ -186,10 +187,20 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                       <span className="inline-flex items-center justify-end gap-1 font-mono text-xs text-zinc-300">
                         <Users className="h-3 w-3 text-zinc-600" />
                         <LiveValue
-                          value={byMint[token.mint]?.holders ?? token.holders ?? 0}
+                          value={displayHolderCount({
+                            ...token,
+                            holders: byMint[token.mint]?.holders ?? token.holders,
+                            holdersVerified:
+                              byMint[token.mint]?.holdersVerified ?? token.holdersVerified,
+                          })}
                         >
                           {formatHolders(
-                            byMint[token.mint]?.holders ?? token.holders,
+                            displayHolderCount({
+                              ...token,
+                              holders: byMint[token.mint]?.holders ?? token.holders,
+                              holdersVerified:
+                                byMint[token.mint]?.holdersVerified ?? token.holdersVerified,
+                            }),
                             byMint[token.mint]?.holdersVerified ?? token.holdersVerified,
                           )}
                         </LiveValue>

@@ -11,6 +11,18 @@ export function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`
 }
 
+/** Best display count: on-chain when verified, else stream activity. */
+export function displayHolderCount(token: {
+  holders?: number
+  trades1m?: number
+  holdersVerified?: boolean
+}): number {
+  const h = token.holders ?? 0
+  const trades = token.trades1m ?? 0
+  if (token.holdersVerified && h >= 2) return h
+  return Math.max(h, trades > 0 ? trades : 0)
+}
+
 export function formatHolders(
   value: number | undefined | null,
   verified?: boolean,

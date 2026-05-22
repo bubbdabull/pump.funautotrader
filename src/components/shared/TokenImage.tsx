@@ -108,6 +108,9 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
     })
     const ordered: string[] = []
     if (resolvedFromMeta) ordered.push(resolvedFromMeta)
+    if (image?.includes('pump.fun/coin/') && !ordered.includes(image)) {
+      ordered.push(image)
+    }
     if (directImage && !ordered.includes(directImage)) ordered.push(directImage)
     for (const u of base) {
       if (!isLikelyMetadataUri(u) && !ordered.includes(u)) ordered.push(u)

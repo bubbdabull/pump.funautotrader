@@ -6,27 +6,29 @@ import { pumpPortalWs } from '@/services/pumpportal-ws'
 import { useDirectPumpPortalWs } from '@/lib/pumpportalConfig'
 import type { PumpToken } from '@/types'
 import { ensureArray } from '@/lib/ensureArray'
-import { mergePumpTokens, normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
-
 function mergeTokenIntoFeed(feed: PumpToken[] | unknown, token: PumpToken): PumpToken[] {
-  const list = normalizePumpTokens(ensureArray<PumpToken>(feed))
-  const t = normalizePumpToken(token)
-  const idx = list.findIndex((x) => x.mint === t.mint)
+  const list = ensureArray<PumpToken>(feed)
+  const idx = list.findIndex((t) => t.mint === token.mint)
   if (idx >= 0) {
     const next = [...list]
-    next[idx] = mergePumpTokens(next[idx], t)
+    const prev = next[idx]
+    next[idx] = {
+      ...prev,
+      ...token,
+      image: token.image || prev.image,
+      metadataUri: token.metadataUri || prev.metadataUri,
+    }
     return next
   }
-  return [t, ...list].slice(0, 120)
+  return [token, ...list].slice(0, 120)
 }
 
 function prependToken(feed: PumpToken[] | unknown, token: PumpToken): PumpToken[] {
-  const list = normalizePumpTokens(ensureArray<PumpToken>(feed))
-  const t = normalizePumpToken(token)
-  if (list.some((x) => x.mint === t.mint)) {
-    return mergeTokenIntoFeed(list, t)
+  const list = ensureArray<PumpToken>(feed)
+  if (list.some((t) => t.mint === token.mint)) {
+    return mergeTokenIntoFeed(list, token)
   }
-  return [t, ...list].slice(0, 120)
+  return [token, ...list].slice(0, 120)
 }
 
 export function useTokenFeed() {
@@ -61,7 +63,7 @@ export function useTokenFeed() {
     }
 
     const unsubFeed = wsService.onFeedUpdate((tokens) => {
-      queryClient.setQueryData(['tokens', 'feed'], normalizePumpTokens(tokens))
+      queryClient.setQueryData(['tokens', 'feed'], ensureArray<PumpToken>(tokens))
     })
     const unsubPrepend = wsService.onFeedPrepend(prepend)
     const unsubPatch = wsService.onFeedPatch(patchFeed)
@@ -111,10 +113,17 @@ export function useToken(mint: string) {
     wsService.connect()
     wsService.subscribeToken(mint)
 
-    const patch = (raw: PumpToken) => {
-      if (raw.mint !== mint) return
+    const patch = (token: PumpToken) => {
+      if (token.mint !== mint) return
       queryClient.setQueryData<PumpToken>(['tokens', mint], (prev) =>
-        prev ? mergePumpTokens(prev, normalizePumpToken(raw)) : normalizePumpToken(raw),
+        prev
+          ? {
+              ...prev,
+              ...token,
+              image: token.image || prev.image,
+              metadataUri: token.metadataUri || prev.metadataUri,
+            }
+          : token,
       )
     }
 
@@ -122,13 +131,12 @@ export function useToken(mint: string) {
       if (u.mint !== mint || !u.holders) return
       queryClient.setQueryData<PumpToken>(['tokens', mint], (prev) => {
         if (!prev) return prev
-        return mergePumpTokens(prev, {
+        const h = Math.max(prev.holders, u.holders ?? 0)
+        return {
           ...prev,
-          holders: u.holdersVerified
-            ? Math.max(prev.holders, u.holders ?? 0)
-            : Math.max(prev.holders, u.holders ?? 0),
-          holdersVerified: Boolean(u.holdersVerified) && (u.holders ?? 0) >= 2,
-        })
+          holders: h,
+          holdersVerified: Boolean(u.holdersVerified) && h >= 2,
+        }
       })
     })
 

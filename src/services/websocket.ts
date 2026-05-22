@@ -4,7 +4,6 @@ import type { TokenChartSeries } from '@/lib/chartTypes'
 import type { QuantHolderPatch, QuantUpdate, StrategySignal } from '@/lib/quantTypes'
 
 import { WS_URL } from '@/lib/apiConfig'
-import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 
 type TokenUpdateHandler = (token: PumpToken) => void
 type FeedHandler = (tokens: PumpToken[]) => void
@@ -45,9 +44,8 @@ class WebSocketService {
     })
 
     this.socket.on('token:update', (token: PumpToken) => {
-      const t = normalizePumpToken(token)
-      this.tokenHandlers.forEach((h) => h(t))
-      this.feedPatchHandlers.forEach((h) => h(t))
+      this.tokenHandlers.forEach((h) => h(token))
+      this.feedPatchHandlers.forEach((h) => h(token))
     })
 
     this.socket.on('chart:update', (series: TokenChartSeries) => {
@@ -55,23 +53,19 @@ class WebSocketService {
     })
 
     this.socket.on('feed:update', (tokens: PumpToken[]) => {
-      const list = normalizePumpTokens(tokens)
-      this.feedHandlers.forEach((h) => h(list))
+      this.feedHandlers.forEach((h) => h(tokens))
     })
 
     this.socket.on('feed:prepend', (token: PumpToken) => {
-      const t = normalizePumpToken(token)
-      this.feedPrependHandlers.forEach((h) => h(t))
+      this.feedPrependHandlers.forEach((h) => h(token))
     })
 
     this.socket.on('feed:patch', (token: PumpToken) => {
-      const t = normalizePumpToken(token)
-      this.feedPatchHandlers.forEach((h) => h(t))
+      this.feedPatchHandlers.forEach((h) => h(token))
     })
 
     this.socket.on('pumpportal:newToken', (token: PumpToken) => {
-      const t = normalizePumpToken(token)
-      this.pumpPortalHandlers.forEach((h) => h(t))
+      this.pumpPortalHandlers.forEach((h) => h(token))
     })
 
     this.socket.on('autotrader:signal', (signal: AutoTradeSignal) => {
@@ -79,8 +73,7 @@ class WebSocketService {
     })
 
     this.socket.on('token:graduating', (token: PumpToken) => {
-      const t = normalizePumpToken(token)
-      this.graduatingHandlers.forEach((h) => h(t))
+      this.graduatingHandlers.forEach((h) => h(token))
     })
 
     this.socket.on('quant:update', (payload: QuantUpdate) => {

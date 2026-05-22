@@ -2,8 +2,7 @@ import axios from 'axios'
 import type { PumpToken, SmartWallet, AutoTradeRules, AutoTradeSignal, Alert } from '@/types'
 import { ensureArray } from '@/lib/ensureArray'
 import { API_BASE } from '@/lib/apiConfig'
-import { isVercelSecurityCheckpoint, VERCEL_CHECKPOINT_HINT } from '@/lib/vercelCheckpoint'
-import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
+import { normalizePumpToken } from '@/lib/normalizeToken'
 import type { ScannerLane } from '@/lib/feedQuality'
 import type { TokenChartSeries } from '@/lib/chartTypes'
 
@@ -11,22 +10,6 @@ export const api = axios.create({
   baseURL: API_BASE,
   timeout: 15000,
 })
-
-api.interceptors.response.use(
-  (res) => {
-    const data = res.data
-    if (typeof data === 'string' && isVercelSecurityCheckpoint({ response: { data } })) {
-      throw new Error(VERCEL_CHECKPOINT_HINT)
-    }
-    return res
-  },
-  (err) => {
-    if (isVercelSecurityCheckpoint(err)) {
-      throw new Error(VERCEL_CHECKPOINT_HINT)
-    }
-    return Promise.reject(err)
-  },
-)
 
 export interface FeedTrade {
   signature: string
@@ -61,16 +44,13 @@ export const pumpportalApi = {
 }
 
 export const tokenApi = {
-  list: () =>
-    api.get('/tokens/feed').then((r) => normalizePumpTokens(ensureArray<PumpToken>(r.data))),
+  list: () => api.get('/tokens/feed').then((r) => ensureArray<PumpToken>(r.data)),
   get: (mint: string) =>
     api.get<PumpToken>(`/tokens/${mint}`).then((r) => normalizePumpToken(r.data)),
-  feed: (lane: ScannerLane = 'tradeable') =>
-    api
-      .get('/tokens/feed', { params: { lane } })
-      .then((r) => normalizePumpTokens(ensureArray<PumpToken>(r.data))),
+  feed: (lane: ScannerLane = 'all') =>
+    api.get('/tokens/feed', { params: { lane } }).then((r) => ensureArray<PumpToken>(r.data)),
   graduating: () =>
-    api.get('/tokens/graduating').then((r) => normalizePumpTokens(ensureArray<PumpToken>(r.data))),
+    api.get('/tokens/graduating').then((r) => ensureArray<PumpToken>(r.data)),
   chart: (mint: string, intervalMs = 5_000) =>
     api
       .get<TokenChartSeries>(`/tokens/${mint}/chart`, { params: { interval: intervalMs } })
