@@ -47,7 +47,7 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    const ms = Number(this.config.get('HOLDER_ENRICH_INTERVAL_MS') ?? 90_000)
+    const ms = Number(this.config.get('HOLDER_ENRICH_INTERVAL_MS') ?? 60_000)
     if (!Number.isFinite(ms) || ms < 20_000) return
     this.timer = setInterval(() => void this.enrichActiveFeed(), ms)
     setTimeout(() => void this.enrichActiveFeed(), 8_000)
@@ -89,7 +89,24 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
           : Promise.resolve(null),
       ])
 
-      const merged = mergeSnapshots(heliusSnap, bubbleSnap)
+      let merged = mergeSnapshots(heliusSnap, bubbleSnap)
+      const streamState = globalMarketState.getState(mint)
+      const streamHolders = streamState ? resolveHolderCount(streamState) : 0
+
+      if (!merged && streamHolders > 0) {
+        merged = {
+          holders: streamHolders,
+          top1Pct: 0,
+          top5Pct: 0,
+          entropy: 0,
+          source: 'stream',
+          verified: false,
+          updatedAt: Date.now(),
+        }
+      } else if (merged && streamHolders > merged.holders) {
+        merged = { ...merged, holders: streamHolders }
+      }
+
       if (!merged) return null
 
       this.cache.set(mint, merged)
@@ -135,7 +152,7 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
     const feed = this.liveFeed.getAll(500)
     const ranked = [...feed]
       .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
-      .slice(0, Number(this.config.get('HOLDER_ENRICH_BATCH') ?? 50))
+      .slice(0, Number(this.config.get('HOLDER_ENRICH_BATCH') ?? 60))
 
     let ok = 0
     for (const t of ranked) {

@@ -11,8 +11,8 @@ export const TRADEABLE_MIN_VOL_SOL = 0.35
 export const TRADEABLE_MIN_MOMENTUM = 18
 /** On-chain verified holder floor (Helius / Bubblemaps). */
 export const TRADEABLE_MIN_HOLDERS_VERIFIED = 10
-/** Unverified stream estimate — only if very strong distribution. */
-export const TRADEABLE_MIN_HOLDERS_UNVERIFIED = 28
+/** Stream trader count (bonding curve — no SPL accounts yet). */
+export const TRADEABLE_MIN_HOLDERS_UNVERIFIED = 18
 
 export interface FeedQualityFields {
   mint: string
@@ -101,7 +101,7 @@ export function passesTradeableFilter(token: FeedQualityFields): boolean {
 
   // Without on-chain proof, demand strong stream activity (still anti-rug)
   if (holders < TRADEABLE_MIN_HOLDERS_UNVERIFIED) return false
-  if (vol < 0.9) return false
+  if (vol < 0.45) return false
   if (mom < 28) return false
   if (signal > 55) return false
   if (token.marketCap < 12_000) return false

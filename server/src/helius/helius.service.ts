@@ -4,7 +4,6 @@ import axios from 'axios'
 import { distributionFromAmounts, type OnChainHolderSnapshot } from '@phronis/trading'
 
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
-const MAX_PROGRAM_ACCOUNTS = 2500
 
 interface ParsedTokenAccount {
   owner: string
@@ -39,7 +38,7 @@ export class HeliusService {
       const { data } = await axios.post<{ result?: T; error?: { message: string } }>(
         this.rpcUrl,
         { jsonrpc: '2.0', id: 1, method, params },
-        { timeout: 25_000 },
+        { timeout: 45_000 },
       )
       if (data.error) {
         this.logger.debug(`RPC ${method}: ${data.error.message}`)
@@ -53,45 +52,21 @@ export class HeliusService {
   }
 
   /**
-   * Count SPL holders with uiAmount > 0, excluding bonding-curve / pool wallets.
+   * Count unique SPL holders (paginated GPA v2).
+   * Bonding-curve pump tokens often have 0 token accounts until curve matures — returns null
+   * so caller can use live trade-stream counts instead of the 20-account largest-accounts cap.
    */
   async fetchMintHolderSnapshot(
     mint: string,
     excludeWallets: string[] = [],
   ): Promise<OnChainHolderSnapshot | null> {
     const exclude = new Set(excludeWallets.filter(Boolean))
+    const counted = await this.fetchUniqueOwnersPaginated(mint, exclude)
+    if (!counted || counted.holders === 0) return null
 
-    const programAccounts = await this.fetchProgramTokenAccounts(mint)
-    const amounts: number[] = []
-    let holders = 0
-
-    for (const acc of programAccounts) {
-      if (acc.amount <= 0) continue
-      if (exclude.has(acc.owner)) continue
-      holders++
-      amounts.push(acc.amount)
-    }
-
-    if (holders === 0) {
-      const largest = await this.rpc<{
-        value: { address: string; uiAmount: number; uiAmountString: string }[]
-      }>('getTokenLargestAccounts', [mint])
-      if (largest?.value?.length) {
-        for (const row of largest.value) {
-          const amt = Number(row.uiAmount ?? row.uiAmountString ?? 0)
-          if (amt <= 0) continue
-          holders++
-          amounts.push(amt)
-        }
-      }
-    }
-
-    if (holders === 0 || amounts.length === 0) return null
-
-    const dist = distributionFromAmounts(amounts)
-
+    const dist = distributionFromAmounts(counted.amounts)
     return {
-      holders,
+      holders: counted.holders,
       top1Pct: dist.top1Pct,
       top5Pct: dist.top5Pct,
       entropy: dist.entropy,
@@ -101,37 +76,60 @@ export class HeliusService {
     }
   }
 
-  private async fetchProgramTokenAccounts(mint: string): Promise<ParsedTokenAccount[]> {
-    const result = await this.rpc<{ value: unknown[] }>('getProgramAccounts', [
-      TOKEN_PROGRAM,
-      {
+  private async fetchUniqueOwnersPaginated(
+    mint: string,
+    exclude: Set<string>,
+  ): Promise<{ holders: number; amounts: number[] } | null> {
+    const owners = new Map<string, number>()
+    let paginationKey: string | undefined
+    let pages = 0
+    const maxPages = Number(this.config.get('HELIUS_GPA_MAX_PAGES') ?? 15)
+
+    while (pages < maxPages) {
+      const opts: Record<string, unknown> = {
         encoding: 'jsonParsed',
         filters: [
           { dataSize: 165 },
           { memcmp: { offset: 0, bytes: mint } },
         ],
-      },
-    ])
+        limit: 1000,
+      }
+      if (paginationKey) opts.paginationKey = paginationKey
 
-    const value = result?.value ?? []
-    if (value.length > MAX_PROGRAM_ACCOUNTS) {
-      this.logger.debug(
-        `Mint ${mint.slice(0, 8)}… has ${value.length}+ token accounts (capped)`,
-      )
+      const result = await this.rpc<{
+        accounts?: unknown[]
+        paginationKey?: string
+      }>('getProgramAccountsV2', [TOKEN_PROGRAM, opts])
+
+      if (!result) break
+
+      const accounts = result.accounts ?? []
+      for (const entry of accounts) {
+        const parsed = (
+          entry as { account?: { data?: { parsed?: { info?: Record<string, unknown> } } } }
+        )?.account?.data?.parsed?.info
+        if (!parsed) continue
+        const owner = String(parsed.owner ?? '')
+        const tokenAmount = parsed.tokenAmount as
+          | { uiAmount?: number; uiAmountString?: string }
+          | undefined
+        const amount = Number(tokenAmount?.uiAmount ?? tokenAmount?.uiAmountString ?? 0)
+        if (!owner || amount <= 0 || exclude.has(owner)) continue
+        owners.set(owner, (owners.get(owner) ?? 0) + amount)
+      }
+
+      paginationKey = result.paginationKey
+      pages++
+      if (!paginationKey || accounts.length === 0) break
     }
 
-    const out: ParsedTokenAccount[] = []
-    for (const entry of value.slice(0, MAX_PROGRAM_ACCOUNTS)) {
-      const parsed = (entry as { account?: { data?: { parsed?: { info?: Record<string, unknown> } } } })
-        ?.account?.data?.parsed?.info
-      if (!parsed) continue
-      const owner = String(parsed.owner ?? '')
-      const tokenAmount = parsed.tokenAmount as { uiAmount?: number; uiAmountString?: string } | undefined
-      const amount = Number(tokenAmount?.uiAmount ?? tokenAmount?.uiAmountString ?? 0)
-      if (!owner || amount <= 0) continue
-      out.push({ owner, amount })
+    if (owners.size === 0) return null
+
+    const amounts = [...owners.values()]
+    if (pages > 1) {
+      this.logger.debug(`Mint ${mint.slice(0, 8)}… ${owners.size} holders (${pages} GPA pages)`)
     }
-    return out
+    return { holders: owners.size, amounts }
   }
 
   async parseTransaction(signature: string) {

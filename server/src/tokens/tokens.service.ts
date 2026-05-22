@@ -503,8 +503,11 @@ export class TokensService {
   private kickHolderEnrich(tokens: FeedToken[]) {
     if (!this.holderEnrichment) return
     const batch = tokens
-      .filter((t) => !t.holdersVerified && (t.holders ?? 0) < 12)
-      .slice(0, 15)
+      .filter((t) => {
+        const h = t.holders ?? 0
+        return !t.holdersVerified || h <= 20
+      })
+      .slice(0, 20)
     for (const t of batch) {
       void this.holderEnrichment.enrichMint(t.mint)
     }
@@ -518,11 +521,14 @@ export class TokensService {
     const holdersVerified = Boolean(
       chain?.verified ?? token.holdersVerified ?? fromState?.holdersVerified,
     )
+    // Ignore stale Helius "20 holder" snapshots (getTokenLargestAccounts cap on bonding-curve mints)
+    const onChainForCount =
+      chain && chain.holders > 20 ? chain : state?.onChainHolders
     const holders = state
       ? resolveHolderCount({
           walletBalances: state.walletBalances,
           trades: state.trades,
-          onChainHolders: chain ?? state.onChainHolders,
+          onChainHolders: onChainForCount,
         })
       : Math.max(token.holders ?? 0, holdersFromChain, fromState?.holders ?? 0)
 
