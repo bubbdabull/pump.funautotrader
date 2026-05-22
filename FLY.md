@@ -41,7 +41,9 @@ If you see **app not found**, run the command above first, then deploy again.
 fly secrets set \
   SUPABASE_URL="https://ypzgxjdnllwoohybayus.supabase.co" \
   SUPABASE_SERVICE_ROLE_KEY="your_service_role_key" \
-  PUMPPORTAL_API_KEY="your_pumpportal_key"
+  PUMPPORTAL_API_KEY="your_pumpportal_key" \
+  HELIUS_API_KEY="your_helius_key" \
+  SOLANA_RPC_URL="https://mainnet.helius-rpc.com/?api-key=YOUR_HELIUS_KEY"
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` must be the **service_role** secret from Supabase → **Settings → API** (Reveal under `service_role`). Do **not** use the `anon` or `sb_publishable_` key — logs will show `Invalid API key`.
@@ -79,6 +81,8 @@ fly open /api/health
 Or in browser:
 
 - https://pump-funautotrader.fly.dev/api/health
+
+Confirm **`heliusKey": true`** — if `false`, holder counts stay at 1–2 and the tradeable feed stays empty.
 - https://pump-funautotrader.fly.dev/api/pumpportal/status
 
 Expected health response:
@@ -150,7 +154,7 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 | Health check failing | `fly logs` — app needs ~5–10s to boot; grace period is 60s in `fly.toml` |
 | Vercel still blank | Set `VITE_WS_URL` to `*.fly.dev`, not Vercel domain |
 | App name taken | Change `app` in `fly.toml` and redeploy |
-| **502 / not listening on 8080** | App must bind `0.0.0.0:8080` — see logs for `Failed to start` or missing `[ready]`. Supabase/DB must not block boot (fixed in latest deploy). |
+| **502 / not listening on 8080** | **Do not set `PORT` in fly secrets** — `fly secrets sync` can copy `PORT=3001` from `server/.env` and break health checks. Run `fly secrets unset PORT -a pump-funautotrader` then redeploy. App binds `0.0.0.0:8080` on Fly automatically. |
 | 502 / not responding | `fly status` + `fly logs`; ensure secrets are set |
 
 ### Crash loop (machines restarting)

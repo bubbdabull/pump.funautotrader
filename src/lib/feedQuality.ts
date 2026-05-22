@@ -15,6 +15,8 @@ export {
   TRADEABLE_MIN_VOL_SOL,
   TRADEABLE_MIN_HOLDERS_VERIFIED,
   TRADEABLE_MIN_HOLDERS_UNVERIFIED,
+  resolveDisplayFeed,
+  type FeedDisplayMode,
   type FeedQualityFields,
   type ScannerLane,
 } from '@trading'

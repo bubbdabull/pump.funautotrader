@@ -8,6 +8,9 @@ import {
   passesAlphaFilter,
   passesTradeableFilter,
   isGraduatingSoon,
+  resolveDisplayFeed,
+  tradeQualityScore,
+  type FeedDisplayMode,
 } from '@/lib/feedQuality'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
@@ -22,13 +25,28 @@ function upsert(list: PumpToken[], token: PumpToken, max = 80): PumpToken[] {
   return [token, ...list].slice(0, max)
 }
 
-function applyLane(tokens: PumpToken[], lane: ScannerLane): PumpToken[] {
-  if (lane === 'graduating') return tokens.filter(isGraduatingSoon)
-  if (lane === 'alpha') return tokens.filter(passesAlphaFilter)
-  if (lane === 'tradeable' || lane === 'all') {
-    return tokens.filter(passesTradeableFilter)
+type ScannerPayload = {
+  tokens: PumpToken[]
+  mode: FeedDisplayMode
+  tradeableCount: number
+}
+
+function applyLane(tokens: PumpToken[], lane: ScannerLane): ScannerPayload {
+  if (lane === 'graduating') {
+    const list = tokens
+      .filter(isGraduatingSoon)
+      .sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
+    return { tokens: list, mode: 'watchlist_fallback', tradeableCount: tokens.filter(passesTradeableFilter).length }
   }
-  return tokens
+  if (lane === 'alpha') {
+    const list = [...tokens]
+      .filter(passesAlphaFilter)
+      .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
+      .slice(0, 60)
+    return { tokens: list, mode: 'watchlist_fallback', tradeableCount: tokens.filter(passesTradeableFilter).length }
+  }
+  const resolved = resolveDisplayFeed(tokens, 80)
+  return { tokens: resolved.tokens, mode: resolved.mode, tradeableCount: resolved.tradeableCount }
 }
 
 export function useScannerFeed(lane: ScannerLane = 'tradeable') {
@@ -37,7 +55,13 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
 
   const query = useQuery({
     queryKey: key,
-    queryFn: () => (lane === 'graduating' ? tokenApi.graduating() : tokenApi.feed(lane)),
+    queryFn: async () => {
+      const raw =
+        lane === 'graduating'
+          ? await tokenApi.graduating()
+          : await tokenApi.feed(lane === 'alpha' ? 'alpha' : 'tradeable')
+      return applyLane(ensureArray<PumpToken>(raw), lane)
+    },
     refetchInterval: 45_000,
     staleTime: 12_000,
   })
@@ -45,27 +69,34 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
   useEffect(() => {
     wsService.connect()
 
+    const pushToken = (token: PumpToken) => {
+      queryClient.setQueryData<ScannerPayload>(key, (old) => {
+        const merged = upsert(old?.tokens ?? [], token, 120)
+        return applyLane(merged, lane)
+      })
+    }
+
     const onTradeable = (token: PumpToken) => {
-      if (!passesTradeableFilter(token)) return
-      queryClient.setQueryData<PumpToken[]>(['tokens', 'scanner', 'tradeable'], (old) =>
-        upsert(ensureArray(old), token),
-      )
-      if (lane === 'tradeable' || lane === 'all') {
-        queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token))
+      if (passesTradeableFilter(token)) {
+        queryClient.setQueryData<ScannerPayload>(['tokens', 'scanner', 'tradeable'], (old) => {
+          const merged = upsert(old?.tokens ?? [], token)
+          return applyLane(merged, 'tradeable')
+        })
       }
+      if (lane === 'tradeable' || lane === 'all') pushToken(token)
+      else if (lane === 'alpha' && passesAlphaFilter(token)) pushToken(token)
     }
 
     const onGraduating = (token: PumpToken) => {
       if (!isGraduatingSoon(token) && token.bondingCurvePercent < 100) return
-      queryClient.setQueryData<PumpToken[]>(['tokens', 'scanner', 'graduating'], (old) =>
-        upsert(ensureArray(old), {
+      queryClient.setQueryData<ScannerPayload>(['tokens', 'scanner', 'graduating'], (old) => {
+        const merged = upsert(old?.tokens ?? [], {
           ...token,
           bondingCurvePercent: Math.max(token.bondingCurvePercent, 78),
-        }),
-      )
-      if (lane === 'graduating') {
-        queryClient.setQueryData<PumpToken[]>(key, (old) => upsert(ensureArray(old), token))
-      }
+        })
+        return applyLane(merged, 'graduating')
+      })
+      if (lane === 'graduating') pushToken(token)
     }
 
     const onPatch = (token: PumpToken) => {
@@ -93,25 +124,27 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
     }
   }, [queryClient, lane])
 
-  const merged: PumpToken[] | undefined = query.data
-    ? mergeQuantHolders(ensureArray<PumpToken>(query.data))
+  const merged: PumpToken[] | undefined = query.data?.tokens
+    ? mergeQuantHolders(query.data.tokens)
     : undefined
 
   useEffect(() => {
     const unsub = wsService.onQuantUpdate(
       (u: { mint: string; holders?: number; holdersVerified?: boolean }) => {
         if (!u.holders || u.holders <= 0) return
-        queryClient.setQueryData<PumpToken[]>(key, (prev) => {
-          const list = mergeQuantHolders(ensureArray<PumpToken>(prev))
+        queryClient.setQueryData<ScannerPayload>(key, (prev) => {
+          let list = mergeQuantHolders(prev?.tokens ?? [])
           const idx = list.findIndex((t) => t.mint === u.mint)
-          if (idx < 0) return list
-          const next = [...list]
-          next[idx] = {
-            ...next[idx],
-            holders: Math.max(next[idx].holders, u.holders ?? 0),
-            holdersVerified: u.holdersVerified ?? next[idx].holdersVerified,
+          if (idx >= 0) {
+            const next = [...list]
+            next[idx] = {
+              ...next[idx],
+              holders: Math.max(next[idx].holders, u.holders ?? 0),
+              holdersVerified: u.holdersVerified ?? next[idx].holdersVerified,
+            }
+            list = next
           }
-          return next
+          return applyLane(list, lane)
         })
       },
     )
@@ -120,7 +153,12 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
     }
   }, [queryClient, lane])
 
-  return { ...query, data: merged }
+  return {
+    ...query,
+    data: merged,
+    displayMode: query.data?.mode ?? 'watchlist_fallback',
+    tradeableCount: query.data?.tradeableCount ?? 0,
+  }
 }
 
 export function useTokenChart(mint: string) {

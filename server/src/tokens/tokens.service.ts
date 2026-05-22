@@ -12,6 +12,7 @@ import {
   evaluateEntry,
   resolveHolderCount,
   filterForLane,
+  passesTradeableFilter,
   bondingCurvePercentFromSol,
   type ScannerLane,
 } from '@phronis/trading'
@@ -59,6 +60,7 @@ export class TokensService {
   private async getAllTokens(): Promise<FeedToken[]> {
     const cached = this.liveFeed.getAll()
     if (cached.length > 0) {
+      this.kickHolderEnrich(cached)
       void this.bootstrapFeedFromPump().catch((err) =>
         this.logger.debug(`Pump.fun bootstrap skipped: ${(err as Error).message}`),
       )
@@ -314,7 +316,7 @@ export class TokensService {
         telegram: coin.telegram,
         website: coin.website,
       })
-      if (this.supabase.enabled && !this.prisma.enabled) {
+      if (this.supabase.enabled && !this.prisma.enabled && passesTradeableFilter(mapped)) {
         await this.supabase.upsertToken(mapped)
         continue
       }
@@ -493,6 +495,17 @@ export class TokensService {
       priceUsd: state.marketCapUsd > 0 ? state.marketCapUsd / 1_000_000_000 : 0,
       priceChange24h,
       liquidity: normalizeVirtualSol(state.liquidity),
+    }
+  }
+
+  /** Background Helius refresh for feed rows still showing stream holder estimates. */
+  private kickHolderEnrich(tokens: FeedToken[]) {
+    if (!this.holderEnrichment) return
+    const batch = tokens
+      .filter((t) => !t.holdersVerified && (t.holders ?? 0) < 12)
+      .slice(0, 15)
+    for (const t of batch) {
+      void this.holderEnrichment.enrichMint(t.mint)
     }
   }
 

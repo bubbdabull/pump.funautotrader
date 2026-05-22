@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Activity, DollarSign, TrendingUp, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, DollarSign, TrendingUp, Zap } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { MetricWidget } from '@/components/shared/MetricWidget'
 import { TokenCard } from '@/components/shared/TokenCard'
@@ -8,7 +8,7 @@ import { LiveFeedCards } from '@/components/feed/LiveFeedCards'
 import { TradingPanel } from '@/components/trading/TradingPanel'
 import { MomentumRankings } from '@/components/quant/MomentumRankings'
 import { StrategyMonitor } from '@/components/quant/StrategyMonitor'
-import { useScannerFeed, useFeedStats } from '@/hooks/useTokens'
+import { useScannerFeed } from '@/hooks/useTokens'
 import { useMomentumRankingsState } from '@/hooks/useQuantScanner'
 import { MarketOverviewChart } from '@/components/charts/MarketOverviewChart'
 import { Link } from 'react-router-dom'
@@ -22,37 +22,51 @@ function formatVolumeDisplay(sol: number): { value: number; suffix: string } {
 }
 
 export function DashboardPage() {
-  const { data: feedData, isLoading } = useScannerFeed('tradeable')
-  const { data: alphaData } = useScannerFeed('alpha')
+  const {
+    data: feedData,
+    isLoading,
+    displayMode,
+    tradeableCount,
+  } = useScannerFeed('tradeable')
   const { data: graduatingData } = useScannerFeed('graduating')
   const tokens = ensureArray<PumpToken>(feedData)
-  const alphaTokens = ensureArray<PumpToken>(alphaData)
   const graduating = ensureArray<PumpToken>(graduatingData)
-  const { data: stats } = useFeedStats()
   useMomentumRankingsState()
 
+  const usingFallback = displayMode === 'watchlist_fallback'
   const top = [...tokens].sort((a, b) => b.momentumScore - a.momentumScore).slice(0, 3)
 
   const hourAgo = Date.now() - 60 * 60 * 1000
-  const volumeSol =
-    stats?.totalVolume24h ?? tokens.reduce((s, t) => s + tokenVolumeSol(t), 0)
+  const volumeSol = tokens.reduce((s, t) => s + tokenVolumeSol(t), 0)
   const volumeDisplay = formatVolumeDisplay(volumeSol)
-  const active = stats?.activeTokens ?? tokens.length
+  const active = tokens.length
   const signals = tokens.filter(
-    (t) => (t.signalScore ?? t.aiRiskScore ?? 50) <= 40 || t.momentumScore >= 65,
+    (t) => (t.signalScore ?? t.aiRiskScore ?? 50) <= 55 || t.momentumScore >= 55,
   ).length
-  const newHour =
-    stats?.newTokensLastHour ??
-    tokens.filter((t) => new Date(t.launchedAt).getTime() > hourAgo).length
+  const newHour = tokens.filter((t) => new Date(t.launchedAt).getTime() > hourAgo).length
 
   return (
     <PageTransition>
       <div className="mb-4 lg:mb-6">
         <h1 className="text-xl font-bold tracking-tight text-white lg:text-2xl">Dashboard</h1>
         <p className="text-xs text-zinc-500 lg:text-sm">
-          Live Pump.fun · {isLoading ? 'loading…' : `${tokens.length} tradeable · ${alphaTokens.length} watchlist`}
+          Live Pump.fun ·{' '}
+          {isLoading
+            ? 'loading…'
+            : `${tradeableCount} tradeable · ${tokens.length} shown${usingFallback ? ' (watchlist)' : ''}`}
         </p>
       </div>
+
+      {usingFallback && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            No tokens pass the full tradeable bar yet (holders need on-chain verification via{' '}
+            <strong>HELIUS_API_KEY</strong> on the server). Showing top watchlist by quality until
+            holder enrichment catches up.
+          </p>
+        </div>
+      )}
 
       <motion.div
         className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:mb-6 lg:gap-4 xl:grid-cols-5"
@@ -103,7 +117,7 @@ export function DashboardPage() {
                 top.map((t, i) => <TokenCard key={t.mint} token={t} index={i} />)
               ) : (
                 <p className="col-span-full text-sm text-zinc-500">
-                  Waiting for live tokens… ensure API is running on Fly.
+                  Waiting for live tokens… check server is running and PumpPortal key is set.
                 </p>
               )}
             </div>
@@ -111,7 +125,7 @@ export function DashboardPage() {
           <motion.div>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">
-                Alpha feed
+                {usingFallback ? 'Watchlist feed' : 'Tradeable feed'}
               </h2>
               <Link to="/feed" className="text-xs text-violet-400 hover:text-violet-300">
                 Scanner →

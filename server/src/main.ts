@@ -3,6 +3,13 @@ import { ValidationPipe } from '@nestjs/common'
 import type { Response } from 'express'
 import { AppModule } from './app.module'
 
+/** Fly http_service.internal_port is 8080; secrets sync often copies local PORT=3001. */
+function resolveListenPort(): number {
+  if (process.env.FLY_APP_NAME) return 8080
+  const n = Number(process.env.PORT)
+  return Number.isFinite(n) && n >= 1 ? n : 8080
+}
+
 function logBootConfig() {
   const flags = {
     NODE_ENV: process.env.NODE_ENV,
@@ -36,10 +43,12 @@ async function bootstrap() {
     })
   })
 
-  const port = Number(process.env.PORT) || 8080
   const host = process.env.HOST || '0.0.0.0'
-  if (!Number.isFinite(port) || port < 1) {
-    throw new Error(`Invalid PORT env: ${process.env.PORT}`)
+  const port = resolveListenPort()
+  if (process.env.FLY_APP_NAME && String(process.env.PORT) !== String(port)) {
+    console.warn(
+      `[boot] Fly: ignoring PORT=${process.env.PORT} — proxy expects ${port}. Remove PORT from fly secrets.`,
+    )
   }
   await app.listen(port, host)
   console.log(`[ready] Phronis API listening on http://${host}:${port}`)

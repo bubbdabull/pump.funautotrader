@@ -27,6 +27,10 @@ export class HeliusService {
   }
 
   get enabled(): boolean {
+    return Boolean(this.apiKey?.trim())
+  }
+
+  get rpcConfigured(): boolean {
     return Boolean(this.rpcUrl)
   }
 

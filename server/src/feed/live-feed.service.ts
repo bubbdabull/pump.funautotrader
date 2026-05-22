@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import {
   normalizeVirtualSol,
-  passesTradeableFilter,
+  passesAlphaFilter,
   tradeQualityScore,
 } from '@phronis/trading'
 import type { FeedToken, FeedStats } from './feed.types'
@@ -21,9 +21,9 @@ export class LiveFeedService {
     return this.maxFeed
   }
 
-  /** Only tradeable tokens are kept in the public feed store. */
+  /** Watchlist-quality tokens stored; tradeable lane filters on read after holder enrich. */
   shouldStore(token: FeedToken): boolean {
-    return passesTradeableFilter(token)
+    return passesAlphaFilter(token)
   }
 
   upsert(token: FeedToken): FeedToken | null {
@@ -70,7 +70,7 @@ export class LiveFeedService {
     return this.tokens.get(mint)
   }
 
-  getAll(limit = this.maxFeed): FeedToken[] {
+  getAll(limit = this.maxFeed * 4): FeedToken[] {
     return [...this.tokens.values()]
       .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
       .slice(0, limit)

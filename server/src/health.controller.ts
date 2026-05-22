@@ -22,6 +22,8 @@ export class HealthController {
       supabase: this.supabase.enabled,
       supabaseKeyConfigured: keyConfigured,
       pumpportalKey: Boolean(this.config.get('PUMPPORTAL_API_KEY')?.trim()),
+      heliusKey: Boolean(this.config.get('HELIUS_API_KEY')?.trim()),
+      holderEnrichIntervalMs: Number(this.config.get('HOLDER_ENRICH_INTERVAL_MS') ?? 90_000),
       supabaseRest: process.env.USE_SUPABASE_REST_DB === 'true',
       redisDisabled: process.env.REDIS_DISABLED === 'true',
     }

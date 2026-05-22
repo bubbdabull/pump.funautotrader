@@ -52,9 +52,58 @@ export class SupabaseDbService implements OnModuleInit {
       this.client = client
       this.enabled = true
       this.logger.log('Supabase REST database connected (service role)')
+      void this.runStartupFeedMaintenance()
     } catch (err) {
       this.logger.error(`Supabase init failed: ${(err as Error).message}`)
     }
+  }
+
+  /** Drop junk rows so DB only accumulates strict tradeable tokens over time. */
+  private async runStartupFeedMaintenance() {
+    if (!this.client) return
+    if (this.config.get('SUPABASE_PURGE_FEED_ON_START') === 'true') {
+      const n = await this.purgeAllFeedTokens()
+      this.logger.warn(`Supabase feed purge (SUPABASE_PURGE_FEED_ON_START): removed ${n} tokens`)
+      return
+    }
+    const removed = await this.purgeNonTradeableTokens()
+    if (removed > 0) {
+      this.logger.log(`Supabase: removed ${removed} non-tradeable token rows`)
+    }
+  }
+
+  async purgeAllFeedTokens(): Promise<number> {
+    if (!this.client) return 0
+    const { count } = await this.client.from('Token').select('*', { count: 'exact', head: true })
+    await this.client.from('Alert').delete().not('mint', 'is', null)
+    await this.client.from('Trade').delete().neq('id', '')
+    await this.client.from('HolderSnapshot').delete().neq('id', '')
+    await this.client.from('RugScore').delete().neq('id', '')
+    await this.client.from('WalletActivity').delete().neq('id', '')
+    await this.client.from('Token').delete().neq('id', '')
+    return count ?? 0
+  }
+
+  async purgeNonTradeableTokens(): Promise<number> {
+    if (!this.client) return 0
+    const { data: rows, error } = await this.client
+      .from('Token')
+      .select('mint')
+      .eq('isTradeable', false)
+    if (error || !rows?.length) return 0
+
+    const mints = rows.map((r) => r.mint as string)
+    for (let i = 0; i < mints.length; i += 80) {
+      const chunk = mints.slice(i, i + 80)
+      await Promise.all([
+        this.client!.from('HolderSnapshot').delete().in('mint', chunk),
+        this.client!.from('RugScore').delete().in('mint', chunk),
+        this.client!.from('WalletActivity').delete().in('mint', chunk),
+        this.client!.from('Alert').delete().in('mint', chunk),
+      ])
+    }
+    await this.client.from('Token').delete().eq('isTradeable', false)
+    return mints.length
   }
 
   async upsertToken(token: FeedToken) {
@@ -307,6 +356,7 @@ export class SupabaseDbService implements OnModuleInit {
     tokenPatch?: FeedToken,
   ) {
     const tradeable = tokenPatch ? passesTradeableFilter(tokenPatch) : false
+    if (!tradeable) return
     await Promise.all([
       this.insertRugScore(mint, rug),
       this.insertHolderSnapshot(mint, holders, holderMeta.top1Pct, holderMeta.top5Pct, holderMeta.entropy, {

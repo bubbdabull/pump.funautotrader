@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Activity, Rocket, Shield, Sparkles } from 'lucide-react'
+import { Activity, AlertTriangle, Rocket, Shield, Sparkles } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { LiveFeedTable } from '@/components/feed/LiveFeedTable'
 import { LiveFeedCards } from '@/components/feed/LiveFeedCards'
@@ -17,7 +17,7 @@ const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: strin
     id: 'tradeable',
     label: 'Tradeable',
     icon: Sparkles,
-    desc: 'Anti-rug bar: $10k+ mcap, 18+ verified holders, signal ≤58',
+    desc: 'Trade-grade · falls back to watchlist if none qualify',
   },
   { id: 'alpha', label: 'Watchlist', icon: Activity, desc: '$3k+ mcap — broader, still filtered' },
   { id: 'graduating', label: 'Graduating', icon: Rocket, desc: 'Highest curve % — nearing PumpSwap' },
@@ -27,7 +27,7 @@ export function LiveFeedPage() {
   const [lane, setLane] = useState<ScannerLane>('tradeable')
   const [sort, setSort] = useState(lane === 'graduating' ? 'curve' : 'momentum')
   const [filter, setFilter] = useState('')
-  const { data, isLoading, isError } = useScannerFeed(lane)
+  const { data, isLoading, isError, displayMode, tradeableCount } = useScannerFeed(lane)
   const backend = useBackendStatus()
   const tokens = ensureArray<PumpToken>(data)
 
@@ -112,6 +112,16 @@ export function LiveFeedPage() {
           {filtered.length} shown · junk filtered server-side
         </span>
       </div>
+
+      {lane === 'tradeable' && displayMode === 'watchlist_fallback' && (
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            {tradeableCount} pass the tradeable bar — showing top watchlist until holder verification
+            (HELIUS_API_KEY on server) promotes tokens.
+          </p>
+        </div>
+      )}
 
       {isError && (
         <p className="mb-3 text-sm text-red-400">Scanner API unreachable — check Fly deploy & Vercel env.</p>

@@ -5,14 +5,14 @@ export const GRADUATING_CURVE_MIN = 70
 export const GRADUATING_CURVE_MAX = 100
 
 /** Tradeable lane thresholds (tuned anti-rug — conservative). */
-export const TRADEABLE_MIN_MARKET_CAP_USD = 10_000
-export const TRADEABLE_MAX_SIGNAL = 58
-export const TRADEABLE_MIN_VOL_SOL = 0.5
-export const TRADEABLE_MIN_MOMENTUM = 22
+export const TRADEABLE_MIN_MARKET_CAP_USD = 8_000
+export const TRADEABLE_MAX_SIGNAL = 62
+export const TRADEABLE_MIN_VOL_SOL = 0.35
+export const TRADEABLE_MIN_MOMENTUM = 18
 /** On-chain verified holder floor (Helius / Bubblemaps). */
-export const TRADEABLE_MIN_HOLDERS_VERIFIED = 18
+export const TRADEABLE_MIN_HOLDERS_VERIFIED = 10
 /** Unverified stream estimate — only if very strong distribution. */
-export const TRADEABLE_MIN_HOLDERS_UNVERIFIED = 40
+export const TRADEABLE_MIN_HOLDERS_UNVERIFIED = 28
 
 export interface FeedQualityFields {
   mint: string
@@ -94,19 +94,38 @@ export function passesTradeableFilter(token: FeedQualityFields): boolean {
 
   if (verified) {
     if (holders < TRADEABLE_MIN_HOLDERS_VERIFIED) return false
-    if (holders < 30 && vol < 0.85) return false
-    if (holders < 50 && signal > 52) return false
+    if (holders < 18 && vol < 0.55) return false
+    if (holders < 35 && signal > 55) return false
     return true
   }
 
-  // Without on-chain proof, demand very strong social proof from stream
+  // Without on-chain proof, demand strong stream activity (still anti-rug)
   if (holders < TRADEABLE_MIN_HOLDERS_UNVERIFIED) return false
-  if (vol < 1.25) return false
-  if (mom < 35) return false
-  if (signal > 52) return false
-  if (token.marketCap < 15_000) return false
+  if (vol < 0.9) return false
+  if (mom < 28) return false
+  if (signal > 55) return false
+  if (token.marketCap < 12_000) return false
 
   return true
+}
+
+export type FeedDisplayMode = 'tradeable' | 'watchlist_fallback'
+
+/** Best tokens to show — strict tradeable first, else top watchlist by score. */
+export function resolveDisplayFeed<T extends FeedQualityFields>(
+  tokens: T[],
+  limit = 80,
+): { tokens: T[]; mode: FeedDisplayMode; tradeableCount: number } {
+  const tradeableCount = tokens.filter(passesTradeableFilter).length
+  const tradeable = rankTradeable(tokens, limit)
+  if (tradeable.length > 0) {
+    return { tokens: tradeable, mode: 'tradeable', tradeableCount }
+  }
+  const fallback = [...tokens]
+    .filter(passesAlphaFilter)
+    .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
+    .slice(0, limit)
+  return { tokens: fallback, mode: 'watchlist_fallback', tradeableCount }
 }
 
 /** 0–100 ranking for feed storage cap (higher = show first). */
@@ -166,9 +185,8 @@ export function filterForLane<T extends FeedQualityFields>(
         .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
         .slice(0, 60)
     case 'all':
-      return rankTradeable(tokens, 100)
     case 'tradeable':
     default:
-      return rankTradeable(tokens, 80)
+      return resolveDisplayFeed(tokens, lane === 'all' ? 100 : 80).tokens
   }
 }

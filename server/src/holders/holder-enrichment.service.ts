@@ -131,10 +131,10 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async enrichActiveFeed() {
-    const feed = this.liveFeed.getAll()
+    const feed = this.liveFeed.getAll(500)
     const ranked = [...feed]
       .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
-      .slice(0, Number(this.config.get('HOLDER_ENRICH_BATCH') ?? 35))
+      .slice(0, Number(this.config.get('HOLDER_ENRICH_BATCH') ?? 50))
 
     let ok = 0
     for (const t of ranked) {
