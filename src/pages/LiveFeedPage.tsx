@@ -12,6 +12,8 @@ import { ensureArray } from '@/lib/ensureArray'
 import type { PumpToken } from '@/types'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { cn } from '@/lib/utils'
+import { useWsConnection } from '@/hooks/useWsConnection'
+import { API_BASE } from '@/lib/apiConfig'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
   {
@@ -45,6 +47,7 @@ export function LiveFeedPage() {
   } = useScannerFeed(lane)
   const holdersVerifiedCount = ensureArray<PumpToken>(data).filter((t) => t.holdersVerified).length
   const backend = useBackendStatus()
+  const wsLive = useWsConnection()
   const tokens = ensureArray<PumpToken>(data)
 
   const filtered = sortTokens(
@@ -68,9 +71,19 @@ export function LiveFeedPage() {
         </div>
       </div>
 
+      {!wsLive && backend.apiReachable && (
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            Live socket disconnected — prices, holders, and charts will look frozen. Hard refresh
+            after deploy; API is proxied via <span className="font-mono text-xs">{API_BASE}</span>.
+          </p>
+        </div>
+      )}
+
       <LiveSyncBar
         className="mb-4"
-        wsConnected={backend.socketConnected}
+        wsConnected={wsLive && backend.socketConnected}
         dataUpdatedAt={dataUpdatedAt}
         isFetching={isFetching}
         activeCount={activeCount}

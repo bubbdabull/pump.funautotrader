@@ -7,7 +7,7 @@ import { TradingChart } from '@/components/charts/TradingChart'
 import { TradingPanel } from '@/components/trading/TradingPanel'
 import { Badge } from '@/components/ui/badge'
 import { useToken, useTokenTrades } from '@/hooks/useTokens'
-import { formatUsd, riskBg, riskColor, shortenAddress } from '@/lib/utils'
+import { formatUsd, formatHolders, riskBg, riskColor, shortenAddress } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 
@@ -65,7 +65,14 @@ export function TokenDetailPage() {
             <GlassCard>
               <Users className="mb-2 h-5 w-5 text-purple-400" />
               <p className="text-xs text-zinc-500">Holders</p>
-              <p className="font-mono text-xl font-bold">{token.holders.toLocaleString()}</p>
+              <p className="font-mono text-xl font-bold">
+                {formatHolders(token.holders, token.holdersVerified)}
+              </p>
+              {(token.trades1m ?? 0) > 0 && !token.holdersVerified && (
+                <p className="mt-1 text-[10px] text-zinc-500">
+                  {token.trades1m} trades/min · on-chain count enriching
+                </p>
+              )}
             </GlassCard>
             <GlassCard>
               <Shield className="mb-2 h-5 w-5 text-teal-400" />

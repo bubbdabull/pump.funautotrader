@@ -21,7 +21,7 @@ export function formatHolders(
   if (n >= 1_000_000) s = `${(n / 1_000_000).toFixed(1)}M`
   else if (n >= 10_000) s = `${(n / 1_000).toFixed(1)}K`
   else s = n.toLocaleString()
-  if (verified) return `${s}*`
+  if (verified && n >= 2) return `${s}*`
   if (n < 500) return `~${s}`
   return s
 }

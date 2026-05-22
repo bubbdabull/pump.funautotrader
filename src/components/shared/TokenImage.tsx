@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { API_BASE } from '@/lib/apiConfig'
 import {
   isLikelyMetadataUri,
   normalizeIpfsUrl,
@@ -49,6 +50,39 @@ async function fetchMetadataImage(uri: string): Promise<string | null> {
     }
   }
   return null
+}
+
+async function fetchPumpFunImageUri(mint: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://frontend-api-v3.pump.fun/coins/${mint}`, {
+      signal: AbortSignal.timeout(6000),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { image_uri?: string; metadata_uri?: string }
+    if (data.image_uri && isDirectImageUrl(data.image_uri)) {
+      return normalizeIpfsUrl(data.image_uri)
+    }
+    if (data.metadata_uri) return data.metadata_uri
+  } catch {
+    /* CORS or network — fall through */
+  }
+  return null
+}
+
+async function fetchTokenMetaFromApi(mint: string): Promise<{ uri?: string; image?: string } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/tokens/${mint}`, {
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { metadataUri?: string; image?: string; uri?: string }
+    return {
+      uri: data.metadataUri || data.uri,
+      image: data.image,
+    }
+  } catch {
+    return null
+  }
 }
 
 export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }: TokenImageProps) {
@@ -102,6 +136,37 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
       cancelled = true
     }
   }, [effectiveUri, mint])
+
+  useEffect(() => {
+    if (effectiveUri || resolvedFromMeta || (image && isDirectImageUrl(image))) return
+    let cancelled = false
+    void (async () => {
+      const fromApi = await fetchTokenMetaFromApi(mint)
+      if (cancelled) return
+      if (fromApi?.uri && isLikelyMetadataUri(fromApi.uri)) {
+        const img = await fetchMetadataImage(fromApi.uri)
+        if (!cancelled && img) {
+          setResolvedFromMeta(img)
+          return
+        }
+      }
+      if (fromApi?.image && isDirectImageUrl(fromApi.image) && !cancelled) {
+        setResolvedFromMeta(normalizeIpfsUrl(fromApi.image))
+        return
+      }
+      const pump = await fetchPumpFunImageUri(mint)
+      if (!cancelled && pump) {
+        if (isDirectImageUrl(pump)) setResolvedFromMeta(pump)
+        else {
+          const img = await fetchMetadataImage(pump)
+          if (!cancelled && img) setResolvedFromMeta(img)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [mint, effectiveUri, image, resolvedFromMeta])
 
   const label = (symbol ?? mint.slice(0, 2)).toUpperCase().slice(0, 2)
   const showFallback = failed || index >= candidates.length

@@ -16,40 +16,10 @@ import {
 import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
 import type { TokenChartSeries } from '@/lib/chartTypes'
-
-function isPlaceholderImage(url?: string): boolean {
-  if (!url?.trim()) return true
-  const u = url.toLowerCase()
-  return (
-    u.includes('dexscreener.com/ds-data') ||
-    u.includes('imagedelivery.net/wl1joijim_na') ||
-    (u.includes('pump.fun/coin/') && u.endsWith('.png'))
-  )
-}
-
-function preferImage(next?: string, prev?: string): string {
-  if (next && !isPlaceholderImage(next)) return next
-  if (prev && !isPlaceholderImage(prev)) return prev
-  return ''
-}
+import { mergePumpTokens, normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 
 function mergeScannerToken(prev: PumpToken, token: PumpToken): PumpToken {
-  return {
-    ...prev,
-    ...token,
-    image: preferImage(token.image, prev.image),
-    metadataUri: token.metadataUri || prev.metadataUri,
-    holders: token.holdersVerified
-      ? (token.holders ?? prev.holders)
-      : Math.max(prev.holders ?? 0, token.holders ?? 0),
-    holdersVerified: prev.holdersVerified || token.holdersVerified,
-    lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
-    trades1m: token.trades1m ?? prev.trades1m,
-    volume5mSol: Math.max(prev.volume5mSol ?? 0, token.volume5mSol ?? 0),
-    isActive: token.isActive ?? prev.isActive,
-    buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
-    mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
-  }
+  return mergePumpTokens(prev, token)
 }
 
 function upsert(list: PumpToken[], token: PumpToken, max = 80): PumpToken[] {
@@ -70,7 +40,7 @@ type ScannerPayload = {
 
 /** Server already applied filterForLane — do not re-filter HTTP/feed:update snapshots. */
 function payloadFromServer(tokens: PumpToken[] | unknown, lane: ScannerLane): ScannerPayload {
-  const list = ensureArray<PumpToken>(tokens)
+  const list = normalizePumpTokens(ensureArray<PumpToken>(tokens))
   const tradeableCount = list.filter(passesTradeableFilter).length
   if (lane === 'active') {
     return { tokens: list, mode: 'active', tradeableCount }
@@ -124,15 +94,16 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
             )
       return payloadFromServer(ensureArray<PumpToken>(raw), lane)
     },
-    refetchInterval: 12_000,
-    staleTime: 3_000,
+    refetchInterval: 5_000,
+    staleTime: 2_000,
     refetchOnWindowFocus: true,
   })
 
   useEffect(() => {
     wsService.connect()
 
-    const pushToken = (token: PumpToken) => {
+    const pushToken = (raw: PumpToken) => {
+      const token = normalizePumpToken(raw)
       queryClient.setQueryData<ScannerPayload>(key, (old) => {
         const list = old?.tokens ?? []
         const idx = list.findIndex((t) => t.mint === token.mint)
@@ -169,7 +140,8 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
       if (lane === 'graduating') pushToken(token)
     }
 
-    const onPatch = (token: PumpToken) => {
+    const onPatch = (raw: PumpToken) => {
+      const token = normalizePumpToken(raw)
       const hasLive =
         token.isActive ||
         (token.trades1m ?? 0) > 0 ||
@@ -238,7 +210,10 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
           holders: u.holdersVerified
             ? (u.holders ?? next[idx].holders)
             : Math.max(next[idx].holders ?? 0, u.holders ?? 0),
-          holdersVerified: u.holdersVerified ?? next[idx].holdersVerified,
+          holdersVerified:
+            Boolean(u.holdersVerified) &&
+            (u.holders ?? 0) >= 2 &&
+            (next[idx].holdersVerified || (u.holders ?? 0) >= 2),
         }
         if (!prev) return prev
         return { ...prev, tokens: next }
@@ -271,8 +246,8 @@ export function useTokenChart(mint: string, intervalMs = 5_000) {
     queryKey: key,
     queryFn: () => tokenApi.chart(mint, intervalMs),
     enabled: !!mint,
-    refetchInterval: 3_000,
-    staleTime: 1_000,
+    refetchInterval: 2_000,
+    staleTime: 800,
   })
 
   useEffect(() => {

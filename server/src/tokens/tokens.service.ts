@@ -705,13 +705,8 @@ export class TokensService {
     token: FeedToken,
     chain: ReturnType<HolderEnrichmentService['getCached']>,
   ): { holders: number; holdersVerified: boolean } {
-    if (chain?.verified && chain.holders >= 2) {
-      return { holders: Math.max(chain.holders, computed, prev), holdersVerified: true }
-    }
-
     const state = this.trading.getState(mint)
     const prev = token.holders ?? 0
-    const verified = Boolean(token.holdersVerified || chain?.verified)
     const onChainForCount =
       chain && chain.holders > 0 ? chain : state?.onChainHolders
 
@@ -722,6 +717,15 @@ export class TokensService {
           onChainHolders: onChainForCount,
         })
       : Math.max(prev, chain?.holders ?? 0)
+
+    if (chain?.verified && chain.holders >= 2) {
+      return { holders: Math.max(chain.holders, computed, prev), holdersVerified: true }
+    }
+
+    const verified = Boolean(
+      (token.holdersVerified && prev >= 2) ||
+        (chain?.verified && (chain.holders ?? 0) >= 2),
+    )
 
     if (verified) {
       return { holders: Math.max(prev, computed), holdersVerified: true }
@@ -777,7 +781,9 @@ export class TokensService {
         holdersVerified ? (token.holders ?? 0) : 0,
         fromState.holders ?? 0,
       ),
-      holdersVerified: holdersVerified || fromState.holdersVerified,
+      holdersVerified:
+        (holdersVerified || fromState.holdersVerified) &&
+        Math.max(holders, fromState.holders ?? 0) >= 2,
       volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,
       priceChange24h: fromState.priceChange24h ?? token.priceChange24h ?? 0,

@@ -14,7 +14,12 @@ export const API_BASE = normalizeEnvUrl(import.meta.env.VITE_API_URL, '/api')
 export const WS_URL = normalizeEnvUrl(import.meta.env.VITE_WS_URL, '')
 
 export function backendLabel(): string {
-  if (!API_BASE || API_BASE === '/api') return 'local proxy'
+  if (!API_BASE || API_BASE === '/api') {
+    if (typeof window !== 'undefined' && /vercel\.app$/i.test(window.location.hostname)) {
+      return 'Vercel → Fly proxy'
+    }
+    return 'local proxy'
+  }
   try {
     return new URL(API_BASE).host
   } catch {

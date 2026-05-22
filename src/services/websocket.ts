@@ -4,6 +4,7 @@ import type { TokenChartSeries } from '@/lib/chartTypes'
 import type { QuantHolderPatch, QuantUpdate, StrategySignal } from '@/lib/quantTypes'
 
 import { WS_URL } from '@/lib/apiConfig'
+import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 
 type TokenUpdateHandler = (token: PumpToken) => void
 type FeedHandler = (tokens: PumpToken[]) => void
@@ -31,15 +32,19 @@ class WebSocketService {
   connect() {
     if (this.socket?.connected) return this.socket
 
-    this.socket = io(WS_URL || window.location.origin, {
+    const url =
+      WS_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173')
+    this.socket = io(url, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
     })
 
     this.socket.on('token:update', (token: PumpToken) => {
-      this.tokenHandlers.forEach((h) => h(token))
-      this.feedPatchHandlers.forEach((h) => h(token))
+      const t = normalizePumpToken(token)
+      this.tokenHandlers.forEach((h) => h(t))
+      this.feedPatchHandlers.forEach((h) => h(t))
     })
 
     this.socket.on('chart:update', (series: TokenChartSeries) => {
@@ -47,19 +52,23 @@ class WebSocketService {
     })
 
     this.socket.on('feed:update', (tokens: PumpToken[]) => {
-      this.feedHandlers.forEach((h) => h(tokens))
+      const list = normalizePumpTokens(tokens)
+      this.feedHandlers.forEach((h) => h(list))
     })
 
     this.socket.on('feed:prepend', (token: PumpToken) => {
-      this.feedPrependHandlers.forEach((h) => h(token))
+      const t = normalizePumpToken(token)
+      this.feedPrependHandlers.forEach((h) => h(t))
     })
 
     this.socket.on('feed:patch', (token: PumpToken) => {
-      this.feedPatchHandlers.forEach((h) => h(token))
+      const t = normalizePumpToken(token)
+      this.feedPatchHandlers.forEach((h) => h(t))
     })
 
     this.socket.on('pumpportal:newToken', (token: PumpToken) => {
-      this.pumpPortalHandlers.forEach((h) => h(token))
+      const t = normalizePumpToken(token)
+      this.pumpPortalHandlers.forEach((h) => h(t))
     })
 
     this.socket.on('autotrader:signal', (signal: AutoTradeSignal) => {
@@ -67,7 +76,8 @@ class WebSocketService {
     })
 
     this.socket.on('token:graduating', (token: PumpToken) => {
-      this.graduatingHandlers.forEach((h) => h(token))
+      const t = normalizePumpToken(token)
+      this.graduatingHandlers.forEach((h) => h(t))
     })
 
     this.socket.on('quant:update', (payload: QuantUpdate) => {
@@ -91,7 +101,7 @@ class WebSocketService {
     })
 
     this.socket.on('connect_error', (err) => {
-      console.warn('[socket.io] connect_error', err.message, 'url=', WS_URL || window.location.origin)
+      console.warn('[socket.io] connect_error', err.message, 'url=', url)
     })
 
     return this.socket
