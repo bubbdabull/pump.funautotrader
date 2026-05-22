@@ -2,6 +2,7 @@ import axios from 'axios'
 import type { PumpToken, SmartWallet, AutoTradeRules, AutoTradeSignal, Alert } from '@/types'
 import { ensureArray } from '@/lib/ensureArray'
 import { API_BASE } from '@/lib/apiConfig'
+import { isVercelSecurityCheckpoint, VERCEL_CHECKPOINT_HINT } from '@/lib/vercelCheckpoint'
 import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 import type { ScannerLane } from '@/lib/feedQuality'
 import type { TokenChartSeries } from '@/lib/chartTypes'
@@ -10,6 +11,22 @@ export const api = axios.create({
   baseURL: API_BASE,
   timeout: 15000,
 })
+
+api.interceptors.response.use(
+  (res) => {
+    const data = res.data
+    if (typeof data === 'string' && isVercelSecurityCheckpoint({ response: { data } })) {
+      throw new Error(VERCEL_CHECKPOINT_HINT)
+    }
+    return res
+  },
+  (err) => {
+    if (isVercelSecurityCheckpoint(err)) {
+      throw new Error(VERCEL_CHECKPOINT_HINT)
+    }
+    return Promise.reject(err)
+  },
+)
 
 export interface FeedTrade {
   signature: string

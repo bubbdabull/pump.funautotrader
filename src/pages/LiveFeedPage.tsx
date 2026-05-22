@@ -14,6 +14,7 @@ import type { ScannerLane } from '@/lib/feedQuality'
 import { cn } from '@/lib/utils'
 import { useWsConnection } from '@/hooks/useWsConnection'
 import { backendLabel } from '@/lib/apiConfig'
+import { isVercelSecurityCheckpoint, VERCEL_CHECKPOINT_HINT } from '@/lib/vercelCheckpoint'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
   {
@@ -47,6 +48,7 @@ export function LiveFeedPage() {
   } = useScannerFeed(lane)
   const holdersVerifiedCount = ensureArray<PumpToken>(data).filter((t) => t.holdersVerified).length
   const backend = useBackendStatus()
+  const vercelBlocked = isVercelSecurityCheckpoint(backend.error)
   const wsLive = useWsConnection()
   const tokens = ensureArray<PumpToken>(data)
 
@@ -82,7 +84,14 @@ export function LiveFeedPage() {
         </div>
       )}
 
-      {!backend.apiReachable && (
+      {vercelBlocked && (
+        <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{VERCEL_CHECKPOINT_HINT}</p>
+        </div>
+      )}
+
+      {!vercelBlocked && !backend.apiReachable && (
         <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
