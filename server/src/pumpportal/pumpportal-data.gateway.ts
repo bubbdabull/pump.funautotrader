@@ -13,6 +13,10 @@ import {
   normalizeVirtualSol,
   coalesceTokenImage,
   isUsableTokenImageUrl,
+  normalizeFeedTokenLabels,
+  pickTokenName,
+  pickTokenSymbol,
+  isValidTicker,
 } from '@phronis/trading'
 import { PumpService } from '../pump/pump.service'
 import type { PumpPortalNewTokenEvent } from './pumpportal.types'
@@ -537,10 +541,14 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     const uri = (data.uri as string) ?? undefined
     const initialBuy = Number(data.initialBuy ?? 0)
     const starterHolders = initialBuy > 0 ? 2 : 1
+    const labels = normalizeFeedTokenLabels(data.mint, {
+      symbol: data.symbol as string | undefined,
+      name: data.name as string | undefined,
+    })
     return {
       mint: data.mint,
-      name: (data.name as string) ?? 'Unknown',
-      symbol: (data.symbol as string) ?? data.mint.slice(0, 4).toUpperCase(),
+      name: labels.name,
+      symbol: labels.symbol,
       image:
         coalesceTokenImage(data.mint, {
           image: data.image as string | undefined,
@@ -573,13 +581,24 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     try {
       let image = fields.image
       let metadataUri = fields.metadataUri ?? fields.uri
-      if (!isUsableTokenImageUrl(image)) {
+      let symbol: string | undefined
+      let name: string | undefined
+      const live = this.liveFeed.get(mint)
+      if (!isUsableTokenImageUrl(image) || !isValidTicker(live?.symbol, mint)) {
         const coin = await this.pump.getCoin(mint)
-        if (coin?.image_uri && isUsableTokenImageUrl(coin.image_uri)) {
-          image = coin.image_uri
+        if (coin) {
+          if (coin.image_uri && isUsableTokenImageUrl(coin.image_uri)) {
+            image = coin.image_uri
+          }
           metadataUri = metadataUri ?? coin.metadata_uri
+          symbol = pickTokenSymbol(mint, live?.symbol, coin.symbol)
+          name = pickTokenName(mint, symbol, live?.name, coin.name)
         }
       }
+      const labels = normalizeFeedTokenLabels(mint, {
+        symbol: symbol ?? live?.symbol,
+        name: name ?? live?.name,
+      })
       const media = await this.metadata.enrichToken(mint, {
         uri: metadataUri,
         image,
@@ -591,6 +610,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       const updated =
         this.liveFeed.patch({
           ...base,
+          symbol: labels.symbol,
+          name: labels.name,
           image: media.image,
           metadataUri: media.metadataUri ?? base.metadataUri,
           twitter: media.twitter ?? base.twitter,
@@ -599,6 +620,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         }) ??
         (await this.tokens.upsertLiveToken({
           ...base,
+          symbol: labels.symbol,
+          name: labels.name,
           image: media.image,
           metadataUri: media.metadataUri ?? base.metadataUri,
           twitter: media.twitter ?? base.twitter,

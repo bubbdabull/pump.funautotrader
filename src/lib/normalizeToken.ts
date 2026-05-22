@@ -1,9 +1,13 @@
-import { isUsableTokenImageUrl } from '@trading'
+import { isUsableTokenImageUrl, normalizeFeedTokenLabels } from '@trading'
 import type { PumpToken } from '@/types'
 
 /** Light touch only — keep server image/uri; fix false verified flags. */
 export function normalizePumpToken(raw: PumpToken): PumpToken {
-  const t = { ...raw }
+  const labels = normalizeFeedTokenLabels(raw.mint, {
+    symbol: raw.symbol,
+    name: raw.name,
+  })
+  const t = { ...raw, symbol: labels.symbol, name: labels.name }
   const holders = Math.max(0, Math.round(t.holders ?? 0))
   t.holders = holders
   t.holdersVerified = Boolean(t.holdersVerified) && holders >= 2

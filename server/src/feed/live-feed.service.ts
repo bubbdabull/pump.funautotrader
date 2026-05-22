@@ -9,6 +9,9 @@ import {
   normalizeVirtualSol,
   passesAlphaFilter,
   isPlaceholderTokenImage,
+  normalizeFeedTokenLabels,
+  pickTokenName,
+  pickTokenSymbol,
 } from '@phronis/trading'
 import type { FeedToken, FeedStats } from './feed.types'
 
@@ -36,13 +39,21 @@ export class LiveFeedService {
     return activitySol(token) >= MIN_FEED_VOLUME_24H_SOL * 0.5
   }
 
+  private mergeLabels(mint: string, ...sources: { symbol?: string; name?: string }[]) {
+    const symbol = pickTokenSymbol(mint, ...sources.map((s) => s.symbol))
+    const name = pickTokenName(mint, symbol, ...sources.map((s) => s.name))
+    return normalizeFeedTokenLabels(mint, { symbol, name })
+  }
+
   /** Merge activity/holders/images without re-running full store gates. */
   patch(token: FeedToken): FeedToken | null {
     const prev = this.tokens.get(token.mint)
     if (!prev) return this.upsert(token)
+    const labels = this.mergeLabels(token.mint, prev, token)
     const merged: FeedToken = {
       ...prev,
       ...token,
+      ...labels,
       image: this.pickImage(token.image, prev.image),
       metadataUri: token.metadataUri || prev.metadataUri,
       holders: token.holdersVerified
@@ -72,10 +83,12 @@ export class LiveFeedService {
       return null
     }
     const prev = this.tokens.get(token.mint)
+    const labels = prev ? this.mergeLabels(token.mint, prev, token) : this.mergeLabels(token.mint, token)
     const merged: FeedToken = prev
       ? {
           ...prev,
           ...token,
+          ...labels,
           image: this.pickImage(token.image, prev.image),
           metadataUri: token.metadataUri || prev.metadataUri,
           holders: token.holdersVerified
@@ -91,7 +104,7 @@ export class LiveFeedService {
           mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
           isActive: token.isActive ?? prev.isActive,
         }
-      : token
+      : { ...token, ...labels }
     this.tokens.set(token.mint, merged)
     this.trim()
     return merged
@@ -107,6 +120,7 @@ export class LiveFeedService {
           ? {
               ...t,
               ...prev,
+              ...this.mergeLabels(t.mint, t, prev),
               holders: Math.max(prev.holders, t.holders),
               holdersVerified: prev.holdersVerified || t.holdersVerified,
               volume24h: Math.max(prev.volume24h, t.volume24h),

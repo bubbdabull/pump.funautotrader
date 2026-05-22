@@ -60,7 +60,13 @@ export function LiveFeedPage() {
   const tokens = ensureArray<PumpToken>(data)
 
   const filtered = sortTokens(
-    tokens.filter((t) => t.symbol.toLowerCase().includes(filter.toLowerCase())),
+    tokens.filter((t) => {
+      const q = filter.toLowerCase()
+      return (
+        t.symbol.toLowerCase().includes(q) ||
+        t.name.toLowerCase().includes(q)
+      )
+    }),
     sort === 'curve' ? 'curve' : sort,
   )
   const activeCount = tokens.filter((t) => t.isActive).length

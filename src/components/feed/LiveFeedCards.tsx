@@ -4,6 +4,7 @@ import { Users } from 'lucide-react'
 import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor, cn } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { tokenMediaProps } from '@/lib/tokenMediaProps'
+import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { ActivityPulse, TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 import { LiveValue } from '@/components/shared/LiveValue'
 import { RugBadge } from '@/components/quant/RugBadge'
@@ -66,9 +67,11 @@ export function LiveFeedCards({ tokens }: LiveFeedCardsProps) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <ActivityPulse active={token.isActive} />
-                        <span className="block truncate font-semibold text-white">{token.symbol}</span>
+                        <span className="block truncate font-semibold text-white">
+                          {displayTokenSymbol(token)}
+                        </span>
                       </div>
-                      <p className="truncate text-xs text-zinc-500">{token.name}</p>
+                      <p className="truncate text-xs text-zinc-500">{displayTokenName(token)}</p>
                     </div>
                     <div className="shrink-0">
                       <RugBadge mint={token.mint} compact />

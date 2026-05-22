@@ -6,6 +6,7 @@ import { TokenImage } from '@/components/shared/TokenImage'
 import { ActivityPulse } from '@/components/shared/TokenActivityBadges'
 import { cn } from '@/lib/utils'
 import type { PumpToken } from '@/types'
+import { displayTokenSymbol } from '@/lib/tokenDisplay'
 
 interface MomentumRankingsProps {
   feedByMint?: Record<string, PumpToken>
@@ -31,7 +32,9 @@ export function MomentumRankings({ feedByMint = {} }: MomentumRankingsProps) {
         <ul className="max-h-[280px] space-y-1 overflow-y-auto overscroll-contain">
           {rankings.slice(0, 15).map((r, i) => {
             const token = feedByMint[r.mint]
-            const symbol = token?.symbol ?? `${r.mint.slice(0, 4)}…`
+            const symbol = token
+              ? displayTokenSymbol(token)
+              : displayTokenSymbol({ mint: r.mint, symbol: undefined, name: undefined })
             return (
               <li key={r.mint}>
                 <Link

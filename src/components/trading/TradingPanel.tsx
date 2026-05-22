@@ -8,6 +8,8 @@ import { GlowingButton } from '@/components/shared/GlowingButton'
 import { usePumpPortalTrade } from '@/hooks/usePumpPortalTrade'
 import { formatUsd, formatHolders, formatSol, tokenVolumeSol } from '@/lib/utils'
 import type { PumpToken, PumpPortalPool } from '@/types'
+import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
+import { shortenAddress } from '@/lib/utils'
 
 interface TradingPanelProps {
   token?: PumpToken
@@ -60,13 +62,20 @@ export function TradingPanel({ token }: TradingPanelProps) {
             </div>
             <div className="min-w-0 flex-1 overflow-hidden">
               <h3 className="text-base font-semibold text-white">
-                {token?.symbol ?? 'Select token'}
+                {token ? displayTokenSymbol(token) : 'Select token'}
               </h3>
-              <p className="text-[11px] text-zinc-500">PumpPortal execution</p>
+              <p className="truncate text-[11px] text-zinc-500">
+                {token ? displayTokenName(token) : 'PumpPortal execution'}
+              </p>
             </div>
           </div>
           <ArrowDownUp className="h-4 w-4 text-zinc-600" />
         </div>
+        {token && (
+          <p className="mt-2 truncate font-mono text-[10px] text-zinc-600">
+            {shortenAddress(token.mint, 6)}
+          </p>
+        )}
         {token && (
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
             <div className="rounded-lg bg-black/20 px-2 py-1.5">

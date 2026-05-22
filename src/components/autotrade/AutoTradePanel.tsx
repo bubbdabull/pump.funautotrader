@@ -125,7 +125,9 @@ export function AutoTradePanel() {
                 exit={{ opacity: 0, height: 0 }}
                 className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-2 text-xs shadow-[0_0_12px_rgba(16,185,129,0.08)]"
               >
-                <p className="font-semibold text-white">{s.symbol ?? s.mint.slice(0, 8)}</p>
+                <p className="font-semibold text-white">
+                  {s.symbol && s.symbol.length < 20 ? s.symbol : 'Signal'}
+                </p>
                 <p className="text-zinc-500">{s.reason}</p>
                 {(s as { evScore?: number }).evScore != null && (
                   <p className="mt-1 font-mono text-[10px] text-emerald-400">

@@ -13,6 +13,7 @@ import {
 } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { tokenMediaProps } from '@/lib/tokenMediaProps'
+import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { ActivityPulse, TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 import { LiveValue } from '@/components/shared/LiveValue'
 import { RugBadge } from '@/components/quant/RugBadge'
@@ -113,14 +114,18 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                         >
                           <div className="flex min-w-0 items-center gap-1.5">
                             <ActivityPulse active={token.isActive} />
-                            <span className="truncate font-semibold text-white">{token.symbol}</span>
+                            <span className="truncate font-semibold text-white">
+                              {displayTokenSymbol(token)}
+                            </span>
                             {(highlightGraduating || token.bondingCurvePercent >= 78) && (
                               <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">
                                 grad
                               </span>
                             )}
                           </div>
-                          <div className="truncate text-[11px] text-zinc-500">{token.name}</div>
+                          <div className="truncate text-[11px] text-zinc-500">
+                            {displayTokenName(token)}
+                          </div>
                           <TokenActivityBadges token={token} compact />
                         </Link>
                       </div>

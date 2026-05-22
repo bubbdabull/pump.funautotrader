@@ -35,6 +35,10 @@ import {
   isBrokenPumpFunImageUrl,
   isLikelyMetadataUri,
   isPlaceholderTokenImage,
+  normalizeFeedTokenLabels,
+  pickTokenName,
+  pickTokenSymbol,
+  isValidTicker,
 } from '@phronis/trading'
 import type { TokenChartSeries, ChartPoint, OhlcvCandle } from './chart.types'
 import { TokenMetadataService } from './token-metadata.service'
@@ -486,6 +490,8 @@ export class TokensService {
       void this.enrichTokenMedia(mapped.mint, {
         metadataUri: coin.metadata_uri,
         image: coin.image_uri,
+        symbol: coin.symbol,
+        name: coin.name,
         twitter: coin.twitter,
         telegram: coin.telegram,
         website: coin.website,
@@ -532,6 +538,8 @@ export class TokensService {
     fields: {
       metadataUri?: string
       image?: string
+      symbol?: string
+      name?: string
       twitter?: string
       telegram?: string
       website?: string
@@ -540,13 +548,24 @@ export class TokensService {
     try {
       let image = fields.image
       let metadataUri = fields.metadataUri
-      if (!isUsableTokenImageUrl(image) || isBrokenPumpFunImageUrl(image)) {
+      let symbol = fields.symbol
+      let name = fields.name
+      const needsMeta =
+        !isUsableTokenImageUrl(image) ||
+        isBrokenPumpFunImageUrl(image) ||
+        !isValidTicker(symbol, mint)
+      if (needsMeta) {
         const coin = await this.pump.getCoin(mint)
-        if (coin?.image_uri && isUsableTokenImageUrl(coin.image_uri)) {
-          image = coin.image_uri
+        if (coin) {
+          if (coin.image_uri && isUsableTokenImageUrl(coin.image_uri)) {
+            image = coin.image_uri
+          }
           metadataUri = metadataUri ?? coin.metadata_uri
+          symbol = pickTokenSymbol(mint, symbol, coin.symbol)
+          name = pickTokenName(mint, symbol, name, coin.name)
         }
       }
+      const labels = normalizeFeedTokenLabels(mint, { symbol, name })
       const media = await this.metadata.enrichToken(mint, {
         metadataUri,
         image,
@@ -558,6 +577,8 @@ export class TokensService {
       if (!current) return
       const saved = this.upsertLiveToken({
         ...current,
+        symbol: labels.symbol,
+        name: labels.name,
         image: media.image,
         metadataUri: media.metadataUri ?? current.metadataUri,
         twitter: media.twitter ?? current.twitter,
@@ -610,10 +631,14 @@ export class TokensService {
     })
 
     const momentum = scores.momentumScore
+    const labels = normalizeFeedTokenLabels(coin.mint, {
+      symbol: coin.symbol,
+      name: coin.name,
+    })
     return {
       mint: coin.mint,
-      name: coin.name,
-      symbol: coin.symbol,
+      name: labels.name,
+      symbol: labels.symbol,
       image,
       metadataUri: coin.metadata_uri,
       twitter: coin.twitter,
@@ -665,10 +690,14 @@ export class TokensService {
     }
 
     const momentum = momentumScoreFromMetrics(metrics)
+    const labels = normalizeFeedTokenLabels(mint, {
+      symbol: state.symbol ?? coin?.symbol,
+      name: state.name ?? coin?.name,
+    })
     const base: FeedToken = {
       mint,
-      name: state.name ?? coin?.name ?? 'Unknown',
-      symbol: state.symbol ?? coin?.symbol ?? mint.slice(0, 4).toUpperCase(),
+      name: labels.name,
+      symbol: labels.symbol,
       image:
         this.metadata.getCached(mint) ||
         coalesceTokenImage(mint, { image: coin?.image_uri, uri: coin?.metadata_uri }) ||
@@ -841,14 +870,28 @@ export class TokensService {
     const { holders, holdersVerified } = this.resolveStableHolders(mint, token, chain)
 
     if (!fromState) {
-      const next = this.attachActivity({ ...token, holders, holdersVerified }, mint)
+      const labels = normalizeFeedTokenLabels(mint, {
+        symbol: token.symbol,
+        name: token.name,
+      })
+      const next = this.attachActivity(
+        { ...token, ...labels, holders, holdersVerified },
+        mint,
+      )
       return holders > (token.holders ?? 0) || holdersVerified ? next : this.attachActivity(token, mint)
     }
     const merged: FeedToken = {
       ...token,
       ...fromState,
-      name: fromState.name !== 'Unknown' ? fromState.name : token.name,
-      symbol: fromState.symbol || token.symbol,
+      ...normalizeFeedTokenLabels(mint, {
+        symbol: pickTokenSymbol(mint, token.symbol, fromState.symbol),
+        name: pickTokenName(
+          mint,
+          pickTokenSymbol(mint, token.symbol, fromState.symbol),
+          token.name,
+          fromState.name,
+        ),
+      }),
       image: this.pickFeedImage(mint, token.image, fromState.image),
       metadataUri: token.metadataUri ?? fromState.metadataUri ?? this.metadata.getEnrichment(mint)?.metadataUri,
       twitter: token.twitter ?? fromState.twitter,

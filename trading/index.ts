@@ -32,6 +32,13 @@ export {
   coalesceTokenImage,
 } from './utils/tokenMedia'
 export {
+  looksLikeMintAddress,
+  isValidTicker,
+  pickTokenSymbol,
+  pickTokenName,
+  normalizeFeedTokenLabels,
+} from './utils/tokenDisplay'
+export {
   parseTokenMetadataJson,
   isDirectImageUrl,
   type ParsedTokenMetadata,

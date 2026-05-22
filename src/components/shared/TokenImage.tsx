@@ -7,6 +7,7 @@ import {
   resolveTokenImageCandidates,
   parseTokenMetadataJson,
 } from '@trading'
+import { displayTokenSymbol } from '@/lib/tokenDisplay'
 
 interface TokenImageProps {
   mint: string
@@ -98,7 +99,9 @@ export function TokenImage({ mint, symbol, uri, image, className, size = 'md' }:
     }
   }, [effectiveUri, mint])
 
-  const label = (symbol ?? mint.slice(0, 2)).toUpperCase().slice(0, 2)
+  const label = displayTokenSymbol({ mint, symbol, name: undefined })
+    .slice(0, 2)
+    .toUpperCase()
   const showFallback = failed || index >= candidates.length
   const src = candidates[index]
 

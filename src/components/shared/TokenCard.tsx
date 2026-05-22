@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { tokenMediaProps } from '@/lib/tokenMediaProps'
+import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { ActivityPulse } from '@/components/shared/TokenActivityBadges'
 import type { PumpToken } from '@/types'
 
@@ -30,7 +31,9 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
             <div className="min-w-0 flex-1 overflow-hidden">
               <div className="flex min-w-0 items-center gap-2">
                 <ActivityPulse active={token.isActive} />
-                <span className="truncate font-semibold text-white">{token.symbol}</span>
+                <span className="truncate font-semibold text-white">
+                  {displayTokenSymbol(token)}
+                </span>
                 <Badge
                   variant={(token.mcapChange5m ?? token.priceChange24h) >= 0 ? 'success' : 'danger'}
                   className="shrink-0"
@@ -40,7 +43,7 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
                   <span className="ml-0.5 font-normal opacity-70">5m</span>
                 </Badge>
               </div>
-              <p className="truncate text-xs text-zinc-500">{token.name}</p>
+              <p className="truncate text-xs text-zinc-500">{displayTokenName(token)}</p>
             </div>
             <div
               className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-mono font-bold ${riskBg(token.signalScore ?? token.aiRiskScore ?? 50)}`}

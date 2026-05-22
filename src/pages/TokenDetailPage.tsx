@@ -8,6 +8,7 @@ import { TradingPanel } from '@/components/trading/TradingPanel'
 import { Badge } from '@/components/ui/badge'
 import { useToken, useTokenTrades } from '@/hooks/useTokens'
 import { formatUsd, formatHolders, riskBg, riskColor, shortenAddress } from '@/lib/utils'
+import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 
@@ -38,7 +39,9 @@ export function TokenDetailPage() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-xl font-bold text-white sm:text-2xl">{token.symbol}</h1>
+            <h1 className="truncate text-xl font-bold text-white sm:text-2xl">
+              {displayTokenSymbol(token)}
+            </h1>
             <Badge variant={token.priceChange24h >= 0 ? 'success' : 'danger'} className="shrink-0">
               {token.priceChange24h >= 0 ? '+' : ''}
               {token.priceChange24h.toFixed(1)}%
@@ -50,7 +53,7 @@ export function TokenDetailPage() {
             </span>
           </div>
           <p className="mt-1 truncate text-sm text-zinc-500">
-            {token.name} · {formatUsd(token.marketCap)} MCap
+            {displayTokenName(token)} · {formatUsd(token.marketCap)} MCap
           </p>
           <div className="mt-2">
             <TokenActivityBadges token={token} />
@@ -91,8 +94,8 @@ export function TokenDetailPage() {
             <h3 className="mb-3 font-semibold text-white">Summary</h3>
             <p className="text-sm leading-relaxed text-zinc-400">
               {(token.signalScore ?? token.aiRiskScore ?? 50) < 40
-                ? `${token.symbol} shows live buy pressure. Curve at ${token.bondingCurvePercent}%. Volume ${token.volume24h.toFixed(2)} SOL.`
-                : `${token.symbol} elevated risk. Whale activity: ${token.whaleActivity}.`}
+                ? `${displayTokenSymbol(token)} shows live buy pressure. Curve at ${token.bondingCurvePercent}%. Volume ${token.volume24h.toFixed(2)} SOL.`
+                : `${displayTokenSymbol(token)} elevated risk. Whale activity: ${token.whaleActivity}.`}
             </p>
           </GlassCard>
           <GlassCard>
