@@ -5,7 +5,22 @@ export interface ChartPoint {
   curve: number
 }
 
+export interface OhlcvCandle {
+  t: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  buys: number
+  sells: number
+}
+
 export interface TokenChartSeries {
   mint: string
+  intervalMs: number
+  candles: OhlcvCandle[]
   points: ChartPoint[]
+  tradeCount: number
+  lastTradeAt?: number
 }

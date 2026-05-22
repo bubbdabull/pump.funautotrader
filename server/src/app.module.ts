@@ -17,6 +17,8 @@ import { TradingModule } from './trading/trading.module'
 import { FeedModule } from './feed/feed.module'
 import { FeedProcessor } from './jobs/feed.processor'
 import { HealthController } from './health.controller'
+import { DataHealthController } from './trade-data/data-health.controller'
+import { TradeDataModule } from './trade-data/trade-data.module'
 import { IngestionModule } from './ingestion/ingestion.module'
 import { QuantModule } from './quant/quant.module'
 import { ExecutionModule } from './execution/execution.module'
@@ -63,8 +65,9 @@ const bullImports: (Type | DynamicModule)[] = redisEnabled()
     RiskModule,
     BacktestModule,
     HoldersModule,
+    TradeDataModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, DataHealthController],
   providers: redisEnabled() ? [FeedProcessor] : [],
 })
 export class AppModule {}

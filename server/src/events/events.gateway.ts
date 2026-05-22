@@ -7,6 +7,7 @@ import {
 import { Server, Socket } from 'socket.io'
 import { Inject, Logger, forwardRef } from '@nestjs/common'
 import { TokensService } from '../tokens/tokens.service'
+import { AutoTraderService } from '../autotrader/autotrader.service'
 
 @WebSocketGateway({ cors: { origin: '*' }, path: '/socket.io' })
 export class EventsGateway implements OnGatewayConnection {
@@ -19,6 +20,7 @@ export class EventsGateway implements OnGatewayConnection {
   constructor(
     @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
+    private autoTrader: AutoTraderService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -53,5 +55,10 @@ export class EventsGateway implements OnGatewayConnection {
 
   emitTokenUpdate(mint: string, token: unknown) {
     this.server.to(`token:${mint}`).emit('token:update', token)
+  }
+
+  emitChartUpdate(mint: string) {
+    const series = this.tokens.getChartSeries(mint)
+    this.server.to(`token:${mint}`).emit('chart:update', series)
   }
 }

@@ -1,0 +1,11 @@
+-- Live trade activity on Token (updated every trade for feed mints)
+
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "lastTradeAt" TIMESTAMPTZ;
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "trades1m" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "volume5mSol" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "buyPressure1m" INTEGER NOT NULL DEFAULT 50;
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "mcapChange5m" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Token" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS idx_token_active ON "Token"("isActive", "lastTradeAt" DESC);
+CREATE INDEX IF NOT EXISTS idx_wallet_activity_sig ON "WalletActivity"(signature) WHERE signature IS NOT NULL;

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Users } from 'lucide-react'
 import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor, cn } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
+import { TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 import { RugBadge } from '@/components/quant/RugBadge'
 import { useQuantStore } from '@/stores/quantStore'
 import type { PumpToken } from '@/types'
@@ -51,6 +52,9 @@ export function LiveFeedCards({ tokens }: LiveFeedCardsProps) {
                 <div className="shrink-0">
                   <RugBadge mint={token.mint} compact />
                 </div>
+              </div>
+              <div className="mt-2">
+                <TokenActivityBadges token={token} />
               </div>
               <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
                 <span className="text-zinc-500">MCap</span>

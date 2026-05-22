@@ -11,6 +11,7 @@ import {
   cn,
 } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
+import { ActivityPulse, TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 import { RugBadge } from '@/components/quant/RugBadge'
 import { useQuantStore } from '@/stores/quantStore'
 import { useAppStore } from '@/stores/appStore'
@@ -47,6 +48,9 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
               <th className="px-4 py-3">Token</th>
               <th className="px-4 py-3 text-center">Rug</th>
               <th className="px-4 py-3 text-right">Market cap</th>
+              <th className="px-4 py-3 text-right">Δ 5m</th>
+              <th className="px-4 py-3 text-right">Buy%</th>
+              <th className="px-4 py-3 text-right">Last</th>
               <th className="px-4 py-3 text-right">Curve</th>
               <th className="px-4 py-3 text-right">Holders</th>
               <th className="px-4 py-3 text-right">Volume</th>
@@ -99,6 +103,7 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                           className="min-w-0 flex-1 overflow-hidden hover:text-violet-300"
                         >
                           <div className="flex min-w-0 items-center gap-1.5">
+                            <ActivityPulse active={token.isActive} />
                             <span className="truncate font-semibold text-white">{token.symbol}</span>
                             {(highlightGraduating || token.bondingCurvePercent >= 78) && (
                               <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">
@@ -107,6 +112,7 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                             )}
                           </div>
                           <div className="truncate text-[11px] text-zinc-500">{token.name}</div>
+                          <TokenActivityBadges token={token} compact />
                         </Link>
                       </div>
                     </td>
@@ -115,6 +121,24 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-200">
                       {formatUsd(token.marketCap)}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs">
+                      <span
+                        className={cn(
+                          (token.mcapChange5m ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400',
+                        )}
+                      >
+                        {(token.mcapChange5m ?? 0) >= 0 ? '+' : ''}
+                        {(token.mcapChange5m ?? 0).toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-300">
+                      {token.buyPressure1m ?? 50}%
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono text-[11px] text-zinc-500">
+                      {token.lastTradeAt
+                        ? `${Math.max(0, Math.round((Date.now() - token.lastTradeAt) / 1000))}s`
+                        : '—'}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-2">

@@ -18,6 +18,7 @@ import { pickMintsForTradeSubscription } from './trade-subscription.util'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
 import { QuantEngineService } from '../quant/quant-engine.service'
 import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
+import { FeedTradePinService } from '../trade-data/feed-trade-pin.service'
 
 @Injectable()
 export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
@@ -47,6 +48,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     private ingestion: IngestionOrchestratorService,
     private quant: QuantEngineService,
     private holderEnrichment: HolderEnrichmentService,
+    private feedTradePin: FeedTradePinService,
   ) {
     this.apiKey = this.config.get<string>('PUMPPORTAL_API_KEY')?.trim() || undefined
     const max = Number(this.config.get('PUMPPORTAL_MAX_TRADE_SUBS') ?? 250)
@@ -86,7 +88,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       )
     }
     this.connect()
-    const rotateMs = Number(this.config.get('PUMPPORTAL_TRADE_SUB_ROTATE_MS') ?? 45_000)
+    const rotateMs = Number(this.config.get('PUMPPORTAL_TRADE_SUB_ROTATE_MS') ?? 20_000)
     if (this.apiKey && Number.isFinite(rotateMs) && rotateMs >= 15_000) {
       this.rotationTimer = setInterval(() => void this.rotateTradeSubscriptions(), rotateMs)
     }
@@ -142,23 +144,56 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     })
   }
 
-  /** Subscribe trade streams for highest-value mints in the live feed. */
+  /** Subscribe trade streams — feed tradeable mints first, then rotate extras. */
   private async rotateTradeSubscriptions() {
     if (!this.apiKey || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
+    this.feedTradePin.refreshPinsFromFeed()
     const feed = this.liveFeed.getAll()
-    const pinned = new Set(this.autoTrader.getPriorityMints())
-    const slotsLeft = Math.max(0, this.maxTradeSubscriptions - this.subscribedMints.size)
-    if (slotsLeft === 0) return
+    const pinned = new Set([
+      ...this.autoTrader.getPriorityMints(),
+      ...this.feedTradePin.getMandatoryMints(),
+    ])
+    const mandatory = this.feedTradePin.getMandatoryMints()
 
-    const picks = pickMintsForTradeSubscription(feed, pinned, slotsLeft, this.subscribedMints)
+    for (const mint of mandatory) {
+      while (
+        this.subscribedMints.size >= this.maxTradeSubscriptions &&
+        !this.subscribedMints.has(mint)
+      ) {
+        if (!this.evictOneNonPinned(pinned)) break
+      }
+      this.queueTradeSubscription(mint, true)
+    }
+
+    const slotsLeft = Math.max(0, this.maxTradeSubscriptions - this.subscribedMints.size)
+    const picks = pickMintsForTradeSubscription(
+      feed,
+      pinned,
+      slotsLeft,
+      this.subscribedMints,
+      mandatory,
+    )
     for (const mint of picks) {
       this.queueTradeSubscription(mint, true)
     }
     this.lastRotationAt = new Date().toISOString()
-    if (picks.length) {
-      this.logger.debug(`Trade sub rotation: queued ${picks.length} mint(s)`)
+    if (picks.length || mandatory.length) {
+      this.logger.debug(
+        `Trade subs: mandatory=${mandatory.length} queued=${picks.length} active=${this.subscribedMints.size}/${this.maxTradeSubscriptions}`,
+      )
     }
+  }
+
+  /** Drop a subscribed mint that is not pinned to make room for feed tokens. */
+  private evictOneNonPinned(pinned: ReadonlySet<string>): boolean {
+    for (const mint of this.subscribedMints) {
+      if (!pinned.has(mint)) {
+        this.subscribedMints.delete(mint)
+        return true
+      }
+    }
+    return false
   }
 
   private queueTradeSubscription(mint: string, front = false) {
@@ -328,6 +363,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     if (!saved) return
     this.events.server?.emit('token:update', saved)
     this.events.server?.to('feed').emit('feed:patch', saved)
+    this.events.emitChartUpdate(mint)
   }
 
   private buildFeedToken(data: PumpPortalNewTokenEvent & Record<string, unknown>): FeedToken {

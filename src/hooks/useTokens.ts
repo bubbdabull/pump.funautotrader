@@ -12,7 +12,13 @@ function mergeTokenIntoFeed(feed: PumpToken[] | unknown, token: PumpToken): Pump
   const idx = list.findIndex((t) => t.mint === token.mint)
   if (idx >= 0) {
     const next = [...list]
-    next[idx] = { ...next[idx], ...token }
+    const prev = next[idx]
+    next[idx] = {
+      ...prev,
+      ...token,
+      image: token.image || prev.image,
+      metadataUri: token.metadataUri || prev.metadataUri,
+    }
     return next
   }
   return [token, ...list].slice(0, 120)

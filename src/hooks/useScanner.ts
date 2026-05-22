@@ -14,6 +14,7 @@ import {
 } from '@/lib/feedQuality'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
+import type { TokenChartSeries } from '@/lib/chartTypes'
 
 function upsert(list: PumpToken[], token: PumpToken, max = 80): PumpToken[] {
   const idx = list.findIndex((t) => t.mint === token.mint)
@@ -84,7 +85,22 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
 
     const pushToken = (token: PumpToken) => {
       queryClient.setQueryData<ScannerPayload>(key, (old) => {
-        const merged = upsert(old?.tokens ?? [], token, 120)
+        const list = old?.tokens ?? []
+        const idx = list.findIndex((t) => t.mint === token.mint)
+        const merged =
+          idx >= 0
+            ? (() => {
+                const next = [...list]
+                const prev = next[idx]
+                next[idx] = {
+                  ...prev,
+                  ...token,
+                  image: token.image || prev.image,
+                  metadataUri: token.metadataUri || prev.metadataUri,
+                }
+                return next
+              })()
+            : upsert(list, token, 120)
         return applyLane(merged, lane)
       })
     }
@@ -176,12 +192,32 @@ export function useScannerFeed(lane: ScannerLane = 'tradeable') {
   }
 }
 
-export function useTokenChart(mint: string) {
-  return useQuery({
-    queryKey: ['tokens', mint, 'chart'],
-    queryFn: () => tokenApi.chart(mint),
+export function useTokenChart(mint: string, intervalMs = 5_000) {
+  const queryClient = useQueryClient()
+  const key = ['tokens', mint, 'chart', intervalMs] as const
+
+  const query = useQuery<TokenChartSeries>({
+    queryKey: key,
+    queryFn: () => tokenApi.chart(mint, intervalMs),
     enabled: !!mint,
-    refetchInterval: 12_000,
-    staleTime: 5_000,
+    refetchInterval: 3_000,
+    staleTime: 1_000,
   })
+
+  useEffect(() => {
+    if (!mint) return
+    wsService.connect()
+    wsService.subscribeToken(mint)
+    const unsub = wsService.onChartUpdate((series) => {
+      if (series.mint !== mint) return
+      if (series.intervalMs === intervalMs) {
+        queryClient.setQueryData(key, series)
+      }
+    })
+    return () => {
+      unsub()
+    }
+  }, [mint, intervalMs, queryClient])
+
+  return query
 }

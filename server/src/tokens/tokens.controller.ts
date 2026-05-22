@@ -2,6 +2,20 @@ import { Controller, Get, Header, Param, Query } from '@nestjs/common'
 import { TokensService } from './tokens.service'
 import type { ScannerLane } from '@phronis/trading'
 
+function parseChartIntervalMs(raw?: string): number {
+  if (!raw) return 5_000
+  const presets: Record<string, number> = {
+    '1s': 1_000,
+    '5s': 5_000,
+    '15s': 15_000,
+    '1m': 60_000,
+  }
+  if (presets[raw]) return presets[raw]
+  const n = Number(raw)
+  if (Number.isFinite(n) && n >= 1_000 && n <= 60_000) return Math.round(n)
+  return 5_000
+}
+
 @Controller('tokens')
 export class TokensController {
   constructor(private tokens: TokensService) {}
@@ -29,8 +43,9 @@ export class TokensController {
   }
 
   @Get(':mint/chart')
-  chart(@Param('mint') mint: string) {
-    return this.tokens.getChartSeries(mint)
+  @Header('Cache-Control', 'no-store')
+  chart(@Param('mint') mint: string, @Query('interval') interval?: string) {
+    return this.tokens.getChartSeries(mint, parseChartIntervalMs(interval))
   }
 
   @Get(':mint/trades')

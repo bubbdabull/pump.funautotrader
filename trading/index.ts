@@ -37,6 +37,14 @@ export {
   countUniqueBuyers,
 } from './utils/holders'
 export {
+  buildOhlcvFromTrades,
+  CHART_INTERVALS_MS,
+  type OhlcvCandle,
+  type ChartIntervalMs,
+  type TradeTickLike,
+} from './utils/candles'
+export { computeFeedActivity, type FeedActivityFields } from './utils/feedActivity'
+export {
   holderEntropyFromAmounts,
   distributionFromAmounts,
 } from './utils/holderDistribution'

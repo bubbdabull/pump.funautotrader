@@ -35,10 +35,18 @@ export class LiveFeedService {
       ? {
           ...prev,
           ...token,
+          image: token.image || prev.image,
+          metadataUri: token.metadataUri || prev.metadataUri,
           holders: Math.max(prev.holders, token.holders),
           holdersVerified: prev.holdersVerified || token.holdersVerified,
           volume24h: Math.max(prev.volume24h, token.volume24h),
           launchedAt: prev.launchedAt || token.launchedAt,
+          lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
+          trades1m: token.trades1m ?? prev.trades1m,
+          volume5mSol: token.volume5mSol ?? prev.volume5mSol,
+          buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
+          mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
+          isActive: token.isActive ?? prev.isActive,
         }
       : token
     this.tokens.set(token.mint, merged)

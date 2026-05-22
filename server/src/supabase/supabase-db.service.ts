@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 import type { FeedToken } from '../feed/feed.types'
-import type { RugScoreBreakdown, QuantitativeScores } from '@phronis/trading'
+import type { FeedActivityFields, RugScoreBreakdown, QuantitativeScores } from '@phronis/trading'
 import { passesTradeableFilter, tradeQualityScore } from '@phronis/trading'
 
 @Injectable()
@@ -134,6 +134,12 @@ export class SupabaseDbService implements OnModuleInit {
       priceChange24h: token.priceChange24h,
       liquidity: token.liquidity,
       launchedAt: token.launchedAt,
+      lastTradeAt: token.lastTradeAt ? new Date(token.lastTradeAt).toISOString() : null,
+      trades1m: token.trades1m ?? 0,
+      volume5mSol: token.volume5mSol ?? 0,
+      buyPressure1m: token.buyPressure1m ?? 50,
+      mcapChange5m: token.mcapChange5m ?? 0,
+      isActive: token.isActive ?? false,
       updatedAt: new Date().toISOString(),
     }
     const { error } = await this.client.from('Token').upsert(row, { onConflict: 'mint' })
@@ -163,6 +169,12 @@ export class SupabaseDbService implements OnModuleInit {
             priceUsd: row.priceUsd,
             priceChange24h: row.priceChange24h,
             liquidity: row.liquidity,
+            lastTradeAt: row.lastTradeAt,
+            trades1m: row.trades1m,
+            volume5mSol: row.volume5mSol,
+            buyPressure1m: row.buyPressure1m,
+            mcapChange5m: row.mcapChange5m,
+            isActive: row.isActive,
             updatedAt: row.updatedAt,
           })
           .eq('mint', token.mint)
@@ -264,6 +276,117 @@ export class SupabaseDbService implements OnModuleInit {
       capturedAt: new Date().toISOString(),
     })
     if (error) this.logger.debug(`RugScore insert: ${error.message}`)
+  }
+
+  async insertWalletActivityOnce(
+    mint: string,
+    trade: {
+      wallet: string
+      side: string
+      solAmount: number
+      signature?: string
+      slot?: number
+      timestamp: number
+    },
+  ): Promise<boolean> {
+    if (!this.client) return false
+    if (trade.signature) {
+      const { data } = await this.client
+        .from('WalletActivity')
+        .select('id')
+        .eq('signature', trade.signature)
+        .maybeSingle()
+      if (data) return false
+    }
+    const { error } = await this.client.from('WalletActivity').insert({
+      id: randomUUID(),
+      mint,
+      wallet: trade.wallet,
+      side: trade.side,
+      solAmount: trade.solAmount,
+      signature: trade.signature ?? null,
+      slot: trade.slot ?? null,
+      actedAt: new Date(trade.timestamp).toISOString(),
+    })
+    if (error) {
+      this.logger.debug(`WalletActivity insert: ${error.message}`)
+      return false
+    }
+    return true
+  }
+
+  async patchTokenLiveActivity(
+    mint: string,
+    activity: FeedActivityFields,
+    market?: { marketCap?: number; bondingCurvePercent?: number; volume24h?: number },
+  ) {
+    if (!this.client) return
+    const payload: Record<string, unknown> = {
+      updatedAt: new Date().toISOString(),
+      lastTradeAt: activity.lastTradeAt ? new Date(activity.lastTradeAt).toISOString() : null,
+      trades1m: activity.trades1m,
+      volume5mSol: activity.volume5mSol,
+      buyPressure1m: activity.buyPressure1m,
+      mcapChange5m: activity.mcapChange5m,
+      isActive: activity.isActive,
+    }
+    if (market?.marketCap != null) payload.marketCap = market.marketCap
+    if (market?.bondingCurvePercent != null) payload.bondingCurvePercent = market.bondingCurvePercent
+    if (market?.volume24h != null) payload.volume24h = market.volume24h
+    const { error } = await this.client.from('Token').update(payload).eq('mint', mint)
+    if (error) this.logger.debug(`Token activity patch: ${error.message}`)
+  }
+
+  async listTradeableTokensForRehydrate(limit = 50) {
+    if (!this.client) return []
+    const { data, error } = await this.client
+      .from('Token')
+      .select('mint, symbol, name, marketCap, bondingCurvePercent, metadataUri, image')
+      .eq('isTradeable', true)
+      .order('updatedAt', { ascending: false })
+      .limit(limit)
+    if (error) {
+      this.logger.debug(`listTradeableTokens: ${error.message}`)
+      return []
+    }
+    return data ?? []
+  }
+
+  async loadRecentWalletActivity(mint: string, limit = 150) {
+    if (!this.client) return []
+    const { data, error } = await this.client
+      .from('WalletActivity')
+      .select('wallet, side, solAmount, signature, slot, actedAt')
+      .eq('mint', mint)
+      .order('actedAt', { ascending: true })
+      .limit(limit)
+    if (error) {
+      this.logger.debug(`loadRecentWalletActivity: ${error.message}`)
+      return []
+    }
+    return data ?? []
+  }
+
+  async countRecentTrades(sinceMs: number) {
+    if (!this.client) return 0
+    const since = new Date(sinceMs).toISOString()
+    const { count, error } = await this.client
+      .from('WalletActivity')
+      .select('*', { count: 'exact', head: true })
+      .gte('actedAt', since)
+    if (error) return 0
+    return count ?? 0
+  }
+
+  async countActiveTokens(sinceMs: number) {
+    if (!this.client) return 0
+    const since = new Date(sinceMs).toISOString()
+    const { count, error } = await this.client
+      .from('Token')
+      .select('*', { count: 'exact', head: true })
+      .gte('lastTradeAt', since)
+    if (error) return 0
+    return count ?? 0
   }
 
   async insertWalletActivities(

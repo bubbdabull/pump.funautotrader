@@ -11,6 +11,7 @@ import { StrategyMonitor } from '@/components/quant/StrategyMonitor'
 import { useScannerFeed } from '@/hooks/useTokens'
 import { useMomentumRankingsState } from '@/hooks/useQuantScanner'
 import { MarketOverviewChart } from '@/components/charts/MarketOverviewChart'
+import { DataHealthBanner } from '@/components/shared/DataHealthBanner'
 import { Link } from 'react-router-dom'
 import type { PumpToken } from '@/types'
 import { tokenVolumeSol } from '@/lib/utils'
@@ -37,6 +38,7 @@ export function DashboardPage() {
 
   const usingFallback = displayMode === 'watchlist_fallback'
   const top = [...tokens].sort((a, b) => b.momentumScore - a.momentumScore).slice(0, 3)
+  const feedByMint = Object.fromEntries(tokens.map((t) => [t.mint, t]))
 
   const hourAgo = Date.now() - 60 * 60 * 1000
   const volumeSol = tokens.reduce((s, t) => s + tokenVolumeSol(t), 0)
@@ -65,6 +67,8 @@ export function DashboardPage() {
           )}
         </p>
       </div>
+
+      <DataHealthBanner />
 
       {usingFallback && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
@@ -106,7 +110,7 @@ export function DashboardPage() {
       </div>
 
       <div className="mb-4 grid gap-4 lg:mb-6 lg:grid-cols-2">
-        <MomentumRankings />
+        <MomentumRankings feedByMint={feedByMint} />
         <StrategyMonitor />
       </div>
 

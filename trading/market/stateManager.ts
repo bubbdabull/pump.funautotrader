@@ -128,13 +128,17 @@ export class MarketStateManager {
       })
     }
 
-    const now = Date.now()
+    const now = event.timestamp ?? Date.now()
     const side = event.txType === 'sell' ? 'sell' : 'buy'
     const sol = Number(event.solAmount ?? 0)
     const tokens = Number(event.tokenAmount ?? 0)
     const wallet = event.traderPublicKey ?? 'unknown'
 
     if (sol > 0 || tokens > 0) {
+      const mcapUsd =
+        event.marketCapSol != null
+          ? marketCapUsdFromSol(Number(event.marketCapSol))
+          : state.marketCapUsd
       state.trades.push({
         signature: event.signature ?? `${now}-${state.trades.length}`,
         wallet,
@@ -143,6 +147,7 @@ export class MarketStateManager {
         tokenAmount: tokens,
         timestamp: now,
         slot: event.slot,
+        marketCapUsd: mcapUsd > 0 ? mcapUsd : undefined,
       })
       if (state.trades.length > 500) state.trades.shift()
 

@@ -5,6 +5,7 @@ import { GlassCard } from './GlassCard'
 import { Badge } from '@/components/ui/badge'
 import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
+import { ActivityPulse } from '@/components/shared/TokenActivityBadges'
 import type { PumpToken } from '@/types'
 
 interface TokenCardProps {
@@ -33,10 +34,15 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
             </div>
             <div className="min-w-0 flex-1 overflow-hidden">
               <div className="flex min-w-0 items-center gap-2">
+                <ActivityPulse active={token.isActive} />
                 <span className="truncate font-semibold text-white">{token.symbol}</span>
-                <Badge variant={token.priceChange24h >= 0 ? 'success' : 'danger'} className="shrink-0">
-                  {token.priceChange24h >= 0 ? '+' : ''}
-                  {token.priceChange24h.toFixed(1)}%
+                <Badge
+                  variant={(token.mcapChange5m ?? token.priceChange24h) >= 0 ? 'success' : 'danger'}
+                  className="shrink-0"
+                >
+                  {(token.mcapChange5m ?? token.priceChange24h) >= 0 ? '+' : ''}
+                  {(token.mcapChange5m ?? token.priceChange24h).toFixed(1)}%
+                  <span className="ml-0.5 font-normal opacity-70">5m</span>
                 </Badge>
               </div>
               <p className="truncate text-xs text-zinc-500">{token.name}</p>
@@ -59,8 +65,8 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
               <p className="font-mono text-teal-400">{token.bondingCurvePercent.toFixed(0)}%</p>
             </div>
             <div>
-              <p className="text-zinc-500">Mom.</p>
-              <p className="font-mono text-purple-400">{token.momentumScore}</p>
+              <p className="text-zinc-500">Buy%</p>
+              <p className="font-mono text-emerald-400/90">{token.buyPressure1m ?? 50}%</p>
             </div>
           </div>
           <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">

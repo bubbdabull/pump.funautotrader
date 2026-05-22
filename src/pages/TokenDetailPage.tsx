@@ -3,12 +3,13 @@ import { motion } from 'framer-motion'
 import { Shield, Users, MessageCircle, AlertTriangle } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { GlassCard } from '@/components/shared/GlassCard'
-import { ProTokenChart } from '@/components/charts/ProTokenChart'
+import { DexScreenerChart } from '@/components/charts/DexScreenerChart'
 import { TradingPanel } from '@/components/trading/TradingPanel'
 import { Badge } from '@/components/ui/badge'
 import { useToken, useTokenTrades } from '@/hooks/useTokens'
 import { formatUsd, riskBg, riskColor, shortenAddress } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
+import { TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 
 export function TokenDetailPage() {
   const { mint = '' } = useParams()
@@ -51,12 +52,15 @@ export function TokenDetailPage() {
           <p className="mt-1 truncate text-sm text-zinc-500">
             {token.name} · {formatUsd(token.marketCap)} MCap
           </p>
+          <div className="mt-2">
+            <TokenActivityBadges token={token} />
+          </div>
         </div>
       </motion.div>
 
       <motion.div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
-          <ProTokenChart mint={mint} />
+          <DexScreenerChart mint={mint} />
           <div className="grid gap-4 sm:grid-cols-3">
             <GlassCard>
               <Users className="mb-2 h-5 w-5 text-purple-400" />

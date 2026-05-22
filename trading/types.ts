@@ -10,6 +10,8 @@ export interface TradeTick {
   tokenAmount: number
   timestamp: number
   slot?: number
+  /** Market cap USD at time of trade (for live candles). */
+  marketCapUsd?: number
 }
 
 export interface LiquiditySnapshot {
@@ -108,6 +110,8 @@ export interface TradeStreamEvent {
   slot?: number
   vSolInBondingCurve?: number
   marketCapSol?: number
+  /** Ms since epoch — used when replaying from DB */
+  timestamp?: number
 }
 
 export type { QuantitativeScores } from './quantitative/scores'

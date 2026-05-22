@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client'
 import type { PumpToken, AutoTradeSignal } from '@/types'
+import type { TokenChartSeries } from '@/lib/chartTypes'
 import type { QuantHolderPatch, QuantUpdate, StrategySignal } from '@/lib/quantTypes'
 
 import { WS_URL } from '@/lib/apiConfig'
@@ -10,6 +11,7 @@ type SignalHandler = (signal: AutoTradeSignal) => void
 type QuantUpdateHandler = (payload: QuantUpdate) => void
 type QuantHoldersHandler = (payload: QuantHolderPatch) => void
 type QuantStrategyHandler = (payload: { mint: string; signal: StrategySignal }) => void
+type ChartUpdateHandler = (series: TokenChartSeries) => void
 
 class WebSocketService {
   private socket: Socket | null = null
@@ -24,6 +26,7 @@ class WebSocketService {
   private quantHoldersHandlers = new Set<QuantHoldersHandler>()
   private quantStrategyHandlers = new Set<QuantStrategyHandler>()
   private rugWarningHandlers = new Set<(payload: { mint: string; rug: QuantUpdate['rug'] }) => void>()
+  private chartHandlers = new Set<ChartUpdateHandler>()
 
   connect() {
     if (this.socket?.connected) return this.socket
@@ -151,6 +154,11 @@ class WebSocketService {
   onRugWarning(handler: (payload: { mint: string; rug: QuantUpdate['rug'] }) => void) {
     this.rugWarningHandlers.add(handler)
     return () => this.rugWarningHandlers.delete(handler)
+  }
+
+  onChartUpdate(handler: ChartUpdateHandler) {
+    this.chartHandlers.add(handler)
+    return () => this.chartHandlers.delete(handler)
   }
 }
 

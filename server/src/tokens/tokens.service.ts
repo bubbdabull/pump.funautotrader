@@ -14,6 +14,8 @@ import {
   filterForLane,
   passesTradeableFilter,
   bondingCurvePercentFromSol,
+  buildOhlcvFromTrades,
+  computeFeedActivity,
   type ScannerLane,
 } from '@phronis/trading'
 import {
@@ -22,10 +24,11 @@ import {
   resolveTokenImage,
   isDirectImageUrl,
 } from '@phronis/trading'
-import type { TokenChartSeries, ChartPoint } from './chart.types'
+import type { TokenChartSeries, ChartPoint, OhlcvCandle } from './chart.types'
 import { TokenMetadataService } from './token-metadata.service'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
 import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
+import { EventsGateway } from '../events/events.gateway'
 
 @Injectable()
 export class TokensService {
@@ -42,6 +45,8 @@ export class TokensService {
     private supabase: SupabaseDbService,
     @Inject(forwardRef(() => HolderEnrichmentService))
     private holderEnrichment: HolderEnrichmentService,
+    @Inject(forwardRef(() => EventsGateway))
+    private events: EventsGateway,
   ) {}
 
   private pumpBootstrapLimit(): number {
@@ -51,7 +56,29 @@ export class TokensService {
 
   async getFeed(lane: ScannerLane = 'tradeable'): Promise<FeedToken[]> {
     const all = await this.getAllTokens()
-    return filterForLane(all, lane)
+    const filtered = filterForLane(all, lane)
+    await this.hydrateActivityFromDb(filtered)
+    return filtered.map((t) => this.liveFeed.get(t.mint) ?? t)
+  }
+
+  /** Fill activity from DB when in-memory state is cold (e.g. after restart). */
+  private async hydrateActivityFromDb(tokens: FeedToken[]) {
+    if (!this.supabase.enabled) return
+    const cold = tokens.filter((t) => !t.lastTradeAt && !t.isActive).slice(0, 30)
+    for (const t of cold) {
+      const row = await this.supabase.findTokenByMint(t.mint)
+      if (!row?.lastTradeAt) continue
+      const lastMs = new Date(row.lastTradeAt as string).getTime()
+      const patch: Partial<FeedToken> = {
+        lastTradeAt: lastMs,
+        trades1m: Number(row.trades1m ?? 0),
+        volume5mSol: Number(row.volume5mSol ?? 0),
+        buyPressure1m: Number(row.buyPressure1m ?? 50),
+        mcapChange5m: Number(row.mcapChange5m ?? 0),
+        isActive: Boolean(row.isActive) || Date.now() - lastMs < 120_000,
+      }
+      this.liveFeed.upsert({ ...t, ...patch })
+    }
   }
 
   async getGraduatingFeed(): Promise<FeedToken[]> {
@@ -62,13 +89,14 @@ export class TokensService {
     const cached = this.liveFeed.getAll()
     if (cached.length > 0) {
       this.kickHolderEnrich(cached)
+      this.kickImageEnrich(cached)
       void this.bootstrapFeedFromPump().catch((err) =>
         this.logger.debug(`Pump.fun bootstrap skipped: ${(err as Error).message}`),
       )
-      return cached.map((t) => this.enrichFromMarketState(t.mint, t))
+      return cached.map((t) => this.attachActivity(this.enrichFromMarketState(t.mint, t), t.mint))
     }
     const boot = await this.bootstrapFeedFromPump()
-    return boot.map((t) => this.enrichFromMarketState(t.mint, t))
+    return boot.map((t) => this.attachActivity(this.enrichFromMarketState(t.mint, t), t.mint))
   }
 
   private async bootstrapFeedFromPump(): Promise<FeedToken[]> {
@@ -79,44 +107,62 @@ export class TokensService {
     return this.liveFeed.getAll()
   }
 
-  getChartSeries(mint: string): TokenChartSeries {
+  getChartSeries(mint: string, intervalMs = 5_000): TokenChartSeries {
     const state = this.trading.getState(mint)
     const token = this.liveFeed.get(mint)
+    const fallbackMcap = token?.marketCap ?? state?.marketCapUsd ?? 0
+    const curve = token?.bondingCurvePercent ?? state?.bondingCurvePercent ?? 0
     const points: ChartPoint[] = []
+    const bucketMs = Math.max(1_000, Math.min(60_000, intervalMs))
 
     if (state?.liquidityHistory.length) {
       for (const h of state.liquidityHistory) {
         const mc = marketCapUsdFromSol(h.marketCapSol)
         points.push({
           t: h.timestamp,
-          price: mc > 0 ? mc : 0,
+          price: mc > 0 ? mc : fallbackMcap,
           volume: 0,
           curve: bondingCurvePercentFromSol(h.virtualSolReserves || h.marketCapSol),
         })
       }
     }
 
+    const candles: OhlcvCandle[] = state?.trades.length
+      ? buildOhlcvFromTrades(state.trades, bucketMs, fallbackMcap, 240)
+      : []
+
     if (state?.trades.length) {
-      const buckets = new Map<number, number>()
+      const volBuckets = new Map<number, number>()
       for (const tr of state.trades) {
-        const bucket = Math.floor(tr.timestamp / 20_000) * 20_000
-        buckets.set(bucket, (buckets.get(bucket) ?? 0) + tr.solAmount)
+        const bucket = Math.floor(tr.timestamp / bucketMs) * bucketMs
+        volBuckets.set(bucket, (volBuckets.get(bucket) ?? 0) + tr.solAmount)
       }
-      for (const [t, volume] of buckets) {
-        const near = points.find((p) => Math.abs(p.t - t) < 25_000)
-        if (near) near.volume += volume
-        else {
+      for (const [t, volume] of volBuckets) {
+        const candle = candles.find((c) => c.t === t)
+        if (candle) {
           points.push({
             t,
-            price: token?.marketCap ?? state.marketCapUsd ?? 0,
-            volume,
-            curve: token?.bondingCurvePercent ?? state.bondingCurvePercent,
+            price: candle.close,
+            volume: candle.volume,
+            curve,
           })
+          continue
+        }
+        const near = points.find((p) => Math.abs(p.t - t) < bucketMs + 500)
+        if (near) near.volume += volume
+        else {
+          points.push({ t, price: fallbackMcap, volume, curve })
         }
       }
     }
 
-    if (!points.length && token) {
+    if (!points.length && candles.length) {
+      for (const c of candles) {
+        points.push({ t: c.t, price: c.close, volume: c.volume, curve })
+      }
+    }
+
+    if (!points.length && !candles.length && token) {
       points.push({
         t: Date.now(),
         price: token.marketCap,
@@ -126,7 +172,16 @@ export class TokensService {
     }
 
     points.sort((a, b) => a.t - b.t)
-    return { mint, points: points.slice(-96) }
+    const lastTrade = state?.trades[state.trades.length - 1]
+
+    return {
+      mint,
+      intervalMs: bucketMs,
+      candles,
+      points: points.slice(-120),
+      tradeCount: state?.trades.length ?? 0,
+      lastTradeAt: lastTrade?.timestamp,
+    }
   }
 
 
@@ -374,7 +429,7 @@ export class TokensService {
       })
       const current = this.liveFeed.get(mint)
       if (!current) return
-      this.liveFeed.upsert({
+      const saved = this.upsertLiveToken({
         ...current,
         image: media.image,
         metadataUri: media.metadataUri ?? current.metadataUri,
@@ -382,6 +437,10 @@ export class TokensService {
         telegram: media.telegram ?? current.telegram,
         website: media.website ?? current.website,
       })
+      if (saved) {
+        this.events.server?.to('feed').emit('feed:patch', saved)
+        this.events.server?.emit('token:update', saved)
+      }
     } catch (err) {
       this.logger.debug(`Media enrich ${mint}: ${(err as Error).message}`)
     }
@@ -468,7 +527,7 @@ export class TokensService {
     }
 
     const momentum = momentumScoreFromMetrics(metrics)
-    return {
+    const base: FeedToken = {
       mint,
       name: state.name ?? coin?.name ?? 'Unknown',
       symbol: state.symbol ?? coin?.symbol ?? mint.slice(0, 4).toUpperCase(),
@@ -497,6 +556,31 @@ export class TokensService {
       priceChange24h,
       liquidity: normalizeVirtualSol(state.liquidity),
     }
+    return this.attachActivity(base, mint)
+  }
+
+  /** Resolve IPFS/metadata images for rows still on placeholder URLs. */
+  private kickImageEnrich(tokens: FeedToken[]) {
+    const batch = tokens
+      .filter((t) => {
+        const cached = this.metadata.getCached(t.mint)
+        if (cached && isDirectImageUrl(cached)) return false
+        if (t.image && isDirectImageUrl(t.image)) return false
+        return Boolean(t.metadataUri || t.image)
+      })
+      .slice(0, 18)
+    for (const t of batch) {
+      void this.enrichTokenMedia(t.mint, {
+        metadataUri: t.metadataUri,
+        image: t.image,
+      })
+    }
+  }
+
+  private attachActivity(token: FeedToken, mint: string): FeedToken {
+    const state = this.trading.getState(mint)
+    if (!state) return token
+    return { ...token, ...computeFeedActivity(state) }
   }
 
   /** Background Helius refresh for feed rows still showing stream holder estimates. */
@@ -533,10 +617,10 @@ export class TokensService {
       : Math.max(token.holders ?? 0, holdersFromChain, fromState?.holders ?? 0)
 
     if (!fromState) {
-      const next = { ...token, holders, holdersVerified }
-      return holders > (token.holders ?? 0) || holdersVerified ? next : token
+      const next = this.attachActivity({ ...token, holders, holdersVerified }, mint)
+      return holders > (token.holders ?? 0) || holdersVerified ? next : this.attachActivity(token, mint)
     }
-    return {
+    const merged: FeedToken = {
       ...token,
       ...fromState,
       name: fromState.name !== 'Unknown' ? fromState.name : token.name,
@@ -548,7 +632,7 @@ export class TokensService {
           : token.image && isDirectImageUrl(token.image)
             ? token.image
             : fromState.image || token.image),
-      metadataUri: token.metadataUri ?? fromState.metadataUri,
+      metadataUri: token.metadataUri ?? fromState.metadataUri ?? this.metadata.getEnrichment(mint)?.metadataUri,
       twitter: token.twitter ?? fromState.twitter,
       telegram: token.telegram ?? fromState.telegram,
       website: token.website ?? fromState.website,
@@ -557,7 +641,9 @@ export class TokensService {
       holdersVerified: holdersVerified || fromState.holdersVerified,
       volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,
+      priceChange24h: fromState.priceChange24h ?? token.priceChange24h ?? 0,
     }
+    return this.attachActivity(merged, mint)
   }
 
   private formatDb(t: {

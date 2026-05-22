@@ -31,6 +31,12 @@ export interface PumpToken {
   priceUsd: number
   priceChange24h: number
   liquidity: number
+  lastTradeAt?: number
+  trades1m?: number
+  volume5mSol?: number
+  buyPressure1m?: number
+  mcapChange5m?: number
+  isActive?: boolean
   isWatchlisted?: boolean
 }
 

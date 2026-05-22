@@ -47,7 +47,10 @@ export const tokenApi = {
   feed: (lane: ScannerLane = 'tradeable') =>
     api.get('/tokens/feed', { params: { lane } }).then((r) => ensureArray<PumpToken>(r.data)),
   graduating: () => api.get('/tokens/graduating').then((r) => ensureArray<PumpToken>(r.data)),
-  chart: (mint: string) => api.get<TokenChartSeries>(`/tokens/${mint}/chart`).then((r) => r.data),
+  chart: (mint: string, intervalMs = 5_000) =>
+    api
+      .get<TokenChartSeries>(`/tokens/${mint}/chart`, { params: { interval: intervalMs } })
+      .then((r) => r.data),
   stats: () => api.get<FeedStats>('/tokens/stats').then((r) => r.data),
   trades: (mint: string) => api.get(`/tokens/${mint}/trades`).then((r) => ensureArray<FeedTrade>(r.data)),
 }

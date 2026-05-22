@@ -1,6 +1,7 @@
 import {
   isGraduatingSoon,
   passesAlphaFilter,
+  passesTradeableFilter,
   type FeedQualityFields,
 } from '@phronis/trading'
 
@@ -16,6 +17,7 @@ export function rankMintForTradeSubscription(
 ): number {
   let score = 0
   if (pinnedMints.has(token.mint)) score += 10_000
+  if (passesTradeableFilter(token)) score += 8_000
   if (isGraduatingSoon(token)) score += 2_500
   if (passesAlphaFilter(token)) score += 1_200
   score += token.momentumScore ?? 0
@@ -33,7 +35,18 @@ export function pickMintsForTradeSubscription(
   pinnedMints: ReadonlySet<string>,
   limit: number,
   alreadySubscribed: ReadonlySet<string>,
+  mandatoryMints: readonly string[] = [],
 ): string[] {
+  const picked: string[] = []
+  const seen = new Set<string>()
+
+  for (const mint of mandatoryMints) {
+    if (picked.length >= limit) break
+    if (alreadySubscribed.has(mint) || seen.has(mint)) continue
+    seen.add(mint)
+    picked.push(mint)
+  }
+
   const ranked = tokens
     .map((t) => ({
       mint: t.mint,
@@ -41,10 +54,10 @@ export function pickMintsForTradeSubscription(
     }))
     .sort((a, b) => b.score - a.score)
 
-  const picked: string[] = []
   for (const { mint } of ranked) {
     if (picked.length >= limit) break
-    if (alreadySubscribed.has(mint)) continue
+    if (alreadySubscribed.has(mint) || seen.has(mint)) continue
+    seen.add(mint)
     picked.push(mint)
   }
   return picked

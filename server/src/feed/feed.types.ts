@@ -22,6 +22,16 @@ export interface FeedToken {
   priceUsd: number
   priceChange24h: number
   liquidity: number
+  /** Ms since epoch — last trade tick in memory */
+  lastTradeAt?: number
+  trades1m?: number
+  volume5mSol?: number
+  /** 0–100 buy share in last 60s */
+  buyPressure1m?: number
+  /** Market cap % change over ~5m from live ticks */
+  mcapChange5m?: number
+  /** Trade in the last 60s */
+  isActive?: boolean
 }
 
 export interface FeedTrade {
