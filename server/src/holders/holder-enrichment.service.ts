@@ -114,33 +114,19 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
       globalMarketState.patchOnChainHolders(mint, merged)
       if (exclude.length) globalMarketState.addExcludeWallets(mint, exclude)
 
-      const promoted = this.tokens.promoteIfTradeable(mint, merged.holders)
-      const target = promoted ?? this.liveFeed.get(mint)
-      if (target) {
-        this.tokens.persistFeedToken({
-          ...target,
-          holders: merged.holders,
-          holdersVerified: true,
-        })
-      }
+      const patched = this.tokens.applyHolderSnapshot(mint, {
+        holders: merged.holders,
+        verified: true,
+      })
+      void this.tokens.promoteIfTradeable(mint, merged.holders)
       void this.tokens.patchHoldersToDb(mint, merged)
 
-      if (promoted) {
-        this.events.server?.to('feed').emit('feed:patch', promoted)
-        this.events.server?.emit('quant:holders', {
-          mint,
-          holders: promoted.holders,
-          holdersVerified: true,
-          at: new Date().toISOString(),
-        })
-      } else {
-        this.events.server?.emit('quant:holders', {
-          mint,
-          holders: merged.holders,
-          holdersVerified: true,
-          at: new Date().toISOString(),
-        })
-      }
+      this.events.server?.emit('quant:holders', {
+        mint,
+        holders: patched?.holders ?? merged.holders,
+        holdersVerified: true,
+        at: new Date().toISOString(),
+      })
 
       return merged
     } finally {
@@ -162,7 +148,15 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
   private async enrichActiveFeed() {
     const feed = this.liveFeed.getAll(500)
     const ranked = [...feed]
-      .sort((a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0))
+      .sort((a, b) => {
+        const aActive = a.isActive ? 1 : 0
+        const bActive = b.isActive ? 1 : 0
+        if (bActive !== aActive) return bActive - aActive
+        const aNeed = a.holdersVerified ? 0 : 1
+        const bNeed = b.holdersVerified ? 0 : 1
+        if (bNeed !== aNeed) return bNeed - aNeed
+        return (b.volume24h ?? 0) - (a.volume24h ?? 0)
+      })
       .slice(0, Number(this.config.get('HOLDER_ENRICH_BATCH') ?? 60))
 
     let ok = 0

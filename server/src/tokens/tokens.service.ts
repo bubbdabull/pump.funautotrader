@@ -26,6 +26,7 @@ import {
   marketCapUsdFromSol,
   normalizeVirtualSol,
   resolveTokenImage,
+  resolveDisplayImage,
   isDirectImageUrl,
   isPlaceholderTokenImage,
 } from '@phronis/trading'
@@ -246,6 +247,23 @@ export class TokensService {
     )
   }
 
+  /** Push verified holder count into live feed + clients. */
+  applyHolderSnapshot(mint: string, snap: { holders: number; verified?: boolean }): FeedToken | null {
+    const live = this.liveFeed.get(mint)
+    if (!live) return null
+    const enriched = this.enrichFromMarketState(mint, {
+      ...live,
+      holders: snap.holders,
+      holdersVerified: Boolean(snap.verified ?? true),
+    })
+    const saved = this.liveFeed.patch(enriched) ?? this.liveFeed.upsert(enriched)
+    if (!saved) return null
+    this.events.server?.to('feed').emit('feed:patch', saved)
+    this.events.server?.emit('token:update', saved)
+    this.persistFeedToken(saved)
+    return saved
+  }
+
   patchHoldersToDb(mint: string, snap: { holders: number; verified?: boolean; top1Pct?: number; top5Pct?: number; entropy?: number }): void {
     if (!this.supabase.enabled) return
     void this.supabase
@@ -336,6 +354,7 @@ export class TokensService {
     this.events.server?.to('feed').emit('feed:patch', saved)
     this.events.emitChartUpdate(mint)
     this.persistFeedToken(saved)
+    if (!saved.holdersVerified) void this.holderEnrichment.enrichMint(mint)
     if (whaleSol && whaleSol >= 5) {
       void this.persistToSupabase(saved, { whaleSol })
     }
@@ -545,12 +564,9 @@ export class TokensService {
       ? resolveHolderCount(state, coin.holder_count)
       : Math.max(coin.holder_count ?? 0, 1)
     const liquidity = this.pump.solReservesToLiquidity(coin.virtual_sol_reserves ?? 0)
-    const imageField = coin.image_uri
     const image =
-      imageField && isDirectImageUrl(imageField)
-        ? imageField
-        : this.metadata.getCached(coin.mint) ??
-          resolveTokenImage(coin.mint, { image: imageField, uri: coin.metadata_uri })
+      this.metadata.getCached(coin.mint) ||
+      resolveDisplayImage(coin.mint, { image: coin.image_uri, uri: coin.metadata_uri })
 
     const scores = this.pumpportal.ruleBasedSignal({
       mint: coin.mint,
@@ -621,10 +637,8 @@ export class TokensService {
       name: state.name ?? coin?.name ?? 'Unknown',
       symbol: state.symbol ?? coin?.symbol ?? mint.slice(0, 4).toUpperCase(),
       image:
-        this.metadata.getCached(mint) ??
-        (coin?.image_uri && isDirectImageUrl(coin.image_uri)
-          ? coin.image_uri
-          : resolveTokenImage(mint, { image: coin?.image_uri, uri: coin?.metadata_uri })),
+        this.metadata.getCached(mint) ||
+        resolveDisplayImage(mint, { image: coin?.image_uri, uri: coin?.metadata_uri }),
       metadataUri: coin?.metadata_uri,
       twitter: coin?.twitter ?? this.metadata.getEnrichment(mint)?.twitter,
       telegram: coin?.telegram,
@@ -649,6 +663,15 @@ export class TokensService {
   }
 
   /** Resolve IPFS/metadata images for rows still on placeholder URLs. */
+  private pickFeedImage(mint: string, ...urls: (string | undefined)[]): string {
+    const cached = this.metadata.getCached(mint)
+    if (cached && !isPlaceholderTokenImage(cached)) return cached
+    for (const u of urls) {
+      if (u && !isPlaceholderTokenImage(u) && isDirectImageUrl(u)) return u
+    }
+    return ''
+  }
+
   private kickImageEnrich(tokens: FeedToken[]) {
     const batch = tokens
       .filter((t) => {
@@ -733,13 +756,7 @@ export class TokensService {
       ...fromState,
       name: fromState.name !== 'Unknown' ? fromState.name : token.name,
       symbol: fromState.symbol || token.symbol,
-      image:
-        this.metadata.getCached(mint) ??
-        (fromState.image && isDirectImageUrl(fromState.image)
-          ? fromState.image
-          : token.image && isDirectImageUrl(token.image)
-            ? token.image
-            : fromState.image || token.image),
+      image: this.pickFeedImage(mint, token.image, fromState.image),
       metadataUri: token.metadataUri ?? fromState.metadataUri ?? this.metadata.getEnrichment(mint)?.metadataUri,
       twitter: token.twitter ?? fromState.twitter,
       telegram: token.telegram ?? fromState.telegram,

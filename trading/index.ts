@@ -22,6 +22,7 @@ export {
   bondingCurvePercentFromSol,
   marketCapUsdFromSol,
   resolveTokenImage,
+  resolveDisplayImage,
   resolveTokenImageCandidates,
   normalizeIpfsUrl,
   isLikelyMetadataUri,

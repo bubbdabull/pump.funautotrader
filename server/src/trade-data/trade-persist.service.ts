@@ -51,7 +51,7 @@ export class TradePersistService implements OnModuleInit {
 
     const inFeed = Boolean(feedToken)
     const hot = this.hotMints.getHotMints(80).includes(mint)
-    if (!inFeed && !hot && state.trades.length < 2) return
+    if (!inFeed && !hot) return
 
     feedToken = feedToken ?? this.liveFeed.get(mint)
     if (feedToken) {

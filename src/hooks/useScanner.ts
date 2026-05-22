@@ -30,7 +30,7 @@ function isPlaceholderImage(url?: string): boolean {
 function preferImage(next?: string, prev?: string): string {
   if (next && !isPlaceholderImage(next)) return next
   if (prev && !isPlaceholderImage(prev)) return prev
-  return next || prev || ''
+  return ''
 }
 
 function mergeScannerToken(prev: PumpToken, token: PumpToken): PumpToken {

@@ -3,7 +3,7 @@ import axios from 'axios'
 import {
   isLikelyMetadataUri,
   normalizeIpfsUrl,
-  resolveTokenImage,
+  resolveDisplayImage,
   resolveTokenImageCandidates,
   parseTokenMetadataJson,
   isDirectImageUrl,
@@ -54,8 +54,8 @@ export class TokenMetadataService {
       return img
     }
 
-    const img = resolveTokenImage(mint, { uri: metaUri, image: direct })
-    this.imageCache.set(mint, img)
+    const img = resolveDisplayImage(mint, { uri: metaUri, image: direct })
+    if (img) this.imageCache.set(mint, img)
     return img
   }
 
@@ -115,9 +115,11 @@ export class TokenMetadataService {
       if (nested?.image) parsed = { ...parsed, ...nested }
     }
 
-    const image = parsed.image ?? resolveTokenImage(mint, { uri: metadataUri, image: fields?.image })
+    const image =
+      (parsed.image && !isPlaceholderTokenImage(parsed.image) ? parsed.image : '') ||
+      resolveDisplayImage(mint, { uri: metadataUri, image: fields?.image })
     const result: TokenMediaEnrichment = {
-      image,
+      image: image || '',
       metadataUri: metadataUri ?? undefined,
       twitter: parsed.twitter,
       telegram: parsed.telegram,

@@ -161,7 +161,12 @@ export function TradingChart({ mint }: TradingChartProps) {
   useEffect(() => {
     if (!candleRef.current || !volRef.current || !candles.length) return
 
-    const ohlc = transformOhlc(candles, metric)
+    let ohlc = transformOhlc(candles, metric)
+    if (ohlc.length === 1) {
+      const c = ohlc[0]
+      const t0 = (c.time as number) - Math.max(1, Math.floor(intervalMs / 1000))
+      ohlc = [{ ...c, time: t0 as CandlestickData['time'] }, c]
+    }
     const vol: HistogramData[] = candles.map((c) => ({
       time: Math.floor(c.t / 1000) as HistogramData['time'],
       value: c.volume,
@@ -180,7 +185,7 @@ export function TradingChart({ mint }: TradingChartProps) {
       chartRef.current?.timeScale().fitContent()
     }
     lastLenRef.current = candles.length
-  }, [candles, metric])
+  }, [candles, metric, intervalMs])
 
   const live = (data?.tradeCount ?? 0) > 0
   const streamOn = data?.tradeStreamSubscribed

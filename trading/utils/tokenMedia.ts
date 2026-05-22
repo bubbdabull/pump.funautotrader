@@ -31,20 +31,21 @@ export function resolveTokenImageCandidates(
     out.push(u)
   }
 
-  push(fields?.image)
-  push(fields?.imageUri)
-
   const uri = fields?.uri
   if (uri) {
     push(normalizeIpfsUrl(uri))
-    // metadata JSON — resolved async on server; keep URI for fetch
   }
 
-  push(`https://dd.dexscreener.com/ds-data/tokens/solana/${mint}.png`)
-  push(`https://imagedelivery.net/WL1JOIJiM_NAChp6rtB6Q/coin-image/${mint}/600x600`)
-  push(`https://pump.fun/coin/${mint}.png`)
+  if (fields?.image && !isPlaceholderTokenImage(fields.image)) {
+    push(fields.image)
+  }
+  if (fields?.imageUri && !isPlaceholderTokenImage(fields.imageUri)) {
+    push(fields.imageUri)
+  }
+
   push(`https://pump.fun/coin/${mint}/image`)
   push(`https://assets.pump.fun/coins/${mint}.png`)
+  push(`https://pump.fun/coin/${mint}.png`)
 
   if (uri?.startsWith('ipfs://')) {
     const cid = uri.slice(7).split('/')[0]
@@ -52,7 +53,22 @@ export function resolveTokenImageCandidates(
     push(`https://gateway.pinata.cloud/ipfs/${cid}`)
   }
 
+  // Last-resort CDNs (often 404 on fresh mints — do not use as primary `image` field)
+  push(`https://dd.dexscreener.com/ds-data/tokens/solana/${mint}.png`)
+  push(`https://imagedelivery.net/WL1JOIJiM_NAChp6rtB6Q/coin-image/${mint}/600x600`)
+
   return out
+}
+
+/** Best URL to store on feed rows — never a known placeholder CDN. */
+export function resolveDisplayImage(
+  mint: string,
+  fields?: { uri?: string; image?: string; imageUri?: string },
+): string {
+  for (const u of resolveTokenImageCandidates(mint, fields)) {
+    if (!isPlaceholderTokenImage(u) && !isLikelyMetadataUri(u)) return u
+  }
+  return ''
 }
 
 /** Generic CDN fallbacks — not a real token image until metadata resolves. */
@@ -70,7 +86,7 @@ export function resolveTokenImage(
   mint: string,
   fields?: { uri?: string; image?: string; imageUri?: string },
 ): string {
-  return resolveTokenImageCandidates(mint, fields)[0]
+  return resolveDisplayImage(mint, fields)
 }
 
 export function normalizeIpfsUrl(uri: string): string {

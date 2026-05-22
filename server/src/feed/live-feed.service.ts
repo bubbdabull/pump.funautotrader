@@ -64,7 +64,7 @@ export class LiveFeedService {
   private pickImage(next?: string, prev?: string): string {
     if (next && !isPlaceholderTokenImage(next)) return next
     if (prev && !isPlaceholderTokenImage(prev)) return prev
-    return next || prev || ''
+    return ''
   }
 
   upsert(token: FeedToken): FeedToken | null {
