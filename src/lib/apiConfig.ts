@@ -9,9 +9,21 @@ function normalizeEnvUrl(raw: string | undefined, fallback: string): string {
   return v.replace(/^['"]|['"]$/g, '')
 }
 
-/** Baked in at Vercel build time — redeploy after changing env vars. */
-export const API_BASE = normalizeEnvUrl(import.meta.env.VITE_API_URL, '/api')
-export const WS_URL = normalizeEnvUrl(import.meta.env.VITE_WS_URL, '')
+/** On Vercel production, always use same-origin /api + socket proxy (vercel.json → Fly). */
+function isVercelProductionHost(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    (/\.vercel\.app$/i.test(window.location.hostname) ||
+      /\.vercel\.app$/i.test(window.location.host))
+  )
+}
+
+const envApi = normalizeEnvUrl(import.meta.env.VITE_API_URL, '/api')
+const envWs = normalizeEnvUrl(import.meta.env.VITE_WS_URL, '')
+
+/** Runtime: Vercel host uses proxy; local dev uses env or /api fallback. */
+export const API_BASE = isVercelProductionHost() ? '/api' : envApi
+export const WS_URL = isVercelProductionHost() ? '' : envWs
 
 export function backendLabel(): string {
   if (!API_BASE || API_BASE === '/api') {

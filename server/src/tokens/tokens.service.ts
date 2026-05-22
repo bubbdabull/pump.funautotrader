@@ -11,6 +11,7 @@ import {
   momentumScoreFromMetrics,
   evaluateEntry,
   resolveHolderCount,
+  type OnChainHolderSnapshot,
   filterForLane,
   passesTradeableFilter,
   bondingCurvePercentFromSol,
@@ -251,16 +252,19 @@ export class TokensService {
   applyHolderSnapshot(mint: string, snap: { holders: number; verified?: boolean }): FeedToken | null {
     const live = this.liveFeed.get(mint)
     if (!live) return null
+    const chain = this.holderEnrichment.getCached(mint)
+    const onChainHolders: OnChainHolderSnapshot | undefined =
+      chain && (snap.verified || chain.verified) ? chain : undefined
     const state = this.trading.getState(mint)
     const streamHolders = state
       ? resolveHolderCount({
           walletBalances: state.walletBalances,
           trades: state.trades,
-          onChainHolders: snap.verified ? snap : undefined,
+          onChainHolders,
         })
       : snap.holders
     const holders = Math.max(snap.holders, streamHolders, live.holders ?? 0)
-    const holdersVerified = Boolean(snap.verified)
+    const holdersVerified = Boolean(snap.verified && holders >= 2)
     const enriched = this.enrichFromMarketState(mint, {
       ...live,
       holders,
