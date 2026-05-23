@@ -1,30 +1,19 @@
-import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { pumpportalApi } from '@/services/api'
-import { wsService } from '@/services/websocket'
 import { API_BASE, apiConfigMisconfigured, backendLabel } from '@/lib/apiConfig'
 import { useHybridPumpPortalWs } from '@/lib/pumpportalConfig'
+import { useWsConnection } from '@/hooks/useWsConnection'
 
+/** API health for status bar — does not open a second Socket.IO connection. */
 export function useBackendStatus() {
+  const socketConnected = useWsConnection()
+
   const statusQuery = useQuery({
     queryKey: ['pumpportal-status'],
     queryFn: () => pumpportalApi.status(),
     refetchInterval: 8000,
     retry: 1,
   })
-
-  const [socketConnected, setSocketConnected] = useState(false)
-
-  useEffect(() => {
-    wsService.connect()
-    const unsubOn = wsService.onConnect(() => setSocketConnected(true))
-    const unsubOff = wsService.onDisconnect(() => setSocketConnected(false))
-    setSocketConnected(wsService.connected)
-    return () => {
-      unsubOn()
-      unsubOff()
-    }
-  }, [])
 
   const apiReachable = statusQuery.isSuccess
   const pumpportalConnected = Boolean(statusQuery.data?.connected)

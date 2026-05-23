@@ -15,6 +15,7 @@ import { patchToken, applySignalToToken } from '@/lib/patchToken'
 import { applyTradeTickToToken, tradeTickToFeedTrade } from '@/lib/applyTradeTick'
 import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 import { registryDebug } from '@/lib/registryDebug'
+import { useRealtimeStore } from '@/stores/realtimeStore'
 
 const PATCH_BATCH_MS = 100
 const CHART_BATCH_MS = 48
@@ -171,6 +172,10 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
     const sigs = s.tradeSigs[tick.mint] ?? new Set<string>()
     if (sigs.has(tick.signature)) {
       registryDebug.duplicate('trade', tick.signature)
+      const d = useRealtimeStore.getState().diagnostics
+      useRealtimeStore.getState().patchDiagnostics({
+        duplicateTrades: d.duplicateTrades + 1,
+      })
       return
     }
     const nextSigs = new Set(sigs)

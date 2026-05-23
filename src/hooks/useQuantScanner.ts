@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { wsService } from '@/services/websocket'
 import { useQuantStore } from '@/stores/quantStore'
 import { useRegistryRankings } from '@/hooks/useRegistry'
+import { useTokenSubscription } from '@/hooks/useTokenSubscription'
+import { realtimeGateway } from '@/services/realtime-gateway'
 import type { QuantRanking, QuantUpdate } from '@/lib/quantTypes'
 
 export function useQuantRankings() {
@@ -16,13 +17,12 @@ export function useQuantRankings() {
 
 /** Live quant updates over Socket.IO (signal:update → quant store). */
 export function useQuantLive(mint?: string) {
+  useTokenSubscription(mint)
   const live = useQuantStore((s) => (mint ? s.byMint[mint] : undefined))
   const [warnings, setWarnings] = useState<string[]>([])
 
   useEffect(() => {
-    wsService.connect()
-    if (mint) wsService.subscribeToken(mint)
-    const unsub = wsService.onSignalUpdate((payload) => {
+    const unsub = realtimeGateway.onSignalUpdate((payload) => {
       if (!mint || payload.mint === mint) {
         if (payload.rug.blocked) setWarnings(payload.riskPenalties)
       }
@@ -44,13 +44,13 @@ export function useMomentumRankingsState() {
   const wsRankings = useRegistryRankings(50)
   const [rankings, setRankings] = useState<QuantRanking[]>([])
   const patch = useQuantStore((s) => s.patch)
+
   useEffect(() => {
     if (wsRankings.length > 0) setRankings(wsRankings)
   }, [wsRankings])
 
   useEffect(() => {
-    wsService.connect()
-    const unsub = wsService.onSignalUpdate((s) => {
+    const unsub = realtimeGateway.onSignalUpdate((s) => {
       const update: QuantUpdate = {
         mint: s.mint,
         scores: {

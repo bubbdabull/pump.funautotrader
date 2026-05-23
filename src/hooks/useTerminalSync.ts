@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
-import { wsService } from '@/services/websocket'
+import { realtimeGateway } from '@/services/realtime-gateway'
 import { tokenApi } from '@/services/api'
 import { isChartUpdatePayload } from '@/lib/chartUpdate'
 import type { TokenChartSeries } from '@/lib/chartTypes'
 import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useRealtimeStore } from '@/stores/realtimeStore'
 import { useQuantStore } from '@/stores/quantStore'
 import type { SignalUpdatePayload } from '@/lib/terminalTypes'
 
@@ -51,7 +52,10 @@ function signalToQuantUpdate(signal: SignalUpdatePayload) {
   }
 }
 
-/** Single WS → global registry bridge (mount once at app root). */
+/**
+ * Mount once at app root: Socket.IO → token registry store.
+ * No polling; optional one-time REST bootstrap if socket snapshot is empty.
+ */
 export function useTerminalSync() {
   const hydrateFeed = useTokenRegistryStore((s) => s.hydrateFeed)
   const schedulePatch = useTokenRegistryStore((s) => s.schedulePatch)
@@ -68,34 +72,44 @@ export function useTerminalSync() {
 
   useEffect(() => {
     const unsubs = [
-      wsService.onFeedSnapshot((tokens) => hydrateFeed(tokens)),
-      wsService.onRegistryPatch((t) => schedulePatch(t)),
-      wsService.onTradeTick((tick) => applyTradeTick(tick)),
-      wsService.onChartUpdate((payload) => {
+      realtimeGateway.onReconnectSnapshot((tokens) => hydrateFeed(tokens)),
+      realtimeGateway.onRegistryPatch((t) => schedulePatch(t)),
+      realtimeGateway.onTradeTick((tick) => applyTradeTick(tick)),
+      realtimeGateway.onChartUpdate((payload) => {
         if (isChartUpdatePayload(payload)) {
           applyChartDelta(payload)
         } else {
           scheduleChart(payload as TokenChartSeries)
         }
       }),
-      wsService.onSignalUpdate((s) => {
+      realtimeGateway.onSignalUpdate((s) => {
         applySignal(s)
         quantPatch(signalToQuantUpdate(s))
       }),
-      wsService.onHolderUpdate((h) => applyHolder(h)),
-      wsService.onMigrationUpdate((m) => applyMigration(m)),
-      wsService.onTokenStateChange((ev) => applyStateChange(ev)),
-      wsService.onWalletUpdate((p) => setWalletGraph(p.mint, p.graph)),
-      wsService.onConnect(() => setWsConnected(true)),
-      wsService.onDisconnect(() => setWsConnected(false)),
+      realtimeGateway.onHolderUpdate((h) => applyHolder(h)),
+      realtimeGateway.onMigrationUpdate((m) => applyMigration(m)),
+      realtimeGateway.onTokenStateChange((ev) => applyStateChange(ev)),
+      realtimeGateway.onWalletUpdate((p) => setWalletGraph(p.mint, p.graph)),
+      realtimeGateway.onBubblemapUpdate((p) => setWalletGraph(p.mint, p.graph)),
+      realtimeGateway.onConnect(() => {
+        setWsConnected(true)
+        useRealtimeStore.getState().setConnected(true)
+      }),
+      realtimeGateway.onDisconnect(() => {
+        setWsConnected(false)
+        useRealtimeStore.getState().setConnected(false)
+        useRealtimeStore.getState().setReconnecting(true)
+      }),
     ]
 
-    wsService.connect()
-    setWsConnected(wsService.connected)
+    realtimeGateway.start()
+    setWsConnected(realtimeGateway.connected)
+    useRealtimeStore.getState().setConnected(realtimeGateway.connected)
 
     return () => {
       for (const u of unsubs) u()
       setWsConnected(false)
+      useRealtimeStore.getState().setConnected(false)
     }
   }, [
     hydrateFeed,
@@ -112,25 +126,24 @@ export function useTerminalSync() {
     quantPatch,
   ])
 
-  /** REST fallback when WS snapshot is missed or API was cold on subscribe. */
+  /** Cold start only — not a live sync loop. */
   useEffect(() => {
     let cancelled = false
     const attemptBootstrap = async () => {
       if (cancelled) return
       if (Object.keys(useTokenRegistryStore.getState().byMint).length > 0) return
+      if (realtimeGateway.connected) return
       try {
         const tokens = await tokenApi.feed('all')
         if (!cancelled && tokens.length > 0) hydrateFeed(tokens)
       } catch (err) {
-        console.warn('[registry] REST bootstrap failed:', (err as Error).message)
+        console.warn('[registry] cold bootstrap failed:', (err as Error).message)
       }
     }
-    const t1 = window.setTimeout(() => void attemptBootstrap(), 600)
-    const t2 = window.setTimeout(() => void attemptBootstrap(), 4_000)
+    const t = window.setTimeout(() => void attemptBootstrap(), 8_000)
     return () => {
       cancelled = true
-      clearTimeout(t1)
-      clearTimeout(t2)
+      clearTimeout(t)
     }
   }, [hydrateFeed])
 }

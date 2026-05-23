@@ -1,3 +1,5 @@
+import { useRealtimeStore } from '@/stores/realtimeStore'
+
 const ENABLED =
   import.meta.env.DEV && import.meta.env.VITE_REGISTRY_DEBUG !== 'false'
 
@@ -7,6 +9,10 @@ export const registryDebug = {
     console.debug(`[registry:ws] ${name}`, detail ?? '')
   },
   stale(mint: string, incoming: number, last: number) {
+    const d = useRealtimeStore.getState().diagnostics
+    useRealtimeStore.getState().patchDiagnostics({
+      stalePatchesRejected: d.stalePatchesRejected + 1,
+    })
     if (!ENABLED) return
     console.debug(`[registry:stale] ${mint.slice(0, 8)} incoming=${incoming} last=${last}`)
   },

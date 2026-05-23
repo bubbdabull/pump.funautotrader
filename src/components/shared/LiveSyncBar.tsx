@@ -2,12 +2,14 @@ import { Wifi, WifiOff, RefreshCw } from 'lucide-react'
 import { useLiveTick, secondsSince } from '@/hooks/useLiveTick'
 import { cn } from '@/lib/utils'
 
-export type LiveStreamMode = 'ws' | 'rest' | 'connecting'
+export type LiveStreamMode = 'ws' | 'reconnecting' | 'connecting'
 
 interface LiveSyncBarProps {
   /** Socket.IO connected to Fly API */
   wsConnected?: boolean
-  /** REST fallback polling when WS is down */
+  /** Socket reconnect in progress */
+  reconnecting?: boolean
+  /** @deprecated REST polling removed — use reconnecting */
   restSync?: boolean
   dataUpdatedAt?: number
   isFetching?: boolean
@@ -17,14 +19,15 @@ interface LiveSyncBarProps {
   className?: string
 }
 
-function resolveStreamMode(wsConnected: boolean, restSync: boolean): LiveStreamMode {
+function resolveStreamMode(wsConnected: boolean, reconnecting: boolean): LiveStreamMode {
   if (wsConnected) return 'ws'
-  if (restSync) return 'rest'
+  if (reconnecting) return 'reconnecting'
   return 'connecting'
 }
 
 export function LiveSyncBar({
   wsConnected = false,
+  reconnecting = false,
   restSync = false,
   dataUpdatedAt = 0,
   isFetching = false,
@@ -34,7 +37,7 @@ export function LiveSyncBar({
 }: LiveSyncBarProps) {
   useLiveTick()
   const ago = dataUpdatedAt > 0 ? secondsSince(dataUpdatedAt) : null
-  const mode = resolveStreamMode(wsConnected, restSync)
+  const mode = resolveStreamMode(wsConnected, reconnecting || restSync)
   const hasData = (totalCount ?? 0) > 0
 
   return (
@@ -48,14 +51,14 @@ export function LiveSyncBar({
         className={cn(
           'inline-flex items-center gap-1.5 font-medium',
           mode === 'ws' && 'text-emerald-400',
-          mode === 'rest' && 'text-cyan-400',
+          mode === 'reconnecting' && 'text-amber-400',
           mode === 'connecting' && 'text-amber-400',
         )}
         title={
           mode === 'ws'
             ? 'Socket.IO stream from Fly API'
-            : mode === 'rest'
-              ? 'Fly API reachable; polling feed until Socket.IO connects'
+            : mode === 'reconnecting'
+              ? 'Reconnecting — patches buffered until stream resumes'
               : 'Waiting for Fly API stream (check VITE_WS_URL on Vercel)'
         }
       >
@@ -67,15 +70,15 @@ export function LiveSyncBar({
             </span>
             LIVE
           </>
-        ) : mode === 'rest' ? (
+        ) : mode === 'reconnecting' ? (
           <>
-            <Wifi className="h-3 w-3" />
-            API sync
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            Reconnecting
           </>
         ) : (
           <>
             <WifiOff className="h-3 w-3" />
-            {hasData ? 'Stream connecting…' : 'Reconnecting'}
+            {hasData ? 'Stream connecting…' : 'Connecting'}
           </>
         )}
       </span>

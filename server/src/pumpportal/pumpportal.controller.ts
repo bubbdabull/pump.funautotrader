@@ -4,6 +4,7 @@ import { PumpPortalService } from './pumpportal.service'
 import { PumpPortalDataGateway } from './pumpportal-data.gateway'
 import { PumpFeedSyncService } from '../tokens/pump-feed-sync.service'
 import { IngestionHealthService } from '../ingestion/ingestion-health.service'
+import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
 import type { PumpPortalTradeRequest } from './pumpportal.types'
 
 @Controller('pumpportal')
@@ -13,6 +14,7 @@ export class PumpPortalController {
     private dataGateway: PumpPortalDataGateway,
     private pumpSync: PumpFeedSyncService,
     private ingestionHealth: IngestionHealthService,
+    private ingestionOrchestrator: IngestionOrchestratorService,
   ) {}
 
   @Get('status')
@@ -25,7 +27,10 @@ export class PumpPortalController {
 
   @Get('ingestion-health')
   ingestionHealthEndpoint() {
-    return this.ingestionHealth.getDiagnostics(this.dataGateway.getHealth())
+    return this.ingestionHealth.getDiagnostics(
+      this.dataGateway.getHealth(),
+      this.ingestionOrchestrator.getStats(),
+    )
   }
 
   @Post('trade-local')

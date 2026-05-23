@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { pumpPortalWs } from '@/services/pumpportal-ws'
-import { wsService } from '@/services/websocket'
+import { realtimeGateway } from '@/services/realtime-gateway'
 import { useAutoTraderStore } from '@/stores/autoTraderStore'
 import { usePumpPortalTrade } from './usePumpPortalTrade'
 import { buildSizedTransaction } from '@/services/execution'
@@ -9,8 +8,10 @@ import type { PumpToken, AutoTradeSignal } from '@/types'
 import { evaluateProbabilisticEntry, pumpTokenFromMint } from '@/lib/probabilisticTrading'
 import { hydrateMarketStateFromApi } from '@/lib/hydrateMarketState'
 import { autoTraderApi } from '@/services/api'
-import { useDirectPumpPortalWs } from '@/lib/pumpportalConfig'
 import { globalMarketState, evScoreToSignalScore } from '@trading'
+import type { SignalUpdatePayload } from '@/lib/terminalTypes'
+
+const SIGNAL_ENTRY_CONFIDENCE = 0.72
 
 export function useAutoTrader() {
   const { publicKey } = useWallet()
@@ -199,40 +200,43 @@ export function useAutoTrader() {
     )
   }
 
-  const directPumpPortal = useDirectPumpPortalWs()
+  const signalToAutoTrade = (s: SignalUpdatePayload, token?: PumpToken): AutoTradeSignal => ({
+    mint: s.mint,
+    symbol: token?.symbol,
+    name: token?.name,
+    reason: s.triggerReasons.join(', ') || `confidence=${s.tradeConfidenceScore.toFixed(2)}`,
+    bondingCurvePercent: token?.bondingCurvePercent ?? 0,
+    marketCap: token?.marketCap ?? 0,
+    signalScore: Math.round(s.tradeConfidenceScore * 100),
+    evScore: s.tradeConfidenceScore,
+    timestamp: s.at,
+  })
 
   useEffect(() => {
     if (!rules.enabled) return
 
-    const unsubDirect = directPumpPortal ? pumpPortalWs.onNewToken(onToken) : () => {}
-    const unsubServer = wsService.onRegistryPatch((token) => {
+    const unsubRegistry = realtimeGateway.onRegistryPatch((token) => {
       if (!rules.snipeNewTokens) return
       onToken(token)
-    })
-    const unsubSignal = wsService.onAutoTradeSignal((s) => {
-      if (!rules.enabled) return
-      void (async () => {
-        await hydrateMarketStateFromApi(s.mint)
-        const token = pumpTokenFromMint(s.mint, {
-          symbol: s.symbol,
-          name: s.name,
-          marketCapSol: s.marketCap / 200,
-        })
-        await tryTrade(token, s.reason, s.positionSizeSol, s)
-      })()
+      if (token.isActive) void hydrateMarketStateFromApi(token.mint)
     })
 
-    const unsubFeedPatch = wsService.onRegistryPatch((token) => {
-      if (!rules.enabled || !token.isActive) return
-      void hydrateMarketStateFromApi(token.mint)
+    const unsubSignal = realtimeGateway.onSignalUpdate((s) => {
+      if (!rules.enabled || s.rug.blocked) return
+      if (s.tradeConfidenceScore < SIGNAL_ENTRY_CONFIDENCE) return
+      void (async () => {
+        await hydrateMarketStateFromApi(s.mint)
+        const token = pumpTokenFromMint(s.mint, {})
+        const serverSignal = signalToAutoTrade(s, token)
+        if (!passesLegacy(token, serverSignal)) return
+        await tryTrade(token, serverSignal.reason, undefined, serverSignal)
+      })()
     })
 
     const unsubExit = globalMarketState.onExit((mint, exit) => {
       if (!positions[mint] || !exit.shouldExit) return
       trySell(mint, exit.reasons.join(', '))
     })
-
-    wsService.connect()
 
     void autoTraderApi
       .getRules()
@@ -242,13 +246,11 @@ export function useAutoTrader() {
       .catch(() => undefined)
 
     return () => {
-      unsubDirect()
-      unsubServer()
+      unsubRegistry()
       unsubSignal()
-      unsubFeedPatch()
       unsubExit()
     }
-  }, [rules.enabled, rules.snipeNewTokens, publicKey, positions, directPumpPortal])
+  }, [rules.enabled, rules.snipeNewTokens, publicKey, positions])
 
   return { loading, rules }
 }

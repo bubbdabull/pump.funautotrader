@@ -17,8 +17,8 @@ import { HeliusModule } from '../helius/helius.module'
   providers: [
     DedupService,
     EventBusService,
-    IngestionOrchestratorService,
     IngestionHealthService,
+    IngestionOrchestratorService,
     PumpStreamSource,
     HeliusIngestSource,
   ],

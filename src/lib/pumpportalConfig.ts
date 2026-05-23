@@ -1,6 +1,7 @@
 /**
  * PumpPortal data API — https://pumpportal.fun/data-api/real-time
- * Use ONE websocket per process. The server relays to the UI via Socket.IO by default.
+ * Production UI uses ONE Socket.IO connection to Fly (`realtimeGateway`).
+ * Do not open a browser PumpPortal WS unless VITE_PUMPPORTAL_DIRECT/HYBRID (removed).
  */
 export const PUMPPORTAL_WS_BASE =
   import.meta.env.VITE_PUMPPORTAL_WS || 'wss://pumpportal.fun/api/data'

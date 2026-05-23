@@ -12,7 +12,7 @@ import { ensureArray } from '@/lib/ensureArray'
 import type { PumpToken } from '@/types'
 import type { ScannerLane } from '@/lib/feedQuality'
 import { cn } from '@/lib/utils'
-import { useWsConnection } from '@/hooks/useWsConnection'
+import { useWsConnection, useWsReconnecting } from '@/hooks/useWsConnection'
 import { API_BASE, backendLabel } from '@/lib/apiConfig'
 import { isVercelSecurityCheckpoint, VERCEL_CHECKPOINT_HINT } from '@/lib/vercelCheckpoint'
 
@@ -53,12 +53,12 @@ export function LiveFeedPage() {
     displayMode,
     tradeableCount,
     wsConnected,
-    restSync,
   } = useScannerFeed(lane)
   const holdersVerifiedCount = ensureArray<PumpToken>(data).filter((t) => t.holdersVerified).length
   const backend = useBackendStatus()
   const vercelBlocked = isVercelSecurityCheckpoint(backend.error)
   const wsLive = useWsConnection()
+  const wsReconnecting = useWsReconnecting()
   const tokens = ensureArray<PumpToken>(data)
 
   const filtered = sortTokens(
@@ -119,7 +119,7 @@ export function LiveFeedPage() {
       <LiveSyncBar
         className="mb-4"
         wsConnected={wsConnected || wsLive || backend.socketConnected}
-        restSync={restSync && !(wsConnected || wsLive || backend.socketConnected)}
+        reconnecting={wsReconnecting || isFetching}
         dataUpdatedAt={dataUpdatedAt}
         isFetching={isFetching}
         hotCount={hotCount}

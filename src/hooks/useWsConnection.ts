@@ -1,22 +1,13 @@
-import { useEffect, useState } from 'react'
-import { wsService } from '@/services/websocket'
 import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useRealtimeStore } from '@/stores/realtimeStore'
 
-/** Tracks Socket.IO connection — registry patches only apply when live. */
+/** Socket.IO live — driven by useTerminalSync + realtime gateway. */
 export function useWsConnection(): boolean {
   const storeConnected = useTokenRegistryStore((s) => s.wsConnected)
-  const [connected, setConnected] = useState(() => wsService.connected || storeConnected)
+  const rtConnected = useRealtimeStore((s) => s.connected)
+  return storeConnected || rtConnected
+}
 
-  useEffect(() => {
-    wsService.connect()
-    const unsubOn = wsService.onConnect(() => setConnected(true))
-    const unsubOff = wsService.onDisconnect(() => setConnected(false))
-    setConnected(wsService.connected)
-    return () => {
-      unsubOn()
-      unsubOff()
-    }
-  }, [])
-
-  return connected || storeConnected
+export function useWsReconnecting(): boolean {
+  return useRealtimeStore((s) => s.reconnecting)
 }

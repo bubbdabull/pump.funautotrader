@@ -14,6 +14,7 @@ import { MarketOverviewChart } from '@/components/charts/MarketOverviewChart'
 import { DataHealthBanner } from '@/components/shared/DataHealthBanner'
 import { LiveSyncBar } from '@/components/shared/LiveSyncBar'
 import { useBackendStatus } from '@/hooks/useBackendStatus'
+import { useWsReconnecting } from '@/hooks/useWsConnection'
 import { Link } from 'react-router-dom'
 import type { PumpToken } from '@/types'
 import { tokenVolumeSol } from '@/lib/utils'
@@ -33,7 +34,6 @@ export function DashboardPage() {
     displayMode,
     tradeableCount,
     wsConnected,
-    restSync,
   } = useScannerFeed('tradeable')
   const { data: graduatingData } = useScannerFeed('graduating')
   const tokens = ensureArray<PumpToken>(feedData)
@@ -55,6 +55,7 @@ export function DashboardPage() {
   const newHour = tokens.filter((t) => new Date(t.launchedAt).getTime() > hourAgo).length
   const liveActive = tokens.filter((t) => t.isActive).length
   const backend = useBackendStatus()
+  const wsReconnecting = useWsReconnecting()
 
   return (
     <PageTransition>
@@ -78,7 +79,7 @@ export function DashboardPage() {
       <LiveSyncBar
         className="mb-3"
         wsConnected={wsConnected || backend.socketConnected}
-        restSync={restSync && !(wsConnected || backend.socketConnected)}
+        reconnecting={wsReconnecting || isFetching}
         dataUpdatedAt={dataUpdatedAt}
         isFetching={isFetching}
         hotCount={liveActive}
