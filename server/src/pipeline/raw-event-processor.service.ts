@@ -1,5 +1,6 @@
-import { Injectable, Inject, Logger, OnModuleInit, forwardRef } from '@nestjs/common'
+import { Injectable, Inject, Logger, OnModuleInit, Optional, forwardRef } from '@nestjs/common'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
+import { IngestionHealthService } from '../ingestion/ingestion-health.service'
 import type { IngestionEvent } from '../ingestion/ingestion.types'
 import { TokenRegistryService } from './token-registry.service'
 import { TokensService } from '../tokens/tokens.service'
@@ -10,6 +11,8 @@ import { AnalyticsBatcherService } from '../intelligence/analytics-batcher.servi
 import { TerminalEmitterService } from '../intelligence/terminal-emitter.service'
 import { LiveFeedService } from '../feed/live-feed.service'
 import { RedisCacheHooksService } from '../redis/redis-cache-hooks.service'
+import { ChartAggregationService } from '../charts/chart-aggregation.service'
+import { EventsGateway } from '../events/events.gateway'
 import type { DynamicsAnalytics } from '@phronis/trading'
 
 /**
@@ -34,6 +37,10 @@ export class RawEventProcessorService implements OnModuleInit {
     private hotMints: HotMintsService,
     private terminal: TerminalEmitterService,
     private redisHooks: RedisCacheHooksService,
+    private chartAgg: ChartAggregationService,
+    @Inject(forwardRef(() => EventsGateway))
+    private events: EventsGateway,
+    @Optional() private ingestionHealth?: IngestionHealthService,
   ) {}
 
   onModuleInit() {
@@ -50,6 +57,17 @@ export class RawEventProcessorService implements OnModuleInit {
   }
 
   private async process(mint: string, event: IngestionEvent) {
+    try {
+      await this.processSafe(mint, event)
+    } catch (err) {
+      this.ingestionHealth?.recordProcessError(err)
+      this.logger.debug(
+        `Raw processor error (${event.type}/${mint.slice(0, 8)}): ${(err as Error).message}`,
+      )
+    }
+  }
+
+  private async processSafe(mint: string, event: IngestionEvent) {
     this.processed++
     if (
       event.type !== 'token.trade' &&
@@ -83,10 +101,36 @@ export class RawEventProcessorService implements OnModuleInit {
 
     const normalized = this.registry.normalize(saved, 'stream', intel.analytics)
     this.batcher.scheduleRegistryPatch(normalized)
-    this.tokens.publishStreamEvents(mint, saved, { skipChartEmit: true })
-    this.batcher.scheduleChart(mint)
+    this.tokens.publishStreamEvents(mint, saved)
 
     if (event.type === 'token.trade') {
+      const progressionPoint =
+        intel.analytics && saved
+          ? {
+              t: intel.analytics.updatedAt,
+              mcap: saved.marketCap,
+              curve: saved.bondingCurvePercent,
+              volume: intel.analytics.windows.w60.volumeSol,
+              holders: Math.max(saved.holders, intel.analytics.holderEstimate),
+              score: Math.round(intel.analytics.tradeConfidenceScore * 100),
+              momentum: Math.round(intel.analytics.decayedMomentumScore * 100),
+              migrationProbability: Math.round(intel.analytics.migration.probability * 100),
+              burstIgnition: Math.round(intel.analytics.burst.ignitionScore * 100),
+              buyPressure: Math.round(intel.analytics.buyPressure1m * 100),
+              volumeVelocity: intel.analytics.velocity.volumeVelocity,
+              walletVelocity: intel.analytics.velocity.walletVelocity,
+            }
+          : undefined
+
+      const chartPayload = this.chartAgg.onTrade(mint, {
+        progressionPoint,
+        buyPressure: progressionPoint?.buyPressure,
+        volumeVelocity: progressionPoint?.volumeVelocity,
+        priceVelocity: intel.analytics?.velocity.marketCapVelocity,
+      })
+      if (chartPayload && this.chartAgg.markEmittedIfDue(mint)) {
+        this.events.emitChartDelta(chartPayload)
+      }
       this.hotMints.recordTrade(mint, normalized.lastTradeAt)
       this.autoTrader.onTradeTick(mint)
     }

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { PumpToken } from '@/types'
-import type { TokenChartSeries } from '@/lib/chartTypes'
+import type { ChartUpdatePayload, TokenChartSeries } from '@/lib/chartTypes'
+import { mergeChartUpdate, patchChartFromTradeTick } from '@/lib/chartUpdate'
 import type { FeedTrade } from '@/services/api'
 import type {
   HolderUpdatePayload,
@@ -16,8 +17,13 @@ import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 import { registryDebug } from '@/lib/registryDebug'
 
 const PATCH_BATCH_MS = 100
-const CHART_BATCH_MS = 120
+const CHART_BATCH_MS = 48
 const MAX_TRADES_PER_MINT = 80
+const CHART_TICK_INTERVALS = [1_000, 5_000] as const
+
+function chartKey(mint: string, intervalMs: number) {
+  return `${mint}::${intervalMs}`
+}
 
 interface TokenRegistryState {
   byMint: Record<string, PumpToken>
@@ -43,6 +49,7 @@ interface TokenRegistryState {
   schedulePatch: (token: PumpToken) => void
   flushPatches: () => void
   applyTradeTick: (tick: TradeTickPayload) => void
+  applyChartDelta: (patch: ChartUpdatePayload) => void
   scheduleChart: (series: TokenChartSeries) => void
   flushCharts: () => void
   applySignal: (signal: SignalUpdatePayload) => void
@@ -52,7 +59,7 @@ interface TokenRegistryState {
   setWalletGraph: (mint: string, graph: WalletRelationshipGraph) => void
   get: (mint: string) => PumpToken | undefined
   getGraph: (mint: string) => WalletRelationshipGraph | undefined
-  getChart: (mint: string) => TokenChartSeries | undefined
+  getChart: (mint: string, intervalMs?: number) => TokenChartSeries | undefined
   getTrades: (mint: string) => FeedTrade[]
   list: () => PumpToken[]
 }
@@ -183,18 +190,44 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
     const merged = applyTradeTickToToken(prevToken, tick)
     const patched = patchImmediate(s.byMint, s.lastPatchAt, merged)
     if (!patched) return
+
+    const charts = { ...s.charts }
+    for (const intervalMs of CHART_TICK_INTERVALS) {
+      const key = chartKey(tick.mint, intervalMs)
+      const next = patchChartFromTradeTick(charts[key], tick, intervalMs)
+      if (next) charts[key] = { ...next, chartSeq: (charts[key]?.chartSeq ?? 0) + 1 }
+    }
+
     set({
       ...patched,
+      charts,
       trades: { ...s.trades, [tick.mint]: trades },
       tradeSigs: { ...s.tradeSigs, [tick.mint]: nextSigs },
       version: s.version + 1,
+      updatedAt: Date.now(),
     })
+  },
+
+  applyChartDelta: (patch) => {
+    if (!patch?.mint) return
+    const s = get()
+    const charts = { ...s.charts }
+    for (const raw of Object.keys(patch.intervals)) {
+      const intervalMs = Number(raw)
+      if (!Number.isFinite(intervalMs)) continue
+      const key = chartKey(patch.mint, intervalMs)
+      const prev = charts[key]
+      if (prev?.chartSeq != null && prev.chartSeq >= patch.seq) continue
+      charts[key] = { ...mergeChartUpdate(prev, patch, intervalMs), chartSeq: patch.seq }
+    }
+    set({ charts, updatedAt: Date.now() })
   },
 
   scheduleChart: (series) => {
     if (!series?.mint) return
     const s = get()
-    const pending = { ...s._pendingCharts, [series.mint]: series }
+    const key = chartKey(series.mint, series.intervalMs ?? 5_000)
+    const pending = { ...s._pendingCharts, [key]: series }
     if (!s._chartTimer) {
       const timer = setTimeout(() => get().flushCharts(), CHART_BATCH_MS)
       set({ _pendingCharts: pending, _chartTimer: timer })
@@ -289,7 +322,7 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
 
   get: (mint) => get().byMint[mint],
   getGraph: (mint) => get().walletGraphs[mint],
-  getChart: (mint) => get().charts[mint],
+  getChart: (mint, intervalMs = 5_000) => get().charts[chartKey(mint, intervalMs)],
   getTrades: (mint) => get().trades[mint] ?? [],
   list: () => Object.values(get().byMint),
 }))

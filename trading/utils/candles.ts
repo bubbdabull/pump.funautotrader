@@ -238,3 +238,109 @@ export function candleChangePct(candles: OhlcvCandle[]): number {
   if (!first || first <= 0) return 0
   return ((last - first) / first) * 100
 }
+
+export type ApplyTradeToOhlcvResult = {
+  candles: OhlcvCandle[]
+  updated: OhlcvCandle
+  /** Previous bucket closed when rolling into a new one */
+  closed?: OhlcvCandle
+  isNewBucket: boolean
+}
+
+/** Incremental OHLCV update for a single trade tick (hot path — no full rebuild). */
+export function applyTradeToOhlcvSeries(
+  candles: OhlcvCandle[],
+  trade: TradeTickLike,
+  intervalMs: number,
+  maxCandles = 300,
+  liquidityHistory: LiquiditySnapshotLike[] = [],
+  fallbackMcap = 0,
+): ApplyTradeToOhlcvResult | null {
+  const enriched = enrichTradesWithMcap([trade], liquidityHistory, fallbackMcap)
+  const tr = enriched[0]
+  if (!tr) return null
+
+  const mcap = tr.marketCapUsd && tr.marketCapUsd > 0 ? tr.marketCapUsd : fallbackMcap
+  if (mcap <= 0 && tr.solAmount <= 0) return null
+
+  const bucket = Math.floor(tr.timestamp / intervalMs) * intervalMs
+  const hist = [...liquidityHistory].sort((a, b) => a.timestamp - b.timestamp)
+  const snap = snapshotAtOrBefore(hist, tr.timestamp)
+  const curve = snap ? curveFromLiquiditySnapshot(snap) : undefined
+
+  const out = candles.length ? [...candles] : []
+  let closed: OhlcvCandle | undefined
+  let isNewBucket = false
+
+  const patchCandle = (c: OhlcvCandle) => {
+    if (mcap > 0) {
+      c.high = Math.max(c.high, mcap)
+      c.low = Math.min(c.low, mcap)
+      c.close = mcap
+      c.priceUsd = mcapToPriceUsd(mcap)
+    }
+    c.volume += tr.solAmount
+    if (tr.side === 'buy') c.buys += 1
+    else c.sells += 1
+    if (curve != null) c.curve = curve
+  }
+
+  const last = out[out.length - 1]
+  if (!last) {
+    isNewBucket = true
+    out.push({
+      t: bucket,
+      open: mcap,
+      high: mcap,
+      low: mcap,
+      close: mcap,
+      volume: tr.solAmount,
+      buys: tr.side === 'buy' ? 1 : 0,
+      sells: tr.side === 'sell' ? 1 : 0,
+      curve,
+      priceUsd: mcapToPriceUsd(mcap),
+    })
+  } else if (last.t === bucket) {
+    patchCandle(last)
+  } else if (last.t < bucket) {
+    isNewBucket = true
+    closed = { ...last }
+    out.push({
+      t: bucket,
+      open: mcap || last.close,
+      high: mcap || last.close,
+      low: mcap || last.close,
+      close: mcap || last.close,
+      volume: tr.solAmount,
+      buys: tr.side === 'buy' ? 1 : 0,
+      sells: tr.side === 'sell' ? 1 : 0,
+      curve,
+      priceUsd: mcapToPriceUsd(mcap || last.close),
+    })
+  } else {
+    const idx = out.findIndex((c) => c.t === bucket)
+    if (idx >= 0) {
+      patchCandle(out[idx]!)
+    } else {
+      let insertAt = 0
+      while (insertAt < out.length && out[insertAt]!.t < bucket) insertAt++
+      out.splice(insertAt, 0, {
+        t: bucket,
+        open: mcap,
+        high: mcap,
+        low: mcap,
+        close: mcap,
+        volume: tr.solAmount,
+        buys: tr.side === 'buy' ? 1 : 0,
+        sells: tr.side === 'sell' ? 1 : 0,
+        curve,
+        priceUsd: mcapToPriceUsd(mcap),
+      })
+    }
+  }
+
+  const trimmed = out.sort((a, b) => a.t - b.t).slice(-maxCandles)
+  const updated = trimmed[trimmed.length - 1]
+  if (!updated) return null
+  return { candles: trimmed, updated, closed, isNewBucket }
+}

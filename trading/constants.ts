@@ -64,14 +64,14 @@ export const META_ENRICH_BATCH_SIZE = 100
 export const META_ENRICH_WAVES = 3
 export const MAP_COIN_BATCH_SIZE = 50
 
-/** Min gap between chart WS pushes per mint (trade ticks are not throttled). */
-export const CHART_STREAM_EMIT_MS = 500
+/** Min gap between incremental chart WS pushes per mint (trade ticks are immediate). */
+export const CHART_STREAM_EMIT_MS = 200
 /** Min gap between Helius holder refreshes triggered by live trades. */
 export const HOLDER_ON_TRADE_REFRESH_MS = 120_000
 
 /** Batched Socket.IO analytics (avoid per-trade UI flood). */
 export const REGISTRY_PATCH_BATCH_MS = 200
-export const CHART_ANALYTICS_BATCH_MS = 500
+export const CHART_ANALYTICS_BATCH_MS = 250
 export const SIGNAL_ATTRIBUTION_MAX_PER_MINT = 120
 
 /** Redis registry/dynamics snapshot interval (Upstash failover recovery). */
@@ -91,7 +91,11 @@ export const REDIS_HOT_TOKEN_TTL_SEC = 300
 
 /** PumpPortal WS stale threshold before forced reconnect. */
 export const PUMPPORTAL_WS_STALE_MS = 90_000
-export const PUMPPORTAL_WS_HEARTBEAT_MS = 30_000
+export const PUMPPORTAL_WS_HEARTBEAT_MS = 15_000
+export const PUMPPORTAL_WS_PING_MS = 25_000
+export const PUMPPORTAL_WS_RECONNECT_BASE_MS = 2_000
+export const PUMPPORTAL_WS_RECONNECT_MAX_MS = 60_000
+export const INGESTION_HOT_QUEUE_MAX = 8_000
 
 /** Async persistence queue (off hot path). */
 export const PERSIST_QUEUE_MAX = 8_000

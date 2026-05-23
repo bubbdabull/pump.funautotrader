@@ -9,7 +9,8 @@ import { Inject, Logger, forwardRef } from '@nestjs/common'
 import { TokensService } from '../tokens/tokens.service'
 import { AutoTraderService } from '../autotrader/autotrader.service'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
-import { CHART_STREAM_EMIT_MS } from '@phronis/trading'
+import { ChartAggregationService } from '../charts/chart-aggregation.service'
+import type { ChartUpdatePayload } from '../charts/chart-update.types'
 import type {
   BubbleMapUpdatePayload,
   HolderUpdatePayload,
@@ -42,14 +43,13 @@ export class EventsGateway implements OnGatewayConnection {
 
   private readonly logger = new Logger(EventsGateway.name)
   private feedInterval?: NodeJS.Timeout
-  private readonly chartLastEmit = new Map<string, number>()
-
   constructor(
     @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
     private autoTrader: AutoTraderService,
     @Inject(forwardRef(() => PumpPortalDataGateway))
     private pumpportal: PumpPortalDataGateway,
+    private chartAgg: ChartAggregationService,
   ) {}
 
   handleConnection(client: Socket) {
@@ -72,7 +72,7 @@ export class EventsGateway implements OnGatewayConnection {
     this.pumpportal.ensureTradeSubscription(data.mint)
     const token = await this.tokens.getToken(data.mint)
     if (token) client.emit('token:update', token)
-    client.emit('chart:update', this.tokens.getChartSeries(data.mint))
+    client.emit('chart:update', this.chartAgg.getSeries(data.mint, 5_000))
     void this.tokens.warmTerminalContext(data.mint)
   }
 
@@ -108,17 +108,29 @@ export class EventsGateway implements OnGatewayConnection {
     this.server.to('feed').emit('feed:prepend', token)
   }
 
-  emitChartUpdate(
+  /** Incremental candle patch (trade-driven). */
+  emitChartDelta(payload: ChartUpdatePayload) {
+    this.server.to(`token:${payload.mint}`).emit('chart:update', payload)
+    this.server.to('feed').emit('chart:update', payload)
+  }
+
+  /** Full snapshot for subscribe / recovery only. */
+  emitChartSnapshot(
     mint: string,
-    intervalMs = 1_000,
+    intervalMs = 5_000,
     progression?: import('../tokens/chart.types').ProgressionPoint[],
   ) {
-    const now = Date.now()
-    const last = this.chartLastEmit.get(mint) ?? 0
-    if (now - last < CHART_STREAM_EMIT_MS) return
-    this.chartLastEmit.set(mint, now)
-    const series = this.tokens.getChartSeries(mint, intervalMs, progression)
+    const series = this.chartAgg.getSeries(mint, intervalMs, progression)
     this.server.to(`token:${mint}`).emit('chart:update', series)
+  }
+
+  /** @deprecated Use emitChartDelta — kept for analytics batch fallback */
+  emitChartUpdate(
+    mint: string,
+    intervalMs = 5_000,
+    progression?: import('../tokens/chart.types').ProgressionPoint[],
+  ) {
+    this.emitChartSnapshot(mint, intervalMs, progression)
   }
 
   emitTokenStateChange(payload: TokenStateChangePayload) {

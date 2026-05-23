@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import {
   marketCapUsdFromSol,
   bondingCurvePercentFromSol,
@@ -11,12 +11,26 @@ import { MarketDynamicsService } from './market-dynamics.service'
 
 @Injectable()
 export class StreamIntelligenceService {
+  private readonly logger = new Logger(StreamIntelligenceService.name)
+
   constructor(
     private walletAnalyzer: WalletBehaviorAnalyzerService,
     private dynamics: MarketDynamicsService,
   ) {}
 
   processEvent(
+    mint: string,
+    event: IngestionEvent,
+  ): { accepted: boolean; analytics?: DynamicsAnalytics; reason?: string } {
+    try {
+      return this.processEventUnsafe(mint, event)
+    } catch (err) {
+      this.logger.debug(`processEvent ${mint.slice(0, 8)}: ${(err as Error).message}`)
+      return { accepted: false, reason: 'processor_error' }
+    }
+  }
+
+  private processEventUnsafe(
     mint: string,
     event: IngestionEvent,
   ): { accepted: boolean; analytics?: DynamicsAnalytics; reason?: string } {

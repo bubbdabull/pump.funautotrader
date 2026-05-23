@@ -58,12 +58,14 @@ export {
   curveFromLiquiditySnapshot,
   mcapFromLiquiditySnapshot,
   candleChangePct,
+  applyTradeToOhlcvSeries,
   CHART_INTERVALS_MS,
   type OhlcvCandle,
   type ChartPointLike,
   type ChartIntervalMs,
   type TradeTickLike,
   type LiquiditySnapshotLike,
+  type ApplyTradeToOhlcvResult,
 } from './utils/candles'
 export { computeFeedActivity, type FeedActivityFields } from './utils/feedActivity'
 export {

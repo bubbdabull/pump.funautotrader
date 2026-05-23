@@ -41,6 +41,9 @@ class WebSocketService {
   private socket: Socket | null = null
   private listenersAttached = false
   private lastFeedSnapshot: PumpToken[] | null = null
+  private reconnecting = false
+  private readonly bufferedPatches: PumpToken[] = []
+  private readonly maxBufferedPatches = 500
   private registryPatchHandlers = new Set<RegistryPatchHandler>()
   private feedSnapshotHandlers = new Set<FeedSnapshotHandler>()
   private chartHandlers = new Set<ChartHandler>()
@@ -111,18 +114,38 @@ class WebSocketService {
 
     socket.on('connect', () => {
       registryDebug.event('connect')
+      this.reconnecting = false
       this.requestFeedSubscribe()
+      this.flushBufferedPatches()
       this.connectHandlers.forEach((h) => h())
     })
 
     socket.on('disconnect', () => {
       registryDebug.event('disconnect')
+      this.reconnecting = true
       this.disconnectHandlers.forEach((h) => h())
     })
 
     socket.on('connect_error', (err) => {
       console.warn('[socket.io] connect_error', err.message, 'url=', this.wsUrl())
     })
+  }
+
+  private flushBufferedPatches() {
+    if (this.bufferedPatches.length === 0) return
+    const batch = this.bufferedPatches.splice(0, this.bufferedPatches.length)
+    for (const token of batch) {
+      this.registryPatchHandlers.forEach((h) => h(token))
+    }
+  }
+
+  private bufferPatchIfDisconnected(token: PumpToken) {
+    if (!this.reconnecting && this.socket?.connected) return false
+    if (this.bufferedPatches.length >= this.maxBufferedPatches) {
+      this.bufferedPatches.shift()
+    }
+    this.bufferedPatches.push(token)
+    return true
   }
 
   connect() {
@@ -132,8 +155,9 @@ class WebSocketService {
         path: '/socket.io',
         transports: ['websocket', 'polling'],
         reconnection: true,
-        reconnectionAttempts: 20,
-        reconnectionDelay: 1000,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1_000,
+        reconnectionDelayMax: 15_000,
         timeout: 20_000,
       })
       this.attachListeners(this.socket)
@@ -148,9 +172,12 @@ class WebSocketService {
 
   private dispatch(event: (typeof CANONICAL_EVENTS)[number], payload: unknown) {
     switch (event) {
-      case 'registry:patch':
-        this.registryPatchHandlers.forEach((h) => h(payload as PumpToken))
+      case 'registry:patch': {
+        const token = payload as PumpToken
+        if (this.bufferPatchIfDisconnected(token)) break
+        this.registryPatchHandlers.forEach((h) => h(token))
         break
+      }
       case 'trade:tick':
         this.tradeTickHandlers.forEach((h) => h(payload as TradeTickPayload))
         break
@@ -177,6 +204,10 @@ class WebSocketService {
 
   get connected() {
     return Boolean(this.socket?.connected)
+  }
+
+  get isReconnecting() {
+    return this.reconnecting || Boolean(this.socket && !this.socket.connected)
   }
 
   subscribeToken(mint: string) {

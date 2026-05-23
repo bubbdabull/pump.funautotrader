@@ -9,12 +9,14 @@ import { AutoTraderModule } from '../autotrader/autotrader.module'
 import { TradeDataModule } from '../trade-data/trade-data.module'
 import { IntelligenceModule } from '../intelligence/intelligence.module'
 import { FeedModule } from '../feed/feed.module'
+import { ChartsModule } from '../charts/charts.module'
 
 @Global()
 @Module({
   imports: [
     IngestionModule,
     TradingModule,
+    ChartsModule,
     IntelligenceModule,
     FeedModule,
     forwardRef(() => TokensModule),

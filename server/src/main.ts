@@ -145,13 +145,32 @@ async function bootstrap() {
   await bootstrapApi()
 }
 
+let unhandledRejections = 0
+let uncaughtExceptions = 0
+
 process.on('unhandledRejection', (reason) => {
+  unhandledRejections++
   const msg = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
-  console.error('[unhandledRejection] (process continues)', msg)
+  console.error(
+    JSON.stringify({
+      tag: 'unhandledRejection',
+      count: unhandledRejections,
+      at: new Date().toISOString(),
+      message: msg.slice(0, 500),
+    }),
+  )
 })
 
 process.on('uncaughtException', (err) => {
-  console.error('[uncaughtException] (process continues)', err.stack ?? err.message)
+  uncaughtExceptions++
+  console.error(
+    JSON.stringify({
+      tag: 'uncaughtException',
+      count: uncaughtExceptions,
+      at: new Date().toISOString(),
+      message: (err.stack ?? err.message).slice(0, 500),
+    }),
+  )
 })
 
 bootstrap().catch((err) => {

@@ -17,11 +17,7 @@ import {
   passesTradeableFilter,
   rankTradeable,
   bondingCurvePercentFromSol,
-  buildOhlcvFromTrades,
-  buildChartPointsFromCandles,
-  candleChangePct,
   mcapToPriceUsd,
-  curveFromLiquiditySnapshot,
   computeFeedActivity,
   type ScannerLane,
   PUMP_FUN_SCAN_TARGET,
@@ -48,7 +44,7 @@ import {
   pickTokenSymbol,
   isValidTicker,
 } from '@phronis/trading'
-import type { TokenChartSeries, ChartPoint, OhlcvCandle } from './chart.types'
+import type { TokenChartSeries } from './chart.types'
 import { TokenMetadataService } from './token-metadata.service'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
 import { SupabasePersistenceService } from '../supabase/supabase-persistence.service'
@@ -57,6 +53,7 @@ import { EventsGateway } from '../events/events.gateway'
 import { TokenDiscoveryService } from './token-discovery.service'
 import { TokenRegistryService } from '../pipeline/token-registry.service'
 import { PersistenceQueueService } from '../persistence/persistence-queue.service'
+import { ChartAggregationService } from '../charts/chart-aggregation.service'
 
 @Injectable()
 export class TokensService {
@@ -83,6 +80,7 @@ export class TokensService {
     private discovery: TokenDiscoveryService,
     private registry: TokenRegistryService,
     private persistQueue: PersistenceQueueService,
+    private chartAgg: ChartAggregationService,
   ) {}
 
   getScanStats() {
@@ -215,71 +213,7 @@ export class TokensService {
     intervalMs = 5_000,
     progression?: TokenChartSeries['progression'],
   ): TokenChartSeries {
-    const state = this.trading.getState(mint)
-    const token = this.liveFeed.get(mint)
-    const fallbackMcap = token?.marketCap ?? state?.marketCapUsd ?? 0
-    const fallbackCurve = token?.bondingCurvePercent ?? state?.bondingCurvePercent ?? 0
-    const bucketMs = Math.max(1_000, Math.min(60_000, intervalMs))
-    const liqHist = state?.liquidityHistory ?? []
-
-    const candles: OhlcvCandle[] = state?.trades.length
-      ? buildOhlcvFromTrades(state.trades, bucketMs, fallbackMcap, 300, liqHist)
-      : []
-
-    let outCandles = candles
-    if (!outCandles.length && liqHist.length) {
-      outCandles = buildOhlcvFromTrades(
-        [],
-        bucketMs,
-        fallbackMcap,
-        300,
-        liqHist,
-      )
-    }
-
-    const points: ChartPoint[] = buildChartPointsFromCandles(outCandles, fallbackCurve).map(
-      (p) => ({
-        t: p.t,
-        price: p.price,
-        priceUsd: p.priceUsd,
-        volume: p.volume,
-        curve: p.curve,
-      }),
-    )
-
-    if (!points.length && token) {
-      const mc = token.marketCap || fallbackMcap
-      points.push({
-        t: Date.now(),
-        price: mc,
-        priceUsd: mcapToPriceUsd(mc),
-        volume: token.volume24h,
-        curve: token.bondingCurvePercent,
-      })
-    }
-
-    const lastTrade = state?.trades[state.trades.length - 1]
-    const lastCandle = outCandles[outCandles.length - 1]
-    const currentMcap =
-      lastCandle?.close ?? state?.marketCapUsd ?? fallbackMcap
-    const lastHist = liqHist[liqHist.length - 1]
-    const currentCurve =
-      lastCandle?.curve ??
-      (lastHist ? curveFromLiquiditySnapshot(lastHist) : fallbackCurve)
-
-    return {
-      mint,
-      intervalMs: bucketMs,
-      candles: outCandles,
-      points: points.slice(-300),
-      progression: progression?.slice(-120),
-      tradeCount: state?.trades.length ?? 0,
-      lastTradeAt: lastTrade?.timestamp,
-      currentMcap,
-      currentPriceUsd: mcapToPriceUsd(currentMcap),
-      currentCurve,
-      changePct: candleChangePct(outCandles),
-    }
+    return this.chartAgg.getSeries(mint, intervalMs, progression)
   }
 
   /** On token page subscribe — async holder + wallet graph (non-blocking). */
@@ -448,15 +382,8 @@ export class TokensService {
     return saved
   }
 
-  publishStreamEvents(
-    mint: string,
-    saved: FeedToken,
-    options?: { skipChartEmit?: boolean },
-  ) {
+  publishStreamEvents(mint: string, saved: FeedToken) {
     this.emitLastTradeTick(mint, saved)
-    if (!options?.skipChartEmit) {
-      this.events.emitChartUpdate(mint, 1_000)
-    }
     this.persistFeedToken(saved)
   }
 

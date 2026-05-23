@@ -50,6 +50,33 @@ export interface TokenChartSeries {
   changePct?: number
   tradeStreamSubscribed?: boolean
   pumpportalKeyConfigured?: boolean
+  /** Monotonic chart revision for UI sync */
+  chartSeq?: number
+}
+
+export interface ChartIntervalDelta {
+  candle: OhlcvCandle
+  closed?: OhlcvCandle
+  isNewBucket?: boolean
+}
+
+/** Incremental chart:update (v2) from server */
+export interface ChartUpdatePayload {
+  v: 2
+  mint: string
+  seq: number
+  emittedAt: number
+  intervals: Record<number, ChartIntervalDelta>
+  currentMcap: number
+  currentPriceUsd: number
+  currentCurve: number
+  changePct: number
+  tradeCount: number
+  lastTradeAt?: number
+  buyPressure?: number
+  volumeVelocity?: number
+  priceVelocity?: number
+  progressionPoint?: ProgressionPoint
 }
 
 export type ChartMetric = 'mcap' | 'price' | 'curve'

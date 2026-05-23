@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { wsService } from '@/services/websocket'
 import { tokenApi } from '@/services/api'
+import { isChartUpdatePayload } from '@/lib/chartUpdate'
+import type { TokenChartSeries } from '@/lib/chartTypes'
 import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
 import { useQuantStore } from '@/stores/quantStore'
 import type { SignalUpdatePayload } from '@/lib/terminalTypes'
@@ -55,6 +57,7 @@ export function useTerminalSync() {
   const schedulePatch = useTokenRegistryStore((s) => s.schedulePatch)
   const applyTradeTick = useTokenRegistryStore((s) => s.applyTradeTick)
   const scheduleChart = useTokenRegistryStore((s) => s.scheduleChart)
+  const applyChartDelta = useTokenRegistryStore((s) => s.applyChartDelta)
   const applySignal = useTokenRegistryStore((s) => s.applySignal)
   const applyHolder = useTokenRegistryStore((s) => s.applyHolder)
   const applyMigration = useTokenRegistryStore((s) => s.applyMigration)
@@ -68,7 +71,13 @@ export function useTerminalSync() {
       wsService.onFeedSnapshot((tokens) => hydrateFeed(tokens)),
       wsService.onRegistryPatch((t) => schedulePatch(t)),
       wsService.onTradeTick((tick) => applyTradeTick(tick)),
-      wsService.onChartUpdate((series) => scheduleChart(series)),
+      wsService.onChartUpdate((payload) => {
+        if (isChartUpdatePayload(payload)) {
+          applyChartDelta(payload)
+        } else {
+          scheduleChart(payload as TokenChartSeries)
+        }
+      }),
       wsService.onSignalUpdate((s) => {
         applySignal(s)
         quantPatch(signalToQuantUpdate(s))
@@ -93,6 +102,7 @@ export function useTerminalSync() {
     schedulePatch,
     applyTradeTick,
     scheduleChart,
+    applyChartDelta,
     applySignal,
     applyHolder,
     applyMigration,

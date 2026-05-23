@@ -13,6 +13,7 @@ export class EventBusService implements OnModuleDestroy {
   private readonly queue: IngestionEvent[] = []
   private readonly maxQueue = 10_000
   private draining = false
+  private dropped = 0
   private redisPublisher: { publish: (ch: string, msg: string) => Promise<number> } | null =
     null
   private readonly channel = 'phronis:ingestion'
@@ -58,7 +59,10 @@ export class EventBusService implements OnModuleDestroy {
   }
 
   async publish(event: IngestionEvent) {
-    if (this.queue.length >= this.maxQueue) this.queue.shift()
+    if (this.queue.length >= this.maxQueue) {
+      this.queue.shift()
+      this.dropped++
+    }
     this.queue.push(event)
     if (!this.draining) void this.drain()
 
@@ -74,18 +78,17 @@ export class EventBusService implements OnModuleDestroy {
   private async drain() {
     this.draining = true
     while (this.queue.length > 0) {
-      const batch = this.queue.splice(0, 64)
-      await Promise.all(
-        batch.map(async (ev) => {
-          for (const h of this.handlers) {
-            try {
-              await h(ev)
-            } catch (err) {
-              this.logger.debug(`Handler error: ${(err as Error).message}`)
-            }
+      const batch = this.queue.splice(0, 48)
+      for (const ev of batch) {
+        for (const h of this.handlers) {
+          try {
+            await h(ev)
+          } catch (err) {
+            this.logger.debug(`Handler error: ${(err as Error).message}`)
           }
-        }),
-      )
+        }
+      }
+      await new Promise<void>((r) => setImmediate(r))
     }
     this.draining = false
   }
@@ -93,6 +96,8 @@ export class EventBusService implements OnModuleDestroy {
   getStats() {
     return {
       queueDepth: this.queue.length,
+      dropped: this.dropped,
+      draining: this.draining,
       handlers: this.handlers.size,
       redis: Boolean(this.redisPublisher),
     }

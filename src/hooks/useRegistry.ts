@@ -148,7 +148,10 @@ export function useRegistryToken(mint: string) {
 }
 
 export function useRegistryChart(mint: string, intervalMs = 5_000) {
-  const chart = useTokenRegistryStore((s) => s.charts[mint])
+  const chart = useTokenRegistryStore((s) => s.charts[`${mint}::${intervalMs}`])
+  const chartVersion = useTokenRegistryStore(
+    (s) => s.charts[`${mint}::${intervalMs}`]?.chartSeq ?? s.charts[`${mint}::${intervalMs}`]?.candles.length ?? 0,
+  )
 
   useEffect(() => {
     if (!mint) return
@@ -159,7 +162,7 @@ export function useRegistryChart(mint: string, intervalMs = 5_000) {
   const data = useMemo((): TokenChartSeries | undefined => {
     if (!chart) return undefined
     return { ...chart, intervalMs: chart.intervalMs ?? intervalMs }
-  }, [chart, intervalMs])
+  }, [chart, chartVersion, intervalMs])
 
   return {
     data,

@@ -81,7 +81,7 @@ export function TradingChart({ mint }: TradingChartProps) {
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volRef = useRef<ISeriesApi<'Histogram'> | null>(null)
-  const lastLenRef = useRef(0)
+  const lastBarSigRef = useRef('')
 
   const candles = data?.candles ?? []
   const last = candles[candles.length - 1]
@@ -154,9 +154,15 @@ export function TradingChart({ mint }: TradingChartProps) {
       chartRef.current = null
       candleRef.current = null
       volRef.current = null
-      lastLenRef.current = 0
+      lastBarSigRef.current = ''
     }
   }, [intervalMs])
+
+  const candleSig = useMemo(() => {
+    const last = candles[candles.length - 1]
+    if (!last) return ''
+    return `${candles.length}:${last.t}:${last.close}:${last.volume}:${last.buys}:${data?.chartSeq ?? 0}`
+  }, [candles, data?.chartSeq])
 
   useEffect(() => {
     if (!candleRef.current || !volRef.current || !candles.length) return
@@ -173,19 +179,20 @@ export function TradingChart({ mint }: TradingChartProps) {
       color: c.close >= c.open ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)',
     }))
 
-    const grew = candles.length > lastLenRef.current
     const lastBar = ohlc[ohlc.length - 1]
+    const volBar = vol[vol.length - 1]
+    const canIncremental = lastBarSigRef.current && candleSig !== lastBarSigRef.current
 
-    if (grew && lastLenRef.current > 0 && lastBar) {
+    if (canIncremental && lastBar && volBar) {
       candleRef.current.update(lastBar)
-      volRef.current.update(vol[vol.length - 1])
+      volRef.current.update(volBar)
     } else {
       candleRef.current.setData(ohlc)
       volRef.current.setData(vol)
-      chartRef.current?.timeScale().fitContent()
+      if (!lastBarSigRef.current) chartRef.current?.timeScale().fitContent()
     }
-    lastLenRef.current = candles.length
-  }, [candles, metric, intervalMs])
+    lastBarSigRef.current = candleSig
+  }, [candleSig, metric, intervalMs, candles.length])
 
   const live = (data?.tradeCount ?? 0) > 0
   const streamOn = data?.tradeStreamSubscribed
