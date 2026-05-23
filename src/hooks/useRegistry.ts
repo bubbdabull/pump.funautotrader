@@ -4,104 +4,45 @@ import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
 import { useRealtimeStore } from '@/stores/realtimeStore'
 import { useQuantStore } from '@/stores/quantStore'
 import { useTokenSubscription } from '@/hooks/useTokenSubscription'
+import { useSubscriptionTier } from '@/hooks/useSubscriptionTier'
 import type { PumpToken } from '@/types'
 import type { TokenChartSeries } from '@/lib/chartTypes'
 import type { FeedTrade } from '@/services/api'
 import {
-  passesAlphaFilter,
-  passesActiveScannerFilter,
-  passesTradeableFilter,
-  isGraduatingSoon,
-  resolveDisplayFeed,
-  rankLiveStreamFeed,
-  hasRealTimeTradeActivity,
-  resolveTokenDataState,
-  liveActivityScore,
-  tradeQualityScore,
-  type FeedDisplayMode,
-  type ScannerLane,
-} from '@/lib/feedQuality'
+  rankIntelligenceLane,
+  isInvalidSignal,
+  countHighConfidence,
+  applySubscriptionTier,
+  limitFreeTierVisible,
+} from '@/lib/intelligence'
+import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
 
 export type RegistryLanePayload = {
   tokens: PumpToken[]
-  mode: FeedDisplayMode
+  mode: 'active' | 'low_confidence' | 'tradeable'
   tradeableCount: number
 }
 
-function applyLane(
-  tokens: PumpToken[],
-  lane: ScannerLane,
-  streamConnected: boolean,
-  registryFresh: boolean,
-): RegistryLanePayload {
-  const tradeableCount = tokens.filter(passesTradeableFilter).length
-  const streamOpts = { streamConnected: streamConnected && registryFresh }
-
-  if (lane === 'all') {
-    const list = tokens.filter(
-      (t) => passesAlphaFilter(t) || hasRealTimeTradeActivity(t),
-    )
-    return { tokens: list, mode: 'active', tradeableCount }
-  }
-  if (lane === 'active') {
-    const live = rankLiveStreamFeed(tokens, 80)
-    const list = live.length > 0 ? live : tokens.filter(passesActiveScannerFilter)
-    return { tokens: list, mode: 'active', tradeableCount }
-  }
-  if (lane === 'graduating') {
-    const list = tokens
-      .filter(isGraduatingSoon)
-      .sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
-    return { tokens: list, mode: 'active', tradeableCount }
-  }
-  if (lane === 'alpha') {
-    const list = [...tokens]
-      .filter(passesAlphaFilter)
-      .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
-      .slice(0, 60)
-    return { tokens: list, mode: list.length > 0 ? 'active' : 'watchlist_fallback', tradeableCount }
-  }
-  const resolved = resolveDisplayFeed(tokens, 80, streamOpts)
-  if (resolved.tokens.length > 0) {
-    if (
-      streamConnected &&
-      registryFresh &&
-      resolved.mode === 'watchlist_fallback' &&
-      tokens.some((t) => hasRealTimeTradeActivity(t))
-    ) {
-      const live = rankLiveStreamFeed(tokens, 80)
-      if (live.length > 0) {
-        return { tokens: live, mode: 'low_confidence', tradeableCount }
-      }
-    }
-    return {
-      tokens: resolved.tokens,
-      mode: resolved.mode,
-      tradeableCount: resolved.tradeableCount,
-    }
-  }
-
-  if (streamConnected && registryFresh && tokens.length > 0) {
-    const visible = [...tokens]
-      .filter((t) => resolveTokenDataState(t) !== 'invalid')
-      .sort((a, b) => liveActivityScore(b) - liveActivityScore(a))
-      .slice(0, 80)
-    if (visible.length > 0) {
-      return { tokens: visible, mode: 'low_confidence', tradeableCount }
-    }
-  }
+/** Visualization-only lane ranking — no binary hide except INVALID_SIGNAL. */
+function applyLane(tokens: PumpToken[], lane: ScannerLane, tier: 'free' | 'pro'): RegistryLanePayload {
+  const visible = tokens.filter((t) => !isInvalidSignal(t))
+  const ranked = rankIntelligenceLane(visible, lane, 120)
+  const tiered = ranked.map((t) => applySubscriptionTier(t, tier))
+  const limited = limitFreeTierVisible(tiered, tier)
+  const tradeableCount = countHighConfidence(visible)
 
   return {
-    tokens: resolved.tokens,
-    mode: resolved.mode,
-    tradeableCount: resolved.tradeableCount,
+    tokens: limited,
+    mode: tradeableCount > 0 ? 'active' : 'low_confidence',
+    tradeableCount,
   }
 }
 
 /** WebSocket-driven lane feed — single registry source, no REST polling. */
 export function useRegistryLane(lane: ScannerLane = 'all') {
   const [bootstrapTimedOut, setBootstrapTimedOut] = useState(false)
+  const tier = useSubscriptionTier()
 
   useEffect(() => {
     const t = window.setTimeout(() => setBootstrapTimedOut(true), 5_000)
@@ -120,14 +61,10 @@ export function useRegistryLane(lane: ScannerLane = 'all') {
   const reconnecting = useRealtimeStore((s) => s.reconnecting)
   const quantByMint = useQuantStore(useShallow((s) => s.byMint))
 
-  const registryFresh =
-    updatedAt > 0 && Date.now() - updatedAt < 45_000
-  const streamConnected = wsConnected && !reconnecting
-
   const payload = useMemo(() => {
     const all = Object.values(byMint)
-    return applyLane(all, lane, streamConnected, registryFresh)
-  }, [byMint, version, lane, streamConnected, registryFresh])
+    return applyLane(all, lane, tier)
+  }, [byMint, version, lane, tier])
 
   const tokens = useMemo(
     () => mergeQuantHolders(payload.tokens),
@@ -139,6 +76,7 @@ export function useRegistryLane(lane: ScannerLane = 'all') {
     tokens,
     displayMode: payload.mode,
     tradeableCount: payload.tradeableCount,
+    subscriptionTier: tier,
     isLoading: tokens.length === 0 && !bootstrapTimedOut && !updatedAt,
     isFetching: reconnecting,
     isError: false,
@@ -151,14 +89,16 @@ export function useRegistryLane(lane: ScannerLane = 'all') {
 
 export function useRegistryToken(mint: string) {
   useTokenSubscription(mint)
+  const tier = useSubscriptionTier()
   const token = useTokenRegistryStore((s) => s.byMint[mint])
   const version = useTokenRegistryStore((s) => s.version)
   const quantMint = useQuantStore((s) => s.byMint[mint])
 
   const merged = useMemo(() => {
     if (!token) return undefined
-    return mergeQuantHolders([token])[0]
-  }, [token, version, quantMint])
+    const [withHolders] = mergeQuantHolders([token])
+    return applySubscriptionTier(withHolders, tier)
+  }, [token, version, quantMint, tier])
 
   return {
     data: merged,

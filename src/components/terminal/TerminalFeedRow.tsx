@@ -52,9 +52,11 @@ function TerminalFeedRowInner({ token, selected, onSelect }: TerminalFeedRowProp
               key={b}
               className={cn(
                 'rounded px-1 py-px text-[8px] font-bold uppercase tracking-wide',
-                b === 'NEW' && 'bg-sky-500/20 text-sky-300',
+                b === 'RAW' && 'bg-sky-500/20 text-sky-300',
                 b === 'HOT' && 'bg-orange-500/25 text-orange-300',
                 b === 'MIGRATING' && 'bg-violet-500/25 text-violet-300',
+                b === 'SMART MONEY IN' && 'bg-emerald-500/20 text-emerald-400',
+                b === 'BREAKOUT RISK' && 'bg-amber-500/20 text-amber-300',
               )}
             >
               {b}

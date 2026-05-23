@@ -15,9 +15,14 @@ import { patchToken, applySignalToToken } from '@/lib/patchToken'
 import { applyTradeTickToToken, tradeTickToFeedTrade } from '@/lib/applyTradeTick'
 import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 import { registryDebug } from '@/lib/registryDebug'
+import { FREE_TIER_DELAY_MS } from '@/lib/intelligence'
 import { useRealtimeStore } from '@/stores/realtimeStore'
 
 const PATCH_BATCH_MS = 50
+const IS_PRO_TIER =
+  import.meta.env.VITE_SUBSCRIPTION_TIER === 'pro' ||
+  (typeof window !== 'undefined' && window.localStorage.getItem('phronis_tier') === 'pro')
+const PATCH_DELAY_MS = IS_PRO_TIER ? PATCH_BATCH_MS : Math.max(PATCH_BATCH_MS, FREE_TIER_DELAY_MS)
 const CHART_BATCH_MS = 80
 const MAX_TRADES_PER_MINT = 80
 const CHART_TICK_INTERVALS = [1_000, 5_000] as const
@@ -137,7 +142,7 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
     if (!s._patchTimer) {
       const timer = setTimeout(() => {
         get().flushPatches()
-      }, PATCH_BATCH_MS)
+      }, PATCH_DELAY_MS)
       set({ _pendingPatches: pending, _patchTimer: timer })
     } else {
       set({ _pendingPatches: pending })

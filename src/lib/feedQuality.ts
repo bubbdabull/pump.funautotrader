@@ -42,4 +42,7 @@ export {
   type FeedDisplayMode,
   type FeedQualityFields,
   type ScannerLane,
+  rankIntelligenceLane,
+  isInvalidSignal,
+  countHighConfidence,
 } from '@trading'

@@ -1,4 +1,7 @@
 import { create } from 'zustand'
+import type { IntelligenceAlert } from '@/types'
+
+const MAX_INTELLIGENCE_ALERTS = 48
 
 export type RealtimeDiagnostics = {
   socketInstances: number
@@ -56,12 +59,14 @@ interface RealtimeState {
   diagnostics: RealtimeDiagnostics
   streamHealth: StreamHealthSnapshot
   streamDebug: StreamDebugSnapshot
+  intelligenceAlerts: IntelligenceAlert[]
   setConnected: (v: boolean) => void
   setReconnecting: (v: boolean) => void
   setIngestionDegraded: (v: boolean) => void
   setStreamHealth: (patch: Partial<StreamHealthSnapshot>) => void
   patchStreamDebug: (patch: Partial<StreamDebugSnapshot>) => void
   patchDiagnostics: (patch: Partial<RealtimeDiagnostics>) => void
+  pushIntelligenceAlert: (alert: IntelligenceAlert) => void
   recordReconnect: () => void
   resetDiagnostics: () => void
 }
@@ -82,6 +87,7 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
   ingestionDegraded: false,
   diagnostics: emptyDiagnostics(),
   streamHealth: emptyStreamHealth(),
+  intelligenceAlerts: [],
   streamDebug: {
     streamHealth: 'disconnected',
     ingestionLagMs: 0,
@@ -126,6 +132,11 @@ export const useRealtimeStore = create<RealtimeState>((set) => ({
         ingestionLagMs: patch.avgEventLatencyMs ?? s.streamDebug.ingestionLagMs,
       },
     })),
+  pushIntelligenceAlert: (alert) =>
+    set((s) => {
+      const next = [alert, ...s.intelligenceAlerts.filter((a) => a.mint !== alert.mint || a.type !== alert.type)]
+      return { intelligenceAlerts: next.slice(0, MAX_INTELLIGENCE_ALERTS) }
+    }),
   recordReconnect: () =>
     set((s) => ({
       reconnecting: true,

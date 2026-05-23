@@ -146,5 +146,6 @@ export { replayStrategyBacktest, type ReplayEvent, type ReplayOptions } from './
 export { computeBacktestMetrics, type BacktestMetrics, type BacktestTrade } from './backtest/metrics'
 export * from './dynamics'
 export * from './walletGraph'
+export * from './intelligence'
 export { clamp01, clamp, ema, logistic01 } from './utils/math'
 export { sharpeLikeScore } from './quantitative/indicators'

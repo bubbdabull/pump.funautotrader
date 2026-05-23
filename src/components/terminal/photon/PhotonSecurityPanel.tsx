@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 import { formatUsd, formatHolders } from '@/lib/utils'
 import type { PumpToken } from '@/types'
+import { useSubscriptionTier } from '@/hooks/useSubscriptionTier'
 
 interface PhotonSecurityPanelProps {
   token?: PumpToken
@@ -25,6 +26,9 @@ function Row({ label, value, ok }: { label: string; value: string; ok?: boolean 
 }
 
 export function PhotonSecurityPanel({ token }: PhotonSecurityPanelProps) {
+  const tier = useSubscriptionTier()
+  const isPro = tier === 'pro'
+
   if (!token) {
     return (
       <div className="photon-panel flex flex-1 flex-col">
@@ -60,8 +64,25 @@ export function PhotonSecurityPanel({ token }: PhotonSecurityPanelProps) {
         />
         <Row label="Bonding curve" value={`${token.bondingCurvePercent.toFixed(1)}%`} />
         <Row label="Market cap" value={formatUsd(token.marketCap)} />
-        <Row label="Signal score" value={String(token.signalScore ?? '—')} ok={(token.signalScore ?? 50) <= 62} />
+        <Row
+          label="Intel score"
+          value={token.score != null ? `${Math.round(token.score)}` : String(token.signalScore ?? '—')}
+          ok={(token.score ?? token.signalScore ?? 50) >= 55}
+        />
         <Row label="Momentum" value={String(token.momentumScore ?? '—')} />
+        {token.confidenceScore != null && (
+          <Row label="Confidence" value={`${Math.round(token.confidenceScore * 100)}%`} />
+        )}
+        {token.signalState && <Row label="Signal state" value={token.signalState.replace(/_SIGNAL$/, '')} />}
+        {isPro && token.pumpProbabilityScore != null && (
+          <Row label="Pump probability" value={`${Math.round(token.pumpProbabilityScore)}%`} />
+        )}
+        {isPro && token.pumpSignal && token.pumpSignal !== 'NO_SIGNAL' && (
+          <Row label="Pump signal" value={token.pumpSignal.replace(/_/g, ' ')} />
+        )}
+        {isPro && token.smartMoneyFlow && token.smartMoneyFlow !== 'NEUTRAL' && (
+          <Row label="Smart money" value={token.smartMoneyFlow.replace(/_/g, ' ')} />
+        )}
         {token.dataState && (
           <Row label="Data state" value={token.dataState} ok={token.dataState === 'active'} />
         )}

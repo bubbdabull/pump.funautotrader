@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common'
 import {
-  filterForLane,
+  rankIntelligenceLane,
   type ScannerLane,
   type DynamicsAnalytics,
 } from '@phronis/trading'
 import { LiveFeedService } from '../feed/live-feed.service'
+import { SignalIntelligenceService } from '../intelligence/signal-intelligence.service'
 import type { FeedToken } from '../feed/feed.types'
 import type { NormalizedToken, RegistrySnapshot } from './normalized-token.types'
 
@@ -14,7 +15,10 @@ import type { NormalizedToken, RegistrySnapshot } from './normalized-token.types
  */
 @Injectable()
 export class TokenRegistryService {
-  constructor(private liveFeed: LiveFeedService) {}
+  constructor(
+    private liveFeed: LiveFeedService,
+    private signalIntel: SignalIntelligenceService,
+  ) {}
 
   get size(): number {
     return this.liveFeed.getAll(10_000).length
@@ -47,29 +51,34 @@ export class TokenRegistryService {
         }
       : {}
 
+    const enriched = this.signalIntel.enrichFeedToken(
+      {
+        ...token,
+        ...activity,
+        momentumScore: dynamics
+          ? Math.round(dynamics.decayedMomentumScore * 100)
+          : token.momentumScore,
+      },
+      dynamics,
+    )
+
     return {
-      ...token,
-      ...activity,
-      signalScore: dynamics
-        ? Math.round(dynamics.tradeConfidenceScore * 100)
-        : token.signalScore,
-      momentumScore: dynamics
-        ? Math.round(dynamics.decayedMomentumScore * 100)
-        : token.momentumScore,
+      ...enriched,
       updatedAt: dynamics?.updatedAt ?? Date.now(),
       tradeCount: dynamics?.windows.w60.tradeCount ?? 0,
       source: dynamics ? 'stream' : source,
       lifecycle: dynamics?.lifecycle,
       migrationProbability: dynamics
         ? Math.round(dynamics.migration.probability * 100)
-        : undefined,
-      burstIgnition: dynamics ? Math.round(dynamics.burst.ignitionScore * 100) : undefined,
+        : enriched.migrationProbability,
+      burstIgnition: dynamics ? Math.round(dynamics.burst.ignitionScore * 100) : enriched.burstIgnition,
     }
   }
 
   list(lane: ScannerLane = 'all', limit?: number): NormalizedToken[] {
     const raw = this.liveFeed.getAll(limit ?? 2000)
-    return filterForLane(raw.map((t) => this.normalize(t)), lane) as NormalizedToken[]
+    const normalized = raw.map((t) => this.normalize(t))
+    return rankIntelligenceLane(normalized, lane, limit ?? 120) as NormalizedToken[]
   }
 
   snapshot(lane: ScannerLane = 'all'): RegistrySnapshot {

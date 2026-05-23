@@ -19,7 +19,7 @@ import { Link } from 'react-router-dom'
 import type { PumpToken } from '@/types'
 import { tokenVolumeSol } from '@/lib/utils'
 import { ensureArray } from '@/lib/ensureArray'
-import { shouldShowWatchlistFallback, displayModeLabel } from '@/lib/streamDisplay'
+import { displayModeLabel, isStreamDisconnected } from '@/lib/streamDisplay'
 import { useRealtimeStore } from '@/stores/realtimeStore'
 
 function formatVolumeDisplay(sol: number): { value: number; suffix: string } {
@@ -45,14 +45,12 @@ export function DashboardPage() {
   const backend = useBackendStatus()
   const wsReconnecting = useWsReconnecting()
   const streamDebug = useRealtimeStore((s) => s.streamDebug)
-  const usingFallback = shouldShowWatchlistFallback({
-    displayMode,
+  const streamDown = isStreamDisconnected({
     wsConnected: wsConnected || backend.socketConnected,
     reconnecting: wsReconnecting || isFetching,
     registryUpdatedAt: dataUpdatedAt,
     registrySize: tokens.length,
   })
-  const holdersVerifiedCount = tokens.filter((t) => t.holdersVerified).length
   const top = [...tokens].sort((a, b) => b.momentumScore - a.momentumScore).slice(0, 3)
   const feedByMint = Object.fromEntries(tokens.map((t) => [t.mint, t]))
 
@@ -74,7 +72,7 @@ export function DashboardPage() {
           Live Pump.fun ·{' '}
           {isLoading
             ? 'loading…'
-            : `${tradeableCount} tradeable · ${tokens.length} shown (${displayModeLabel(displayMode)})`}
+            : `${tokens.length} ranked · ${tradeableCount} high confidence (${displayModeLabel(displayMode)})`}
           {dataUpdatedAt > 0 && (
             <span className="text-zinc-600">
               {' '}
@@ -97,18 +95,14 @@ export function DashboardPage() {
 
       <DataHealthBanner />
 
-      {usingFallback && (
+      {streamDown && tokens.length === 0 && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            {holdersVerifiedCount > 0
-              ? `${tradeableCount} pass the strict tradeable bar · ${holdersVerifiedCount} have verified on-chain holders. Showing top watchlist until more tokens meet volume + holder depth.`
-              : `No tokens pass the full tradeable bar yet — Helius is enriching holder counts in the background (${tokens.length} on watchlist).`}
-          </p>
+          <p>Waiting for live stream — tokens appear on discovery; none hidden by score filters.</p>
         </div>
       )}
 
-      {displayMode === 'low_confidence' && !usingFallback && (
+      {displayMode === 'low_confidence' && !streamDown && (
         <div className="mb-4 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-2 text-xs text-violet-200/90">
           Live stream active — early tokens shown with low confidence scores until holder depth and volume build.
         </div>
@@ -180,7 +174,7 @@ export function DashboardPage() {
           <motion.div>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">
-                {usingFallback ? 'Watchlist feed' : 'Tradeable feed'}
+                Live ranked feed
               </h2>
               <Link to="/feed" className="text-xs text-violet-400 hover:text-violet-300">
                 Scanner →

@@ -247,4 +247,9 @@ export class EventsGateway implements OnGatewayConnection {
   emitBubbleMapUpdate(payload: BubbleMapUpdatePayload) {
     this.server.to(`token:${payload.mint}`).emit('bubblemap:update', payload)
   }
+
+  /** Pro-tier intelligence alerts (pump, smart money, volume spike). */
+  emitIntelligenceAlert(payload: unknown) {
+    this.server.to('feed').emit('signal:alert', payload)
+  }
 }

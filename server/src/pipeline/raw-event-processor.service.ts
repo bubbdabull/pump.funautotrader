@@ -15,6 +15,7 @@ import { ChartAggregationService } from '../charts/chart-aggregation.service'
 import { EventsGateway } from '../events/events.gateway'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 import type { DynamicsAnalytics } from '@phronis/trading'
+import { SignalIntelligenceService } from '../intelligence/signal-intelligence.service'
 
 /**
  * PumpPortal WS → normalize → registry → scoring → UI.
@@ -43,6 +44,7 @@ export class RawEventProcessorService implements OnModuleInit {
     private events: EventsGateway,
     @Inject(forwardRef(() => PumpPortalDataGateway))
     private pumpportal: PumpPortalDataGateway,
+    private signalIntel: SignalIntelligenceService,
     @Optional() private ingestionHealth?: IngestionHealthService,
   ) {}
 
@@ -103,9 +105,16 @@ export class RawEventProcessorService implements OnModuleInit {
     }
 
     const row = this.liveFeed.get(mint) ?? saved
-    const normalized = this.registry.normalize(row, 'stream', intel.analytics)
+    const enriched = this.signalIntel.enrichFeedToken(row, intel.analytics ?? undefined)
+    this.liveFeed.patch(enriched)
+    const normalized = this.registry.normalize(enriched, 'stream', intel.analytics)
     const urgentPatch = event.type === 'token.trade'
     this.batcher.scheduleRegistryPatch(normalized, urgentPatch)
+
+    const alerts = this.signalIntel.evaluateAlerts(mint, enriched, 'pro')
+    for (const alert of alerts) {
+      this.events.emitIntelligenceAlert(alert)
+    }
     this.tokens.publishStreamEvents(mint, row)
 
     if (event.type === 'token.trade') {
@@ -124,6 +133,9 @@ export class RawEventProcessorService implements OnModuleInit {
               buyPressure: Math.round(intel.analytics.buyPressure1m * 100),
               volumeVelocity: intel.analytics.velocity.volumeVelocity,
               walletVelocity: intel.analytics.velocity.walletVelocity,
+              momentumPulse:
+                intel.analytics.burst.ignitionScore > 0.35 ||
+                intel.analytics.velocity.volumeVelocity > 2,
             }
           : undefined
 

@@ -1,19 +1,27 @@
 import type { PumpToken } from '@/types'
-import { feedConfidenceScore, isGraduatingSoon, GRADUATING_CURVE_MIN } from '@/lib/feedQuality'
+import { isGraduatingSoon, GRADUATING_CURVE_MIN } from '@/lib/feedQuality'
 
 export type ConfidenceTier = 'high' | 'medium' | 'low'
 
 export type FlowVisual = 'inflow' | 'sell' | 'neutral' | 'active'
 
+export type FeedBadge =
+  | 'RAW'
+  | 'HOT'
+  | 'MIGRATING'
+  | 'SMART MONEY IN'
+  | 'BREAKOUT RISK'
+
 export function confidenceTier(token: PumpToken): ConfidenceTier {
-  const score = feedConfidenceScore(token)
-  if (score >= 70) return 'high'
-  if (score >= 40) return 'medium'
+  const score = token.confidenceScore ?? (token.score ?? 0) / 100
+  if (score >= 0.7 || (token.score ?? 0) >= 70) return 'high'
+  if (score >= 0.4 || (token.score ?? 0) >= 40) return 'medium'
   return 'low'
 }
 
 export function flowVisual(token: PumpToken): FlowVisual {
   if (token.isActive) return 'active'
+  if (token.smartMoneyFlow === 'SMART_MONEY_EXIT') return 'sell'
   const buy = token.buyPressure1m
   if (buy != null && buy >= 58) return 'inflow'
   if (buy != null && buy <= 42) return 'sell'
@@ -29,10 +37,10 @@ export function isNewLaunch(token: PumpToken, maxAgeMs = 15 * 60_000): boolean {
   return tokenAgeMs(token) < maxAgeMs
 }
 
-export function feedBadges(token: PumpToken): Array<'NEW' | 'HOT' | 'MIGRATING'> {
-  const badges: Array<'NEW' | 'HOT' | 'MIGRATING'> = []
-  if (isNewLaunch(token)) badges.push('NEW')
-  if (token.isActive) badges.push('HOT')
+export function feedBadges(token: PumpToken): FeedBadge[] {
+  const badges: FeedBadge[] = []
+  if (token.signalState === 'RAW_SIGNAL' || isNewLaunch(token)) badges.push('RAW')
+  if (token.isActive || token.signalState === 'MOMENTUM_SIGNAL') badges.push('HOT')
   if (
     token.lifecycle === 'MIGRATION_WATCH' ||
     token.lifecycle === 'MIGRATED' ||
@@ -40,6 +48,14 @@ export function feedBadges(token: PumpToken): Array<'NEW' | 'HOT' | 'MIGRATING'>
     token.bondingCurvePercent >= GRADUATING_CURVE_MIN
   ) {
     badges.push('MIGRATING')
+  }
+  if (token.smartMoneyFlow === 'SMART_MONEY_IN') badges.push('SMART MONEY IN')
+  if (
+    token.pumpSignal === 'EARLY_BREAKOUT' ||
+    token.pumpSignal === 'FAKEOUT_RISK' ||
+    (token.pumpProbabilityScore ?? 0) >= 65
+  ) {
+    badges.push('BREAKOUT RISK')
   }
   return badges
 }

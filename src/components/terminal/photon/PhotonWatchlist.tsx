@@ -5,6 +5,7 @@ import { cn, formatUsd, tokenVolumeSol } from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { tokenMediaProps } from '@/lib/tokenMediaProps'
 import { displayTokenSymbol } from '@/lib/tokenDisplay'
+import { feedBadges } from '@/lib/tokenFeedVisuals'
 import type { PumpToken } from '@/types'
 
 type SortKey = 'age' | 'mcap' | 'volume' | 'txns'
@@ -93,11 +94,11 @@ function PhotonWatchlistInner({
         </div>
       </div>
 
-      <div className="grid grid-cols-[1fr_44px_52px_40px] gap-1 border-b border-white/[0.05] px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-zinc-600">
+      <div className="grid grid-cols-[1fr_36px_44px_44px] gap-1 border-b border-white/[0.05] px-2 py-1 text-[9px] font-semibold uppercase tracking-wider text-zinc-600">
         <span>Token</span>
+        <span className="text-right">Scr</span>
         <span className="text-right">MC</span>
         <span className="text-right">Vol</span>
-        <span className="text-right">Tx</span>
       </div>
 
       <ScrollArea.Root className="min-h-0 flex-1">
@@ -152,17 +153,39 @@ function PhotonWatchRow({
       type="button"
       onClick={() => onSelect(token.mint)}
       className={cn(
-        'grid w-full grid-cols-[1fr_44px_52px_40px] items-center gap-1 border-b border-white/[0.03] px-2 py-1.5 text-left transition-colors hover:bg-white/[0.03]',
+        'grid w-full grid-cols-[1fr_36px_44px_44px] items-center gap-1 border-b border-white/[0.03] px-2 py-1.5 text-left transition-colors hover:bg-white/[0.03]',
         selected && 'photon-row-selected',
         active && !selected && 'bg-emerald-500/[0.04]',
       )}
     >
-      <span className="flex min-w-0 items-center gap-1.5">
-        <TokenImage {...tokenMediaProps(token)} size="xs" />
-        <span className="truncate text-[11px] font-semibold text-zinc-200">
-          {displayTokenSymbol(token)}
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex min-w-0 items-center gap-1">
+          <TokenImage {...tokenMediaProps(token)} size="xs" />
+          <span className="truncate text-[11px] font-semibold text-zinc-200">
+            {displayTokenSymbol(token)}
+          </span>
+          {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />}
         </span>
-        {active && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />}
+        <span className="flex flex-wrap gap-0.5">
+          {feedBadges(token).slice(0, 2).map((b) => (
+            <span
+              key={b}
+              className={cn(
+                'rounded px-0.5 text-[7px] font-bold uppercase',
+                b === 'RAW' && 'text-sky-400',
+                b === 'HOT' && 'text-orange-400',
+                b === 'SMART MONEY IN' && 'text-emerald-400',
+                b === 'BREAKOUT RISK' && 'text-amber-400',
+                b === 'MIGRATING' && 'text-violet-400',
+              )}
+            >
+              {b}
+            </span>
+          ))}
+        </span>
+      </span>
+      <span className="text-right font-mono text-[10px] text-emerald-400/90">
+        {token.score ?? '—'}
       </span>
       <span className="truncate text-right font-mono text-[10px] text-zinc-400">
         {formatUsd(token.marketCap).replace('$', '')}
@@ -170,7 +193,6 @@ function PhotonWatchRow({
       <span className="text-right font-mono text-[10px] text-zinc-500">
         {tokenVolumeSol(token).toFixed(1)}
       </span>
-      <span className="text-right font-mono text-[10px] text-zinc-500">{token.trades1m ?? 0}</span>
     </button>
   )
 }

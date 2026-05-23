@@ -9,6 +9,23 @@ export type PumpPortalPool =
 
 export type TokenDataState = 'raw' | 'enriching' | 'active' | 'invalid'
 
+export type SignalState =
+  | 'RAW_SIGNAL'
+  | 'ACCUMULATION_SIGNAL'
+  | 'MOMENTUM_SIGNAL'
+  | 'DISTRIBUTION_SIGNAL'
+  | 'INVALID_SIGNAL'
+
+export type PumpDetectionLabel =
+  | 'EARLY_BREAKOUT'
+  | 'ACCUMULATION_PHASE'
+  | 'FAKEOUT_RISK'
+  | 'NO_SIGNAL'
+
+export type SmartMoneyFlow = 'SMART_MONEY_IN' | 'SMART_MONEY_EXIT' | 'NEUTRAL'
+
+export type SubscriptionTier = 'free' | 'pro'
+
 export type TokenLifecycleState =
   | 'NEW'
   | 'DISCOVERING'
@@ -61,6 +78,17 @@ export interface PumpToken {
   coordinationPenalty?: number
   /** Pipeline readiness — raw/enriching still visible in scanner */
   dataState?: TokenDataState
+  signalState?: SignalState
+  /** Unified intelligence score 0–100 */
+  score?: number
+  confidenceScore?: number
+  dataCompletenessScore?: number
+  smartMoneyScore?: number
+  smartMoneyFlow?: SmartMoneyFlow
+  pumpProbabilityScore?: number
+  pumpSignal?: PumpDetectionLabel
+  scoreVelocity?: number
+  subscriptionTier?: SubscriptionTier
 }
 
 export interface AutoTradeRules {
@@ -122,6 +150,22 @@ export interface Alert {
   message: string
   triggeredAt: string
   read: boolean
+}
+
+export type IntelligenceAlertType =
+  | 'pump_probability'
+  | 'smart_money_in'
+  | 'volume_spike'
+  | 'migration'
+
+export interface IntelligenceAlert {
+  type: IntelligenceAlertType
+  mint: string
+  score: number
+  pumpProbabilityScore: number
+  smartMoneyFlow: SmartMoneyFlow
+  pumpSignal: PumpDetectionLabel
+  at: number
 }
 
 export interface PortfolioPosition {

@@ -34,6 +34,7 @@ export interface ProgressionPoint {
   buyPressure: number
   volumeVelocity: number
   walletVelocity: number
+  momentumPulse?: boolean
 }
 
 export interface TokenChartSeries {

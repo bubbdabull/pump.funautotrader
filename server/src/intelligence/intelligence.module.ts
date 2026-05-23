@@ -9,13 +9,21 @@ import { StreamIntelligenceService } from './stream-intelligence.service'
 import { TokenLifecycleService } from './token-lifecycle.service'
 import { TerminalEmitterService } from './terminal-emitter.service'
 import { WalletGraphService } from './wallet-graph.service'
+import { SignalIntelligenceService } from './signal-intelligence.service'
 import { RpcModule } from '../rpc/rpc.module'
 import { HoldersModule } from '../holders/holders.module'
+import { TradingModule } from '../trading/trading.module'
 
 @Global()
 @Module({
-  imports: [RpcModule, forwardRef(() => EventsModule), forwardRef(() => HoldersModule)],
+  imports: [
+    RpcModule,
+    TradingModule,
+    forwardRef(() => EventsModule),
+    forwardRef(() => HoldersModule),
+  ],
   providers: [
+    SignalIntelligenceService,
     MarketDynamicsService,
     WalletBehaviorAnalyzerService,
     EventSequencerService,
@@ -36,6 +44,7 @@ import { HoldersModule } from '../holders/holders.module'
     TokenLifecycleService,
     TerminalEmitterService,
     WalletGraphService,
+    SignalIntelligenceService,
   ],
 })
 export class IntelligenceModule {}

@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client'
-import type { PumpToken } from '@/types'
+import type { IntelligenceAlert, PumpToken } from '@/types'
 import type { TradeTickPayload } from '@/lib/tradeTypes'
 import type {
   BubbleMapUpdatePayload,
@@ -57,6 +57,7 @@ class RealtimeGateway {
   private readonly holderHandlers = new Set<Handler<HolderUpdatePayload>>()
   private readonly walletHandlers = new Set<Handler<WalletUpdatePayload>>()
   private readonly bubblemapHandlers = new Set<Handler<BubbleMapUpdatePayload>>()
+  private readonly intelligenceAlertHandlers = new Set<Handler<IntelligenceAlert>>()
   private readonly connectHandlers = new Set<Handler<void>>()
   private readonly disconnectHandlers = new Set<Handler<void>>()
   private readonly streamMetaHandlers = new Set<Handler<StreamMetaPayload>>()
@@ -143,6 +144,13 @@ class RealtimeGateway {
     socket.on('feed:prepend', () => warnLegacyEvent('feed:prepend'))
     socket.on('token:update', () => warnLegacyEvent('token:update'))
     socket.on('autotrader:signal', () => warnLegacyEvent('autotrader:signal'))
+
+    socket.on('signal:alert', (payload: unknown) => {
+      const alert = payload as IntelligenceAlert
+      if (!alert?.mint || !alert?.type) return
+      useRealtimeStore.getState().pushIntelligenceAlert(alert)
+      this.intelligenceAlertHandlers.forEach((h) => h(alert))
+    })
 
     socket.io.on('reconnect_attempt', () => {
       useRealtimeStore.getState().recordReconnect()
@@ -369,6 +377,11 @@ class RealtimeGateway {
   onBubblemapUpdate(handler: Handler<BubbleMapUpdatePayload>) {
     this.bubblemapHandlers.add(handler)
     return () => this.bubblemapHandlers.delete(handler)
+  }
+
+  onIntelligenceAlert(handler: Handler<IntelligenceAlert>) {
+    this.intelligenceAlertHandlers.add(handler)
+    return () => this.intelligenceAlertHandlers.delete(handler)
   }
 }
 

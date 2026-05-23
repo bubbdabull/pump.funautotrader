@@ -1,4 +1,10 @@
-import type { TokenDataState } from '@phronis/trading'
+import type {
+  TokenDataState,
+  SignalState,
+  PumpDetectionLabel,
+  SmartMoneyFlow,
+  SubscriptionTier,
+} from '@phronis/trading'
 
 /** Token shape returned by feed API (matches frontend PumpToken). */
 export interface FeedToken {
@@ -41,6 +47,17 @@ export interface FeedToken {
   top5Pct?: number
   /** Enrichment lifecycle — raw/enriching still shown in UI */
   dataState?: TokenDataState
+  /** Unified intelligence layer */
+  signalState?: SignalState
+  score?: number
+  confidenceScore?: number
+  dataCompletenessScore?: number
+  smartMoneyScore?: number
+  smartMoneyFlow?: SmartMoneyFlow
+  pumpProbabilityScore?: number
+  pumpSignal?: PumpDetectionLabel
+  scoreVelocity?: number
+  subscriptionTier?: SubscriptionTier
 }
 
 export interface FeedTrade {
