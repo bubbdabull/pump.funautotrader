@@ -17,9 +17,7 @@ primary_region = 'dfw'
   # Prisma client expects DATABASE_URL even when using Supabase REST only
   DATABASE_URL = 'postgresql://noop:noop@127.0.0.1:5432/noop'
   PUMP_FUN_API_URL = 'https://frontend-api.pump.fun'
-  PUMP_FUN_BOOTSTRAP_LIMIT = '100'
-  PUMP_FUN_SYNC_INTERVAL_MS = '120000'
-  LIVE_FEED_MAX = '300'
+  # Scanner pool sizes: trading/constants.ts (not env)
   PUMPPORTAL_WS_URL = 'wss://pumpportal.fun/api/data'
   PUMPPORTAL_TRADE_URL = 'https://pumpportal.fun/api/trade-local'
   PUMPPORTAL_MAX_TRADE_SUBS = '250'

@@ -29,6 +29,8 @@ export interface PumpCoin {
   creator?: string
 }
 
+import { PUMP_FUN_SCAN_PAGE_SIZE } from '@phronis/trading'
+
 const V3_BASE = 'https://frontend-api-v3.pump.fun'
 
 @Injectable()
@@ -108,10 +110,7 @@ export class PumpService {
    */
   async fetchBroadMarketScan(maxCoins = 800): Promise<PumpCoin[]> {
     const cap = Math.min(Math.max(maxCoins, 50), 3000)
-    const pageSize = Math.min(
-      50,
-      Math.max(20, Number(this.config.get('PUMP_FUN_SCAN_PAGE_SIZE') ?? 50)),
-    )
+    const pageSize = PUMP_FUN_SCAN_PAGE_SIZE
     const byMint = new Map<string, PumpCoin>()
 
     const add = (list: PumpCoin[]): boolean => {

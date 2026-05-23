@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import {
   passesIngestGate,
   passesTradeableFilter,
   tradeQualityScore,
   rankTradeable,
+  DISCOVERY_POOL_MAX,
 } from '@phronis/trading'
 import type { FeedToken } from '../feed/feed.types'
 
@@ -17,9 +17,8 @@ export class TokenDiscoveryService {
   private lastScanAt?: string
   private lastScanCount = 0
 
-  constructor(config: ConfigService) {
-    const n = Number(config.get('DISCOVERY_POOL_MAX') ?? 2500)
-    this.maxPool = Number.isFinite(n) && n >= 200 ? Math.min(n, 5000) : 2500
+  constructor() {
+    this.maxPool = DISCOVERY_POOL_MAX
   }
 
   getStats() {

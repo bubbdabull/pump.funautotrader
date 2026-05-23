@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import { LiveFeedService } from '../feed/live-feed.service'
 import { AutoTraderService } from '../autotrader/autotrader.service'
 import {
@@ -7,6 +6,7 @@ import {
   isDeadFeedToken,
   passesAlphaFilter,
   rankByLiveActivity,
+  FEED_TRADE_PIN_MAX,
 } from '@phronis/trading'
 import type { FeedToken } from '../feed/feed.types'
 import { HotMintsService } from './hot-mints.service'
@@ -22,10 +22,8 @@ export class FeedTradePinService {
     private autoTrader: AutoTraderService,
     private hotMints: HotMintsService,
     private discovery: TokenDiscoveryService,
-    config: ConfigService,
   ) {
-    const n = Number(config.get('FEED_TRADE_PIN_MAX') ?? 120)
-    this.maxPins = Number.isFinite(n) && n >= 20 ? Math.min(n, 400) : 120
+    this.maxPins = FEED_TRADE_PIN_MAX
   }
 
   getMandatoryMints(): string[] {

@@ -46,7 +46,7 @@ HOLDER_ENRICH_INTERVAL_MS=90000
 
 | Source | Role |
 |--------|------|
-| pump.fun REST | Bootstrap + periodic sync (`PUMP_FUN_SYNC_INTERVAL_MS`, default 2 min) |
+| pump.fun REST | Bootstrap + periodic sync (see `trading/constants.ts`, default 90s) |
 | Supabase | Persist every token the feed sees |
 
 ## Required Fly secrets
@@ -79,5 +79,5 @@ Keep `VITE_PUMPPORTAL_DIRECT=false` so all data flows through Fly (one PumpPorta
 | Goal | Change |
 |------|--------|
 | More live trade data | Raise `PUMPPORTAL_MAX_TRADE_SUBS` (watch SOL meter) |
-| Larger scanner feed | Raise `LIVE_FEED_MAX` |
-| Fresher holder/volume | Lower `PUMP_FUN_SYNC_INTERVAL_MS` (min 30000) |
+| Larger scanner feed | Raise `LIVE_FEED_MAX` in `trading/constants.ts` |
+| Broader market scan | Raise `PUMP_FUN_SCAN_LIMIT` / `DISCOVERY_POOL_MAX` there |

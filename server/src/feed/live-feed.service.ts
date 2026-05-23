@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
 import {
   activitySol,
   hasRealTimeTradeActivity,
@@ -12,6 +11,7 @@ import {
   normalizeFeedTokenLabels,
   pickTokenName,
   pickTokenSymbol,
+  LIVE_FEED_MAX,
 } from '@phronis/trading'
 import type { FeedToken, FeedStats } from './feed.types'
 
@@ -20,9 +20,8 @@ export class LiveFeedService {
   private readonly maxFeed: number
   private readonly tokens = new Map<string, FeedToken>()
 
-  constructor(config: ConfigService) {
-    const n = Number(config.get('LIVE_FEED_MAX') ?? 80)
-    this.maxFeed = Number.isFinite(n) && n >= 20 ? Math.min(n, 500) : 80
+  constructor() {
+    this.maxFeed = LIVE_FEED_MAX
   }
 
   getMaxFeed(): number {

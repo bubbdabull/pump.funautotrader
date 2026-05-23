@@ -24,6 +24,10 @@ import {
   curveFromLiquiditySnapshot,
   computeFeedActivity,
   type ScannerLane,
+  PUMP_FUN_SCAN_LIMIT,
+  AUTOTRADE_PRIORITY_MINTS,
+  AUTOTRADE_PRIME_LIMIT,
+  META_ENRICH_BATCH_SIZE,
 } from '@phronis/trading'
 import {
   marketCapUsdFromSol,
@@ -72,15 +76,6 @@ export class TokensService {
     private discovery: TokenDiscoveryService,
   ) {}
 
-  private pumpScanLimit(): number {
-    const n = Number(this.config.get('PUMP_FUN_SCAN_LIMIT') ?? 800)
-    return Number.isFinite(n) && n >= 50 ? Math.min(n, 3000) : 800
-  }
-
-  private pumpBootstrapLimit(): number {
-    return Math.min(this.pumpScanLimit(), 500)
-  }
-
   getScanStats() {
     const live = this.liveFeed.getAll(500)
     return {
@@ -92,7 +87,7 @@ export class TokensService {
   }
 
   /** Mints to subscribe for trade ticks after a broad pump.fun scan. */
-  getAutotradePriorityMints(limit = 100): string[] {
+  getAutotradePriorityMints(limit = AUTOTRADE_PRIORITY_MINTS): string[] {
     const live = rankTradeable(this.liveFeed.getAll(limit * 2), limit).map((t) => t.mint)
     const fromDiscovery = this.discovery.getTopForTradePins(limit)
     const out: string[] = []
@@ -106,7 +101,7 @@ export class TokensService {
     return out
   }
 
-  async primeAutotradeFromDiscovery(limit = 80) {
+  async primeAutotradeFromDiscovery(limit = AUTOTRADE_PRIME_LIMIT) {
     const candidates = this.discovery.getTopTradeable(limit)
     for (const t of candidates) {
       if (!this.trading.getState(t.mint)) {
@@ -167,7 +162,7 @@ export class TokensService {
   }
 
   private async bootstrapFeedFromPump(): Promise<FeedToken[]> {
-    const coins = await this.pump.fetchBroadMarketScan(this.pumpScanLimit())
+    const coins = await this.pump.fetchBroadMarketScan(PUMP_FUN_SCAN_LIMIT)
     const nearGrad = await this.pump.fetchNearGraduation(40)
     const byMint = new Map<string, PumpCoin>()
     for (const c of [...coins, ...nearGrad]) byMint.set(c.mint, c)
@@ -524,7 +519,7 @@ export class TokensService {
   }
 
   async syncFromPump() {
-    const coins = await this.pump.fetchBroadMarketScan(this.pumpScanLimit())
+    const coins = await this.pump.fetchBroadMarketScan(PUMP_FUN_SCAN_LIMIT)
     const nearGrad = await this.pump.fetchNearGraduation(40)
     const byMint = new Map<string, PumpCoin>()
     for (const c of [...coins, ...nearGrad]) byMint.set(c.mint, c)
@@ -579,7 +574,7 @@ export class TokensService {
     }
     this.discovery.ingest(mappedAll)
     void this.kickMetaEnrichBatch(mappedAll)
-    void this.primeAutotradeFromDiscovery(100)
+    void this.primeAutotradeFromDiscovery(AUTOTRADE_PRIME_LIMIT)
     return byMint.size
   }
 
@@ -592,7 +587,7 @@ export class TokensService {
           !isUsableTokenImageUrl(t.image) ||
           !t.metadataUri,
       )
-      .slice(0, 40)
+      .slice(0, META_ENRICH_BATCH_SIZE)
     for (const t of batch) {
       void this.enrichTokenMedia(t.mint, {
         metadataUri: t.metadataUri,
@@ -869,7 +864,7 @@ export class TokensService {
         if (t.image && isUsableTokenImageUrl(t.image)) return false
         return true
       })
-      .slice(0, 40)
+      .slice(0, META_ENRICH_BATCH_SIZE)
     for (const t of batch) {
       void this.enrichTokenMedia(t.mint, {
         metadataUri: t.metadataUri,

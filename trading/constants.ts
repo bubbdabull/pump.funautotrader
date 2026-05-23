@@ -37,3 +37,20 @@ export const SMART_MONEY_MIN_TRADES = 5
 /** Sniper detection */
 export const SNIPER_WINDOW_MS = 120_000
 export const SAME_BLOCK_DENSITY_THRESHOLD = 4
+
+/** Broad pump.fun REST scan — paginated multi-sort market sweep. */
+export const PUMP_FUN_SCAN_LIMIT = 800
+export const PUMP_FUN_SCAN_PAGE_SIZE = 50
+export const PUMP_FUN_SCAN_INTERVAL_MS = 90_000
+
+/** In-memory discovery pool (autotrade candidate ranking). */
+export const DISCOVERY_POOL_MAX = 2500
+
+/** Live PumpPortal + RAM feed (UI lanes). */
+export const LIVE_FEED_MAX = 500
+
+/** PumpPortal trade stream pins for top discovery + feed mints. */
+export const FEED_TRADE_PIN_MAX = 200
+export const AUTOTRADE_PRIORITY_MINTS = 120
+export const AUTOTRADE_PRIME_LIMIT = 100
+export const META_ENRICH_BATCH_SIZE = 40

@@ -1,5 +1,5 @@
 import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, forwardRef } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
+import { PUMP_FUN_SCAN_INTERVAL_MS } from '@phronis/trading'
 import { TokensService } from './tokens.service'
 import { EventsGateway } from '../events/events.gateway'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
@@ -13,7 +13,6 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
   private lastSyncCount = 0
 
   constructor(
-    private config: ConfigService,
     private tokens: TokensService,
     @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
@@ -22,12 +21,11 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    const ms = Number(this.config.get('PUMP_FUN_SYNC_INTERVAL_MS') ?? 120_000)
-    if (!Number.isFinite(ms) || ms < 30_000) return
-
-    this.timer = setInterval(() => void this.runSync(), ms)
+    this.timer = setInterval(() => void this.runSync(), PUMP_FUN_SCAN_INTERVAL_MS)
     void this.runSync()
-    this.logger.log(`pump.fun REST sync every ${Math.round(ms / 1000)}s`)
+    this.logger.log(
+      `pump.fun REST sync every ${Math.round(PUMP_FUN_SCAN_INTERVAL_MS / 1000)}s`,
+    )
   }
 
   onModuleDestroy() {
@@ -36,7 +34,7 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
 
   getStatus() {
     return {
-      intervalMs: Number(this.config.get('PUMP_FUN_SYNC_INTERVAL_MS') ?? 120_000),
+      intervalMs: PUMP_FUN_SCAN_INTERVAL_MS,
       lastSyncAt: this.lastSyncAt,
       lastSyncCount: this.lastSyncCount,
     }
@@ -47,7 +45,7 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
       const count = await this.tokens.syncFromPump()
       this.lastSyncCount = count
       this.lastSyncAt = new Date().toISOString()
-      const priority = this.tokens.getAutotradePriorityMints(120)
+      const priority = this.tokens.getAutotradePriorityMints()
       for (const mint of priority) {
         this.pumpportal.ensureTradeSubscription(mint)
       }
