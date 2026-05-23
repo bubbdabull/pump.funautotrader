@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { tokenApi } from '@/services/api'
 import { wsService } from '@/services/websocket'
 import { pumpPortalWs } from '@/services/pumpportal-ws'
-import { useDirectPumpPortalWs } from '@/lib/pumpportalConfig'
+import { useBrowserPumpPortalWs } from '@/lib/pumpportalConfig'
 import type { PumpToken } from '@/types'
 import type { FeedTrade } from '@/services/api'
 import type { TradeTickPayload } from '@/lib/tradeTypes'
@@ -65,7 +65,7 @@ export function useTokenFeed() {
     retry: 2,
   })
 
-  const directPumpPortal = useDirectPumpPortalWs()
+  const browserPumpPortal = useBrowserPumpPortalWs()
 
   useEffect(() => {
     wsService.connect()
@@ -92,8 +92,20 @@ export function useTokenFeed() {
     const unsubPatch = wsService.onFeedPatch(patchFeed)
     const unsubPortal = wsService.onPumpPortalToken(prepend)
     const unsubToken = wsService.onTokenUpdate(patchFeed)
-    const unsubDirect = directPumpPortal ? pumpPortalWs.onToken(prepend) : () => {}
-    const unsubDirectPatch = directPumpPortal ? pumpPortalWs.onTokenUpdate(patchFeed) : () => {}
+    const unsubDirect = browserPumpPortal ? pumpPortalWs.onToken(prepend) : () => {}
+    const unsubDirectPatch = browserPumpPortal ? pumpPortalWs.onTokenUpdate(patchFeed) : () => {}
+    const unsubDirectTick = browserPumpPortal
+      ? pumpPortalWs.onTradeTick((tick) => {
+          queryClient.setQueryData<PumpToken[]>(['tokens', 'feed'], (old) => {
+            const list = ensureArray<PumpToken>(old)
+            const idx = list.findIndex((t) => t.mint === tick.mint)
+            if (idx < 0) return list
+            const next = [...list]
+            next[idx] = applyTradeTickToToken(next[idx], tick)
+            return next
+          })
+        })
+      : () => {}
     const unsubTradeTick = wsService.onTradeTick((tick) => {
       queryClient.setQueryData<PumpToken[]>(['tokens', 'feed'], (old) => {
         const list = ensureArray<PumpToken>(old)
@@ -113,9 +125,10 @@ export function useTokenFeed() {
       unsubToken()
       unsubDirect()
       unsubDirectPatch()
+      unsubDirectTick()
       unsubTradeTick()
     }
-  }, [queryClient, directPumpPortal])
+  }, [queryClient, browserPumpPortal])
 
   return query
 }
@@ -131,7 +144,7 @@ export function useFeedStats() {
 
 export function useToken(mint: string) {
   const queryClient = useQueryClient()
-  const directPumpPortal = useDirectPumpPortalWs()
+  const browserPumpPortal = useBrowserPumpPortalWs()
 
   const query = useQuery({
     queryKey: ['tokens', mint],
@@ -146,6 +159,7 @@ export function useToken(mint: string) {
     if (!mint) return
     wsService.connect()
     wsService.subscribeToken(mint)
+    if (browserPumpPortal) pumpPortalWs.watchTrades(mint)
 
     const patch = (token: PumpToken) => {
       if (token.mint !== mint) return
@@ -196,20 +210,45 @@ export function useToken(mint: string) {
     })
 
     const unsub = wsService.onTokenUpdate(patch)
-    const unsubDirect = directPumpPortal ? pumpPortalWs.onTokenUpdate(patch) : () => {}
+    const unsubDirect = browserPumpPortal ? pumpPortalWs.onTokenUpdate(patch) : () => {}
+    const unsubDirectTick = browserPumpPortal
+      ? pumpPortalWs.onTradeTick((tick) => {
+          if (tick.mint !== mint) return
+          queryClient.setQueryData<PumpToken>(['tokens', mint], (prev) =>
+            prev ? applyTradeTickToToken(prev, tick) : prev,
+          )
+          queryClient.setQueryData<FeedTrade[]>(['tokens', mint, 'trades'], (prev) => {
+            const row: FeedTrade = {
+              signature: tick.signature,
+              wallet: tick.wallet,
+              side: tick.side,
+              solAmount: tick.solAmount,
+              tokenAmount: tick.tokenAmount,
+              timestampMs: tick.timestampMs,
+              timestamp: new Date(tick.timestampMs).toISOString(),
+            }
+            const list = ensureArray<FeedTrade>(prev)
+            if (list.some((t) => t.signature === row.signature)) return list
+            return [row, ...list].slice(0, 80)
+          })
+        })
+      : () => {}
+
     return () => {
       unsub()
       unsubDirect()
+      unsubDirectTick()
       unsubHolders()
       unsubTick()
     }
-  }, [mint, queryClient, directPumpPortal])
+  }, [mint, queryClient, browserPumpPortal])
 
   return query
 }
 
 export function useTokenTrades(mint: string) {
   const queryClient = useQueryClient()
+  const browserPumpPortal = useBrowserPumpPortalWs()
 
   const query = useQuery({
     queryKey: ['tokens', mint, 'trades'],
@@ -223,6 +262,8 @@ export function useTokenTrades(mint: string) {
     if (!mint) return
     wsService.connect()
     wsService.subscribeToken(mint)
+    if (browserPumpPortal) pumpPortalWs.watchTrades(mint)
+
     const unsub = wsService.onTradeTick((tick) => {
       if (tick.mint !== mint) return
       queryClient.setQueryData<FeedTrade[]>(['tokens', mint, 'trades'], (prev) => {
@@ -243,7 +284,7 @@ export function useTokenTrades(mint: string) {
     return () => {
       unsub()
     }
-  }, [mint, queryClient])
+  }, [mint, queryClient, browserPumpPortal])
 
   return query
 }

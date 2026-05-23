@@ -13,24 +13,33 @@ import {
   marketCapUsdFromSol,
   normalizeVirtualSol,
   resolveTokenImage,
+  normalizePumpPortalTrade,
+  resolveHolderCount,
 } from '@trading'
 
 export function ingestPumpPortalPayload(data: Record<string, unknown>): PumpToken | null {
   if (!data.mint || typeof data.mint !== 'string') return null
 
   const mint = data.mint
-  const isTrade = data.txType === 'buy' || data.txType === 'sell'
+  const normalized = normalizePumpPortalTrade(data)
+  const isTrade = Boolean(normalized)
 
-  if (isTrade) {
+  if (isTrade && normalized) {
     globalMarketState.ingestTrade({
       mint,
-      txType: data.txType as 'buy' | 'sell',
-      solAmount: Number(data.solAmount ?? data.sol_amount ?? 0),
-      tokenAmount: Number(data.tokenAmount ?? data.token_amount ?? 0),
-      traderPublicKey: (data.traderPublicKey ?? data.trader) as string | undefined,
-      signature: data.signature as string | undefined,
-      vSolInBondingCurve: Number(data.vSolInBondingCurve ?? 0) || undefined,
-      marketCapSol: Number(data.marketCapSol ?? 0) || undefined,
+      txType: normalized.side,
+      solAmount: normalized.solAmount,
+      tokenAmount: normalized.tokenAmount,
+      newTokenBalance: normalized.newTokenBalance,
+      traderPublicKey: normalized.traderPublicKey,
+      signature: normalized.signature,
+      vSolInBondingCurve: normalized.vSolInBondingCurve,
+      marketCapSol: normalized.marketCapSol,
+      timestamp:
+        Number(data.timestamp) > 0
+          ? Number(data.timestamp)
+          : normalized.timestampMs,
+      slot: normalized.slot,
     })
   } else {
     globalMarketState.ingestNewToken({
@@ -52,6 +61,12 @@ export function pumpTokenFromMint(
   data?: Record<string, unknown>,
 ): PumpToken {
   const state = globalMarketState.getState(mint)
+  const holders = state
+    ? resolveHolderCount({
+        walletBalances: state.walletBalances,
+        trades: state.trades,
+      })
+    : 0
   const vSol = normalizeVirtualSol(
     state?.liquidity ??
       Number(data?.vSolInBondingCurve ?? data?.marketCapSol ?? 0),
@@ -95,10 +110,7 @@ export function pumpTokenFromMint(
     }),
     marketCap,
     bondingCurvePercent: curve,
-    holders: state
-      ? [...state.walletBalances.values()].filter((b) => b > 0).length ||
-        Math.max(1, new Set(state.trades.map((t) => t.wallet)).size)
-      : 0,
+    holders: state ? Math.max(1, holders) : 0,
     volume24h: Array.isArray(state?.trades)
       ? state.trades.reduce((a, t) => a + t.solAmount, 0)
       : 0,

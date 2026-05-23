@@ -2,6 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { tokenApi } from '@/services/api'
 import { wsService } from '@/services/websocket'
+import { pumpPortalWs } from '@/services/pumpportal-ws'
+import { useBrowserPumpPortalWs } from '@/lib/pumpportalConfig'
 import type { PumpToken } from '@/types'
 import { ensureArray } from '@/lib/ensureArray'
 import {
@@ -299,6 +301,7 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
 
 export function useTokenChart(mint: string, intervalMs = 5_000) {
   const queryClient = useQueryClient()
+  const browserPumpPortal = useBrowserPumpPortalWs()
   const key = ['tokens', mint, 'chart', intervalMs] as const
 
   const query = useQuery<TokenChartSeries>({
@@ -314,6 +317,7 @@ export function useTokenChart(mint: string, intervalMs = 5_000) {
     wsService.connect()
     wsService.subscribeToken(mint)
     void tokenApi.watchTrades(mint).catch(() => undefined)
+    if (browserPumpPortal) pumpPortalWs.watchTrades(mint)
     const unsubTick = wsService.onTradeTick((tick) => {
       if (tick.mint !== mint) return
       queryClient.invalidateQueries({ queryKey: ['tokens', mint, 'chart'] })
@@ -330,7 +334,7 @@ export function useTokenChart(mint: string, intervalMs = 5_000) {
       unsub()
       unsubTick()
     }
-  }, [mint, intervalMs, queryClient])
+  }, [mint, intervalMs, queryClient, browserPumpPortal])
 
   return query
 }

@@ -10,6 +10,22 @@ export function useDirectPumpPortalWs(): boolean {
   return import.meta.env.VITE_PUMPPORTAL_DIRECT === 'true'
 }
 
+/**
+ * Browser opens PumpPortal for trade ticks on viewed mints; Fly still does scan + autotrader.
+ * Requires VITE_PUMPPORTAL_API_KEY (single-user / private Vercel project).
+ */
+export function useHybridPumpPortalWs(): boolean {
+  if (useDirectPumpPortalWs()) return true
+  return (
+    import.meta.env.VITE_PUMPPORTAL_HYBRID === 'true' &&
+    Boolean(import.meta.env.VITE_PUMPPORTAL_API_KEY?.trim())
+  )
+}
+
+export function useBrowserPumpPortalWs(): boolean {
+  return useDirectPumpPortalWs() || useHybridPumpPortalWs()
+}
+
 export function pumpPortalWsUrl(): string {
   const key = import.meta.env.VITE_PUMPPORTAL_API_KEY
   if (!key) return PUMPPORTAL_WS_BASE

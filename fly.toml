@@ -20,9 +20,8 @@ primary_region = 'dfw'
   # Scanner pool sizes: trading/constants.ts (not env)
   PUMPPORTAL_WS_URL = 'wss://pumpportal.fun/api/data'
   PUMPPORTAL_TRADE_URL = 'https://pumpportal.fun/api/trade-local'
-  PUMPPORTAL_MAX_TRADE_SUBS = '250'
-  PUMPPORTAL_TRADE_SUB_BATCH = '80'
-  PUMPPORTAL_TRADE_SUB_ROTATE_MS = '45000'
+  # Trade sub limits: trading/constants.ts (FEED_TRADE_PIN_MAX). Set secrets on Fly, not here.
+  PUMPPORTAL_TRADE_SUB_ROTATE_MS = '20000'
 
 [http_service]
   internal_port = 8080

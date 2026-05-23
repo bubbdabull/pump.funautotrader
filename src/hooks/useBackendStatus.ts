@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { pumpportalApi } from '@/services/api'
 import { wsService } from '@/services/websocket'
 import { API_BASE, apiConfigMisconfigured, backendLabel } from '@/lib/apiConfig'
+import { useHybridPumpPortalWs } from '@/lib/pumpportalConfig'
 
 export function useBackendStatus() {
   const statusQuery = useQuery({
@@ -39,9 +40,13 @@ export function useBackendStatus() {
   let statusLine = 'Connecting to API…'
   let statusTone: 'ok' | 'warn' | 'error' = 'warn'
 
+  const hybridFallback = useHybridPumpPortalWs()
+
   if (statusQuery.isError) {
     statusTone = 'error'
-    statusLine = `Cannot reach API (${backendLabel()})`
+    statusLine = hybridFallback
+      ? `Fly API unreachable · browser PumpPortal hybrid active`
+      : `Cannot reach API (${backendLabel()}) — try local server or VITE_PUMPPORTAL_HYBRID`
   } else if (apiReachable && pumpportalConnected) {
     statusTone = 'ok'
     const socketBit = socketConnected ? 'WS on' : 'WS off'
