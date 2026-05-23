@@ -10,7 +10,7 @@ import { IntelligenceModule } from '../intelligence/intelligence.module'
 
 @Module({
   imports: [
-    forwardRef(() => HeliusModule),
+    HeliusModule,
     FeedModule,
     forwardRef(() => IntelligenceModule),
     forwardRef(() => EventsModule),

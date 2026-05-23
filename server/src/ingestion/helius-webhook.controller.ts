@@ -1,9 +1,10 @@
 import { Body, Controller, Post } from '@nestjs/common'
-import { HeliusService } from './helius.service'
-import { HeliusIngestSource } from '../ingestion/sources/helius-ingest.source'
+import { HeliusService } from '../helius/helius.service'
+import { HeliusIngestSource } from './sources/helius-ingest.source'
 
+/** Lives in IngestionModule to avoid HeliusModule ↔ IngestionModule circular imports. */
 @Controller('helius')
-export class HeliusController {
+export class HeliusWebhookController {
   constructor(
     private helius: HeliusService,
     private heliusIngest: HeliusIngestSource,

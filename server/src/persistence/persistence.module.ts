@@ -10,6 +10,6 @@ import { QuantPersistService } from '../quant/quant-persist.service'
 @Module({
   imports: [RedisModule, SupabaseModule, TradingModule],
   providers: [PersistenceQueueService, PersistenceWorkerService, QuantPersistService],
-  exports: [PersistenceQueueService],
+  exports: [PersistenceQueueService, QuantPersistService],
 })
 export class PersistenceModule {}
