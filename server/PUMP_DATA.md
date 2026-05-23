@@ -80,4 +80,4 @@ Keep `VITE_PUMPPORTAL_DIRECT=false` so all data flows through Fly (one PumpPorta
 |------|--------|
 | More live trade data | Raise `PUMPPORTAL_MAX_TRADE_SUBS` (watch SOL meter) |
 | Larger scanner feed | Raise `LIVE_FEED_MAX` in `trading/constants.ts` |
-| Broader market scan | Raise `PUMP_FUN_SCAN_LIMIT` / `DISCOVERY_POOL_MAX` there |
+| Broader market scan | Raise `PUMP_FUN_SCAN_TARGET` / `DISCOVERY_POOL_MAX` in `trading/constants.ts` |

@@ -39,18 +39,24 @@ export const SNIPER_WINDOW_MS = 120_000
 export const SAME_BLOCK_DENSITY_THRESHOLD = 4
 
 /** Broad pump.fun REST scan — paginated multi-sort market sweep. */
-export const PUMP_FUN_SCAN_LIMIT = 800
-export const PUMP_FUN_SCAN_PAGE_SIZE = 50
-export const PUMP_FUN_SCAN_INTERVAL_MS = 90_000
+export const PUMP_FUN_SCAN_TARGET = 4000
+export const PUMP_FUN_SCAN_PAGE_SIZE = 100
+/** Pages per sort axis (100 × 40 = 4000 rows per sort before dedupe). */
+export const PUMP_FUN_SCAN_PAGES_PER_SORT = 40
+export const PUMP_FUN_SCAN_INTERVAL_MS = 30_000
+export const PUMP_NEAR_GRAD_LIMIT = 80
+export const PUMP_FEATURED_FETCH_LIMIT = 200
 
 /** In-memory discovery pool (autotrade candidate ranking). */
-export const DISCOVERY_POOL_MAX = 2500
+export const DISCOVERY_POOL_MAX = 8000
 
 /** Live PumpPortal + RAM feed (UI lanes). */
-export const LIVE_FEED_MAX = 500
+export const LIVE_FEED_MAX = 800
 
 /** PumpPortal trade stream pins for top discovery + feed mints. */
-export const FEED_TRADE_PIN_MAX = 200
-export const AUTOTRADE_PRIORITY_MINTS = 120
-export const AUTOTRADE_PRIME_LIMIT = 100
-export const META_ENRICH_BATCH_SIZE = 40
+export const FEED_TRADE_PIN_MAX = 450
+export const AUTOTRADE_PRIORITY_MINTS = 250
+export const AUTOTRADE_PRIME_LIMIT = 200
+export const META_ENRICH_BATCH_SIZE = 100
+export const META_ENRICH_WAVES = 3
+export const MAP_COIN_BATCH_SIZE = 50

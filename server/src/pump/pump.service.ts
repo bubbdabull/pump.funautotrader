@@ -29,7 +29,13 @@ export interface PumpCoin {
   creator?: string
 }
 
-import { PUMP_FUN_SCAN_PAGE_SIZE } from '@phronis/trading'
+import {
+  PUMP_FUN_SCAN_PAGE_SIZE,
+  PUMP_FUN_SCAN_PAGES_PER_SORT,
+  PUMP_FUN_SCAN_TARGET,
+  PUMP_FEATURED_FETCH_LIMIT,
+  PUMP_NEAR_GRAD_LIMIT,
+} from '@phronis/trading'
 
 const V3_BASE = 'https://frontend-api-v3.pump.fun'
 
@@ -71,13 +77,15 @@ export class PumpService {
           `${baseUrl.replace(/\/$/, '')}/coins`,
           {
             params: { limit, offset, sort, order, includeNsfw: false },
-            timeout: 12000,
+            timeout: 20000,
             headers: this.headers(),
           },
         )
         const list = Array.isArray(data) ? data : (data?.coins ?? [])
         if (list.length > 0) {
-          this.logger.log(`Pump.fun: ${list.length} coins (${sort}) from ${baseUrl}`)
+          this.logger.log(
+            `Pump.fun: ${list.length} coins (${sort} offset ${options?.offset ?? 0}) from ${baseUrl}`,
+          )
           return list
         }
       } catch (err) {
@@ -104,12 +112,42 @@ export class PumpService {
     return []
   }
 
+  private mergePumpCoin(prev: PumpCoin, next: PumpCoin): PumpCoin {
+    return {
+      ...prev,
+      ...next,
+      name: next.name || prev.name,
+      symbol: next.symbol || prev.symbol,
+      image_uri: next.image_uri || prev.image_uri,
+      metadata_uri: next.metadata_uri || prev.metadata_uri,
+      twitter: next.twitter || prev.twitter,
+      telegram: next.telegram || prev.telegram,
+      website: next.website || prev.website,
+      usd_market_cap: Math.max(prev.usd_market_cap ?? 0, next.usd_market_cap ?? 0),
+      market_cap: Math.max(prev.market_cap ?? 0, next.market_cap ?? 0),
+      usd_24h_volume: Math.max(prev.usd_24h_volume ?? 0, next.usd_24h_volume ?? 0),
+      holder_count: Math.max(prev.holder_count ?? 0, next.holder_count ?? 0),
+      reply_count: Math.max(prev.reply_count ?? 0, next.reply_count ?? 0),
+      virtual_sol_reserves: Math.max(
+        prev.virtual_sol_reserves ?? 0,
+        next.virtual_sol_reserves ?? 0,
+      ),
+      last_trade_timestamp: Math.max(
+        prev.last_trade_timestamp ?? 0,
+        next.last_trade_timestamp ?? 0,
+      ),
+      last_trade_timestamp_ms: Math.max(
+        prev.last_trade_timestamp_ms ?? 0,
+        next.last_trade_timestamp_ms ?? 0,
+      ),
+    }
+  }
+
   /**
-   * Paginated multi-sort scan — pulls hundreds–thousands of active pump.fun coins.
-   * Used for discovery / autotrade (not only the ~80-token PumpPortal WS window).
+   * Paginated multi-sort scan — thousands of active pump.fun coins per cycle.
    */
-  async fetchBroadMarketScan(maxCoins = 800): Promise<PumpCoin[]> {
-    const cap = Math.min(Math.max(maxCoins, 50), 3000)
+  async fetchBroadMarketScan(target = PUMP_FUN_SCAN_TARGET): Promise<PumpCoin[]> {
+    const goal = Math.max(100, target)
     const pageSize = PUMP_FUN_SCAN_PAGE_SIZE
     const byMint = new Map<string, PumpCoin>()
 
@@ -117,42 +155,50 @@ export class PumpService {
       for (const c of list) {
         if (!c?.mint || c.mint.length < 32) continue
         if (c.complete) continue
-        byMint.set(c.mint, c)
-        if (byMint.size >= cap) return true
+        const prev = byMint.get(c.mint)
+        byMint.set(c.mint, prev ? this.mergePumpCoin(prev, c) : c)
+        if (byMint.size >= goal) return true
       }
-      return byMint.size >= cap
+      return byMint.size >= goal
     }
 
     const sorts = [
       'last_trade_timestamp',
       'created_timestamp',
       'market_cap',
+      'reply_count',
     ] as const
 
     for (const sort of sorts) {
-      for (let offset = 0; offset < cap && byMint.size < cap; offset += pageSize) {
+      let emptyStreak = 0
+      for (let page = 0; page < PUMP_FUN_SCAN_PAGES_PER_SORT && byMint.size < goal; page++) {
         const batch = await this.fetchCoins({
           limit: pageSize,
-          offset,
+          offset: page * pageSize,
           sort,
           order: 'DESC',
         })
-        if (!batch.length) break
+        if (!batch.length) {
+          emptyStreak++
+          if (emptyStreak >= 2) break
+          continue
+        }
+        emptyStreak = 0
         if (add(batch.filter((c) => !c.complete))) break
-        await this.delay(100)
+        await this.delay(60)
       }
-      if (byMint.size >= cap) break
+      if (byMint.size >= goal) break
     }
 
     for (const path of ['/coins/latest', '/coins/king-of-the-hill']) {
-      if (byMint.size >= cap) break
+      if (byMint.size >= goal) break
       for (const baseUrl of this.baseUrls) {
         try {
           const { data } = await axios.get<PumpCoin[] | { coins?: PumpCoin[] }>(
             `${baseUrl.replace(/\/$/, '')}${path}`,
             {
-              params: { limit: pageSize, includeNsfw: false },
-              timeout: 12000,
+              params: { limit: PUMP_FEATURED_FETCH_LIMIT, includeNsfw: false },
+              timeout: 15000,
               headers: this.headers(),
             },
           )
@@ -166,7 +212,9 @@ export class PumpService {
     }
 
     const out = [...byMint.values()]
-    this.logger.log(`Pump.fun broad scan: ${out.length} unique active coins (cap ${cap})`)
+    this.logger.log(
+      `Pump.fun broad scan: ${out.length} unique active coins (target ${goal})`,
+    )
     return out
   }
 
@@ -208,8 +256,12 @@ export class PumpService {
   }
 
   /** Active bonding-curve tokens sorted by fill % (highest first). */
-  async fetchNearGraduation(limit = 40): Promise<PumpCoin[]> {
-    const batch = await this.fetchCoins({ limit: 120, sort: 'last_trade_timestamp', order: 'DESC' })
+  async fetchNearGraduation(limit = PUMP_NEAR_GRAD_LIMIT): Promise<PumpCoin[]> {
+    const batch = await this.fetchCoins({
+      limit: Math.max(limit * 2, 150),
+      sort: 'last_trade_timestamp',
+      order: 'DESC',
+    })
     const active = batch.filter((c) => !c.complete)
     active.sort(
       (a, b) => this.calculateBondingPercent(b) - this.calculateBondingPercent(a),

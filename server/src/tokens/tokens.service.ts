@@ -24,10 +24,13 @@ import {
   curveFromLiquiditySnapshot,
   computeFeedActivity,
   type ScannerLane,
-  PUMP_FUN_SCAN_LIMIT,
+  PUMP_FUN_SCAN_TARGET,
+  PUMP_NEAR_GRAD_LIMIT,
   AUTOTRADE_PRIORITY_MINTS,
   AUTOTRADE_PRIME_LIMIT,
   META_ENRICH_BATCH_SIZE,
+  META_ENRICH_WAVES,
+  MAP_COIN_BATCH_SIZE,
 } from '@phronis/trading'
 import {
   marketCapUsdFromSol,
@@ -162,11 +165,11 @@ export class TokensService {
   }
 
   private async bootstrapFeedFromPump(): Promise<FeedToken[]> {
-    const coins = await this.pump.fetchBroadMarketScan(PUMP_FUN_SCAN_LIMIT)
-    const nearGrad = await this.pump.fetchNearGraduation(40)
+    const coins = await this.pump.fetchBroadMarketScan(PUMP_FUN_SCAN_TARGET)
+    const nearGrad = await this.pump.fetchNearGraduation(PUMP_NEAR_GRAD_LIMIT)
     const byMint = new Map<string, PumpCoin>()
     for (const c of [...coins, ...nearGrad]) byMint.set(c.mint, c)
-    const mapped = await Promise.all([...byMint.values()].map((c) => this.mapCoin(c)))
+    const mapped = await this.mapCoinsBatch([...byMint.values()])
     this.discovery.ingest(mapped)
     this.liveFeed.mergeBootstrap(mapped)
     void this.kickMetaEnrichBatch(mapped)
@@ -519,58 +522,29 @@ export class TokensService {
   }
 
   async syncFromPump() {
-    const coins = await this.pump.fetchBroadMarketScan(PUMP_FUN_SCAN_LIMIT)
-    const nearGrad = await this.pump.fetchNearGraduation(40)
+    const coins = await this.pump.fetchBroadMarketScan(PUMP_FUN_SCAN_TARGET)
+    const nearGrad = await this.pump.fetchNearGraduation(PUMP_NEAR_GRAD_LIMIT)
     const byMint = new Map<string, PumpCoin>()
     for (const c of [...coins, ...nearGrad]) byMint.set(c.mint, c)
 
-    const mappedAll: FeedToken[] = []
-    for (const coin of byMint.values()) {
-      const mapped = await this.mapCoin(coin)
-      mappedAll.push(mapped)
+    const coinList = [...byMint.values()]
+    const mappedAll = await this.mapCoinsBatch(coinList)
+    for (let i = 0; i < mappedAll.length; i++) {
+      const mapped = mappedAll[i]
+      const coin = coinList[i]
       this.liveFeed.upsert(mapped)
-      void this.enrichTokenMedia(mapped.mint, {
-        metadataUri: coin.metadata_uri,
-        image: coin.image_uri,
-        symbol: coin.symbol,
-        name: coin.name,
-        twitter: coin.twitter,
-        telegram: coin.telegram,
-        website: coin.website,
-      })
-      if (this.supabase.enabled && !this.prisma.enabled && passesTradeableFilter(mapped)) {
-        await this.supabase.upsertToken(mapped)
-        continue
+      void this.persistFeedToken(mapped)
+      if (coin) {
+        void this.enrichTokenMedia(mapped.mint, {
+          metadataUri: coin.metadata_uri,
+          image: coin.image_uri,
+          symbol: coin.symbol,
+          name: coin.name,
+          twitter: coin.twitter,
+          telegram: coin.telegram,
+          website: coin.website,
+        })
       }
-      if (!this.prisma.enabled) continue
-      await this.prisma.token.upsert({
-        where: { mint: coin.mint },
-        create: {
-          mint: coin.mint,
-          name: mapped.name,
-          symbol: mapped.symbol,
-          image: mapped.image,
-          marketCap: mapped.marketCap,
-          bondingCurvePercent: mapped.bondingCurvePercent,
-          holders: mapped.holders,
-          volume24h: mapped.volume24h,
-          aiRiskScore: mapped.signalScore,
-          momentumScore: mapped.momentumScore,
-          whaleActivity: mapped.whaleActivity,
-          priceUsd: mapped.priceUsd,
-          priceChange24h: mapped.priceChange24h,
-          liquidity: mapped.liquidity,
-          launchedAt: new Date(mapped.launchedAt),
-        },
-        update: {
-          marketCap: mapped.marketCap,
-          bondingCurvePercent: mapped.bondingCurvePercent,
-          volume24h: mapped.volume24h,
-          aiRiskScore: mapped.signalScore,
-          momentumScore: mapped.momentumScore,
-          priceChange24h: mapped.priceChange24h,
-        },
-      })
     }
     this.discovery.ingest(mappedAll)
     void this.kickMetaEnrichBatch(mappedAll)
@@ -578,23 +552,39 @@ export class TokensService {
     return byMint.size
   }
 
+  private async mapCoinsBatch(coins: PumpCoin[]): Promise<FeedToken[]> {
+    const out: FeedToken[] = []
+    for (let i = 0; i < coins.length; i += MAP_COIN_BATCH_SIZE) {
+      const chunk = coins.slice(i, i + MAP_COIN_BATCH_SIZE)
+      const mapped = await Promise.all(chunk.map((c) => this.mapCoin(c)))
+      out.push(...mapped)
+    }
+    return out
+  }
+
   /** Enrich symbol/name/image from pump.fun for rows still missing metadata. */
   private kickMetaEnrichBatch(tokens: FeedToken[]) {
-    const batch = tokens
-      .filter(
-        (t) =>
-          !isValidTicker(t.symbol, t.mint) ||
-          !isUsableTokenImageUrl(t.image) ||
-          !t.metadataUri,
-      )
-      .slice(0, META_ENRICH_BATCH_SIZE)
-    for (const t of batch) {
-      void this.enrichTokenMedia(t.mint, {
-        metadataUri: t.metadataUri,
-        image: t.image,
-        symbol: t.symbol,
-        name: t.name,
-      })
+    const needy = tokens.filter(
+      (t) =>
+        !isValidTicker(t.symbol, t.mint) ||
+        !isUsableTokenImageUrl(t.image) ||
+        !t.metadataUri ||
+        !t.twitter,
+    )
+    for (let wave = 0; wave < META_ENRICH_WAVES; wave++) {
+      const batch = needy
+        .slice(wave * META_ENRICH_BATCH_SIZE, (wave + 1) * META_ENRICH_BATCH_SIZE)
+      for (const t of batch) {
+        void this.enrichTokenMedia(t.mint, {
+          metadataUri: t.metadataUri,
+          image: t.image,
+          symbol: t.symbol,
+          name: t.name,
+          twitter: t.twitter,
+          telegram: t.telegram,
+          website: t.website,
+        })
+      }
     }
   }
 
