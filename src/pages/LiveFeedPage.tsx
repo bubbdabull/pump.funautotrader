@@ -52,6 +52,7 @@ export function LiveFeedPage() {
     dataUpdatedAt,
     displayMode,
     tradeableCount,
+    wsConnected,
   } = useScannerFeed(lane)
   const holdersVerifiedCount = ensureArray<PumpToken>(data).filter((t) => t.holdersVerified).length
   const backend = useBackendStatus()
@@ -116,7 +117,7 @@ export function LiveFeedPage() {
 
       <LiveSyncBar
         className="mb-4"
-        wsConnected={wsLive && backend.socketConnected}
+        wsConnected={wsConnected || (wsLive && backend.socketConnected)}
         dataUpdatedAt={dataUpdatedAt}
         isFetching={isFetching}
         activeCount={activeCount}

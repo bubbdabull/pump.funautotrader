@@ -32,6 +32,7 @@ export function DashboardPage() {
     dataUpdatedAt,
     displayMode,
     tradeableCount,
+    wsConnected,
   } = useScannerFeed('tradeable')
   const { data: graduatingData } = useScannerFeed('graduating')
   const tokens = ensureArray<PumpToken>(feedData)
@@ -75,7 +76,7 @@ export function DashboardPage() {
 
       <LiveSyncBar
         className="mb-3"
-        wsConnected={backend.socketConnected}
+        wsConnected={wsConnected || backend.socketConnected}
         dataUpdatedAt={dataUpdatedAt}
         isFetching={isFetching}
         activeCount={liveActive}

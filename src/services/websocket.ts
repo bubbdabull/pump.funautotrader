@@ -13,6 +13,7 @@ import { registryDebug } from '@/lib/registryDebug'
 import { WS_URL } from '@/lib/apiConfig'
 
 type RegistryPatchHandler = (token: PumpToken) => void
+type FeedSnapshotHandler = (tokens: PumpToken[]) => void
 type ChartHandler = (series: TokenChartSeries) => void
 type TradeTickHandler = (tick: TradeTickPayload) => void
 type SignalHandler = (signal: AutoTradeSignal) => void
@@ -31,6 +32,7 @@ const CANONICAL_EVENTS = [
 class WebSocketService {
   private socket: Socket | null = null
   private registryPatchHandlers = new Set<RegistryPatchHandler>()
+  private feedSnapshotHandlers = new Set<FeedSnapshotHandler>()
   private chartHandlers = new Set<ChartHandler>()
   private tradeTickHandlers = new Set<TradeTickHandler>()
   private stateChangeHandlers = new Set<(p: TokenStateChangePayload) => void>()
@@ -63,6 +65,27 @@ class WebSocketService {
         this.dispatch(event, payload)
       })
     }
+
+    this.socket.on('feed:update', (payload: unknown) => {
+      registryDebug.event('feed:update', { count: Array.isArray(payload) ? payload.length : 0 })
+      const tokens = Array.isArray(payload) ? (payload as PumpToken[]) : []
+      this.feedSnapshotHandlers.forEach((h) => h(tokens))
+    })
+
+    this.socket.on('feed:patch', (token: PumpToken) => {
+      registryDebug.event('feed:patch', token?.mint)
+      this.registryPatchHandlers.forEach((h) => h(token))
+    })
+
+    this.socket.on('feed:prepend', (token: PumpToken) => {
+      registryDebug.event('feed:prepend', token?.mint)
+      this.registryPatchHandlers.forEach((h) => h(token))
+    })
+
+    this.socket.on('token:update', (token: PumpToken) => {
+      registryDebug.event('token:update', token?.mint)
+      this.registryPatchHandlers.forEach((h) => h(token))
+    })
 
     this.socket.on('autotrader:signal', (signal: AutoTradeSignal) => {
       registryDebug.event('autotrader:signal')
@@ -138,6 +161,11 @@ class WebSocketService {
   onRegistryPatch(handler: RegistryPatchHandler) {
     this.registryPatchHandlers.add(handler)
     return () => this.registryPatchHandlers.delete(handler)
+  }
+
+  onFeedSnapshot(handler: FeedSnapshotHandler) {
+    this.feedSnapshotHandlers.add(handler)
+    return () => this.feedSnapshotHandlers.delete(handler)
   }
 
   onChartUpdate(handler: ChartHandler) {

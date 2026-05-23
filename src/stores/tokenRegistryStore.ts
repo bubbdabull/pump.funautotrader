@@ -12,7 +12,7 @@ import type {
 import type { TradeTickPayload } from '@/lib/tradeTypes'
 import { patchToken, applySignalToToken } from '@/lib/patchToken'
 import { applyTradeTickToToken, tradeTickToFeedTrade } from '@/lib/applyTradeTick'
-import { normalizePumpToken } from '@/lib/normalizeToken'
+import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 import { registryDebug } from '@/lib/registryDebug'
 
 const PATCH_BATCH_MS = 100
@@ -28,6 +28,8 @@ interface TokenRegistryState {
   signals: Record<string, SignalUpdatePayload>
   lastPatchAt: Record<string, number>
   version: number
+  /** Wall-clock ms of last registry mutation (for UI “updated ago”). */
+  updatedAt: number
   wsConnected: boolean
 
   _pendingPatches: Record<string, PumpToken>
@@ -36,6 +38,8 @@ interface TokenRegistryState {
   _chartTimer: ReturnType<typeof setTimeout> | null
 
   setWsConnected: (v: boolean) => void
+  /** Full feed snapshot from subscribe:feed / periodic broadcast — bypasses stale guard. */
+  hydrateFeed: (tokens: PumpToken[]) => void
   schedulePatch: (token: PumpToken) => void
   flushPatches: () => void
   applyTradeTick: (tick: TradeTickPayload) => void
@@ -83,6 +87,7 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
   signals: {},
   lastPatchAt: {},
   version: 0,
+  updatedAt: 0,
   wsConnected: false,
   _pendingPatches: {},
   _patchTimer: null,
@@ -90,6 +95,25 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
   _chartTimer: null,
 
   setWsConnected: (v) => set({ wsConnected: v }),
+
+  hydrateFeed: (tokens) => {
+    const list = normalizePumpTokens(tokens)
+    if (list.length === 0) return
+    const s = get()
+    let byMint = s.byMint
+    let lastPatchAt = s.lastPatchAt
+    for (const token of list) {
+      const at = token.updatedAt ?? Date.now()
+      const prev = byMint[token.mint]
+      byMint = { ...byMint, [token.mint]: prev ? patchToken(prev, token) : token }
+      lastPatchAt = {
+        ...lastPatchAt,
+        [token.mint]: Math.max(lastPatchAt[token.mint] ?? 0, at),
+      }
+    }
+    registryDebug.event('feed:hydrate', { count: list.length })
+    set({ byMint, lastPatchAt, version: s.version + 1, updatedAt: Date.now() })
+  },
 
   schedulePatch: (token) => {
     if (!token?.mint) return
@@ -128,6 +152,7 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
       byMint,
       lastPatchAt,
       version: s.version + 1,
+      updatedAt: Date.now(),
       _pendingPatches: {},
       _patchTimer: null,
     })
@@ -205,6 +230,7 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
               [signal.mint]: applySignalToToken(prev, signal),
             },
             version: s.version + 1,
+            updatedAt: Date.now(),
           }
         : {}),
     })

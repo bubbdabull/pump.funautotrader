@@ -50,6 +50,7 @@ function signalToQuantUpdate(signal: SignalUpdatePayload) {
 
 /** Single WS → global registry bridge (mount once at app root). */
 export function useTerminalSync() {
+  const hydrateFeed = useTokenRegistryStore((s) => s.hydrateFeed)
   const schedulePatch = useTokenRegistryStore((s) => s.schedulePatch)
   const applyTradeTick = useTokenRegistryStore((s) => s.applyTradeTick)
   const scheduleChart = useTokenRegistryStore((s) => s.scheduleChart)
@@ -67,6 +68,7 @@ export function useTerminalSync() {
     const unsubs = [
       wsService.onConnect(() => setWsConnected(true)),
       wsService.onDisconnect(() => setWsConnected(false)),
+      wsService.onFeedSnapshot((tokens) => hydrateFeed(tokens)),
       wsService.onRegistryPatch((t) => schedulePatch(t)),
       wsService.onTradeTick((tick) => applyTradeTick(tick)),
       wsService.onChartUpdate((series) => scheduleChart(series)),
@@ -87,6 +89,7 @@ export function useTerminalSync() {
       setWsConnected(false)
     }
   }, [
+    hydrateFeed,
     schedulePatch,
     applyTradeTick,
     scheduleChart,

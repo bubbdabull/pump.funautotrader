@@ -62,10 +62,15 @@ function applyLane(tokens: PumpToken[], lane: ScannerLane): RegistryLanePayload 
 
 /** WebSocket-driven lane feed — single registry source. */
 export function useRegistryLane(lane: ScannerLane = 'all') {
-  const { byMint, version, wsConnected } = useTokenRegistryStore(
+  useEffect(() => {
+    wsService.connect()
+  }, [])
+
+  const { byMint, version, updatedAt, wsConnected } = useTokenRegistryStore(
     useShallow((s) => ({
       byMint: s.byMint,
       version: s.version,
+      updatedAt: s.updatedAt,
       wsConnected: s.wsConnected,
     })),
   )
@@ -91,7 +96,7 @@ export function useRegistryLane(lane: ScannerLane = 'all') {
     isFetching: false,
     isError: false,
     error: null as Error | null,
-    dataUpdatedAt: version,
+    dataUpdatedAt: updatedAt,
     wsConnected,
   }
 }

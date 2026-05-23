@@ -75,7 +75,7 @@ export function MomentumRankings({ feedByMint = {} }: MomentumRankingsProps) {
                       r.confidence >= 0.7 ? 'text-emerald-400' : 'text-violet-400',
                     )}
                   >
-                    {Math.round(r.confidence * 100)}%
+                    {Math.round(r.confidence)}%
                   </span>
                 </Link>
               </li>
