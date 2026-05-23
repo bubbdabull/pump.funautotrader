@@ -58,19 +58,24 @@ export class PersistenceQueueService implements OnModuleDestroy {
     try {
       while (this.queue.length > 0) {
         const batch = this.queue.splice(0, PERSIST_DRAIN_BATCH)
-        for (const job of batch) {
-          try {
-            await this.handler(job)
-          } catch (err) {
-            this.logger.debug(`Persist job ${job.type}: ${(err as Error).message}`)
-          }
-        }
+        await Promise.allSettled(
+          batch.map(async (job) => {
+            try {
+              await this.handler!(job)
+            } catch (err) {
+              this.logger.debug(`Persist job ${job.type}: ${(err as Error).message}`)
+            }
+          }),
+        )
         if (this.queue.length > 0) {
           await new Promise((r) => setImmediate(r))
         }
       }
+    } catch (err) {
+      this.logger.warn(`Persist drain: ${(err as Error).message}`)
     } finally {
       this.draining = false
+      if (this.queue.length > 0) this.scheduleDrain()
     }
   }
 }

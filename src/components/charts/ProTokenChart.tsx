@@ -11,7 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { format } from 'date-fns'
-import { useTokenChart } from '@/hooks/useScanner'
+import { useTokenChart } from '@/hooks/useRegistry'
 import { formatUsd } from '@/lib/utils'
 
 interface ProTokenChartProps {

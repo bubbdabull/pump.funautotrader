@@ -2,57 +2,100 @@ import { useEffect } from 'react'
 import { wsService } from '@/services/websocket'
 import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
 import { useQuantStore } from '@/stores/quantStore'
+import type { SignalUpdatePayload } from '@/lib/terminalTypes'
 
-/** Single WS → normalized registry bridge (mount once at app root). */
+function signalToQuantUpdate(signal: SignalUpdatePayload) {
+  return {
+    mint: signal.mint,
+    scores: {
+      tradeConfidenceScore: signal.tradeConfidenceScore,
+      momentumScore: signal.momentumScore,
+      liquidityScore: 0,
+      buyPressureScore: 0,
+      volatilityScore: 0,
+      holderQualityScore: 0,
+      whaleConfidenceScore: 0,
+      rugProbabilityScore: signal.rug.rugScore,
+      vwap: 0,
+      ema: 0,
+      volumeDelta: 0,
+      orderFlowImbalance: 0,
+      priceVelocity: signal.velocity.marketCapVelocity,
+      liquidityGrowth: 0,
+      tradeVelocity: signal.velocity.tradeVelocity,
+      sharpeLike: 0,
+    },
+    rug: {
+      rugScore: signal.rug.rugScore,
+      blocked: signal.rug.blocked,
+      fakeVolumeProbability: signal.rug.fakeVolumeProbability ?? 0,
+      creatorRisk: 0,
+      holderConcentration: 0,
+      liquidityWeakness: 0,
+      suspiciousWallets: 0,
+      reasons: signal.riskPenalties,
+    },
+    strategies: [],
+    risk: { allowed: !signal.rug.blocked },
+    dynamics: {
+      lifecycle: signal.lifecycle,
+      migrationProbability: signal.migrationProbability,
+      burst: signal.burst,
+      velocity: signal.velocity,
+      coordinationPenalty: signal.coordinationPenalty / 100,
+    },
+    at: signal.at,
+  }
+}
+
+/** Single WS → global registry bridge (mount once at app root). */
 export function useTerminalSync() {
-  const patch = useTokenRegistryStore((s) => s.patch)
-  const patchMany = useTokenRegistryStore((s) => s.patchMany)
+  const schedulePatch = useTokenRegistryStore((s) => s.schedulePatch)
+  const applyTradeTick = useTokenRegistryStore((s) => s.applyTradeTick)
+  const scheduleChart = useTokenRegistryStore((s) => s.scheduleChart)
   const applySignal = useTokenRegistryStore((s) => s.applySignal)
+  const applyHolder = useTokenRegistryStore((s) => s.applyHolder)
+  const applyMigration = useTokenRegistryStore((s) => s.applyMigration)
+  const applyStateChange = useTokenRegistryStore((s) => s.applyStateChange)
   const setWalletGraph = useTokenRegistryStore((s) => s.setWalletGraph)
+  const setWsConnected = useTokenRegistryStore((s) => s.setWsConnected)
   const quantPatch = useQuantStore((s) => s.patch)
-  const getToken = useTokenRegistryStore((s) => s.get)
 
   useEffect(() => {
     wsService.connect()
 
     const unsubs = [
-      wsService.onFeedUpdate((tokens) => patchMany(tokens)),
-      wsService.onFeedPatch((t) => patch(t)),
-      wsService.onTokenUpdate((t) => patch(t)),
-      wsService.onFeedPrepend((t) => patch(t)),
-      wsService.onSignalUpdate((s) => applySignal(s)),
-      wsService.onHolderUpdate((h) => {
-        const existing = getToken(h.mint)
-        if (!existing) return
-        patch({
-          ...existing,
-          holders: h.holders,
-          holdersVerified: h.holdersVerified,
-          top1Pct: h.top1Pct,
-          top5Pct: h.top5Pct,
-        })
+      wsService.onConnect(() => setWsConnected(true)),
+      wsService.onDisconnect(() => setWsConnected(false)),
+      wsService.onRegistryPatch((t) => schedulePatch(t)),
+      wsService.onTradeTick((tick) => applyTradeTick(tick)),
+      wsService.onChartUpdate((series) => scheduleChart(series)),
+      wsService.onSignalUpdate((s) => {
+        applySignal(s)
+        quantPatch(signalToQuantUpdate(s))
       }),
-      wsService.onBubbleMapUpdate((p) => setWalletGraph(p.mint, p.graph)),
+      wsService.onHolderUpdate((h) => applyHolder(h)),
+      wsService.onMigrationUpdate((m) => applyMigration(m)),
+      wsService.onTokenStateChange((ev) => applyStateChange(ev)),
       wsService.onWalletUpdate((p) => setWalletGraph(p.mint, p.graph)),
-      wsService.onQuantUpdate((q) => {
-        quantPatch(q)
-        if (q.dynamics) {
-          const existing = getToken(q.mint)
-          if (existing) {
-            patch({
-              ...existing,
-              lifecycle: q.dynamics.lifecycle as import('@/types').TokenLifecycleState,
-              migrationProbability: q.dynamics.migrationProbability,
-              burstIgnition: Math.round(q.dynamics.burst.ignitionScore * 100),
-              coordinationPenalty: Math.round(q.dynamics.coordinationPenalty * 100),
-            })
-          }
-        }
-      }),
     ]
+
+    setWsConnected(wsService.connected)
 
     return () => {
       for (const u of unsubs) u()
+      setWsConnected(false)
     }
-  }, [patch, patchMany, applySignal, setWalletGraph, quantPatch, getToken])
+  }, [
+    schedulePatch,
+    applyTradeTick,
+    scheduleChart,
+    applySignal,
+    applyHolder,
+    applyMigration,
+    applyStateChange,
+    setWalletGraph,
+    setWsConnected,
+    quantPatch,
+  ])
 }

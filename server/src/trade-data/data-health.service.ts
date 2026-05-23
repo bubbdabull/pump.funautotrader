@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
 import { LiveFeedService } from '../feed/live-feed.service'
@@ -41,6 +41,8 @@ export interface DataHealthReport {
 
 @Injectable()
 export class DataHealthService {
+  private readonly logger = new Logger(DataHealthService.name)
+
   constructor(
     private config: ConfigService,
     private supabase: SupabaseDbService,
@@ -93,14 +95,17 @@ export class DataHealthService {
     }
 
     const now = Date.now()
-    const db = {
-      tradesLast5m: this.supabase.enabled
-        ? await this.supabase.countRecentTrades(now - 5 * 60_000)
-        : 0,
-      activeTokensLast2m: this.supabase.enabled
-        ? await this.supabase.countActiveTokens(now - 2 * 60_000)
-        : 0,
+    let tradesLast5m = 0
+    let activeTokensLast2m = 0
+    if (this.supabase.enabled) {
+      try {
+        tradesLast5m = await this.supabase.countRecentTrades(now - 5 * 60_000)
+        activeTokensLast2m = await this.supabase.countActiveTokens(now - 2 * 60_000)
+      } catch (err) {
+        this.logger.debug(`Data health DB counts: ${(err as Error).message}`)
+      }
     }
+    const db = { tradesLast5m, activeTokensLast2m }
 
     let grade: DataHealthReport['grade'] = 'good'
     if (issues.length >= 3 || !pumpStatus.connected) grade = 'poor'

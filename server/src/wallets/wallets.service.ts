@@ -12,8 +12,14 @@ export class WalletsService {
   async getSmartWallets() {
     if (!this.prisma.enabled) {
       if (this.supabase.enabled) {
-        const wallets = await this.supabase.listSmartWallets(20)
-        if (wallets.length) return wallets.map((w) => this.format(w as Parameters<typeof this.format>[0]))
+        try {
+          const wallets = await this.supabase.listSmartWallets(20)
+          if (wallets.length) {
+            return wallets.map((w) => this.format(w as Parameters<typeof this.format>[0]))
+          }
+        } catch {
+          /* optional */
+        }
       }
       return this.mockWallets()
     }

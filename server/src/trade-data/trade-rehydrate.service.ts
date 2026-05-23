@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
-import { SupabaseDbService } from '../supabase/supabase-db.service'
+import { SupabasePersistenceService } from '../supabase/supabase-persistence.service'
 import { TradingBridgeService } from '../trading/trading-bridge.service'
 import { LiveFeedService } from '../feed/live-feed.service'
 import { HotMintsService } from './hot-mints.service'
@@ -11,7 +11,7 @@ export class TradeRehydrateService implements OnModuleInit {
   private done = false
 
   constructor(
-    private supabase: SupabaseDbService,
+    private supabasePersist: SupabasePersistenceService,
     private trading: TradingBridgeService,
     private liveFeed: LiveFeedService,
     private hotMints: HotMintsService,
@@ -19,21 +19,23 @@ export class TradeRehydrateService implements OnModuleInit {
 
   onModuleInit() {
     const t = setInterval(() => {
-      if (this.supabase.enabled) {
+      if (this.supabasePersist.enabled) {
         clearInterval(t)
-        void this.rehydrateFromDb()
+        void this.rehydrateFromDb().catch((err) =>
+          this.logger.warn(`Trade rehydrate failed: ${(err as Error).message}`),
+        )
       }
     }, 2_000)
     setTimeout(() => clearInterval(t), 60_000)
   }
 
   async rehydrateFromDb() {
-    if (this.done || !this.supabase.enabled) return
+    if (this.done || !this.supabasePersist.enabled) return
     this.done = true
 
     const feedMints = this.liveFeed.getAll(80).map((t) => t.mint)
     const hot = this.hotMints.getHotMints(60)
-    const dbRows = await this.supabase.listFeedTokensForRehydrate(60)
+    const dbRows = await this.supabasePersist.safeListFeedTokensForRehydrate(60)
     const mints = [...new Set([...hot, ...feedMints, ...dbRows.map((r) => r.mint as string)])].slice(
       0,
       80,
@@ -45,7 +47,7 @@ export class TradeRehydrateService implements OnModuleInit {
 
     let tradeCount = 0
     for (const mint of mints) {
-      const activities = await this.supabase.loadRecentWalletActivity(mint, 120)
+      const activities = await this.supabasePersist.safeLoadRecentWalletActivity(mint, 120)
       const state = this.trading.getState(mint)
       const existingSigs = new Set(state?.trades.map((t) => t.signature) ?? [])
 

@@ -205,7 +205,10 @@ export function useAutoTrader() {
     if (!rules.enabled) return
 
     const unsubDirect = directPumpPortal ? pumpPortalWs.onNewToken(onToken) : () => {}
-    const unsubServer = wsService.onPumpPortalToken(onToken)
+    const unsubServer = wsService.onRegistryPatch((token) => {
+      if (!rules.snipeNewTokens) return
+      onToken(token)
+    })
     const unsubSignal = wsService.onAutoTradeSignal((s) => {
       if (!rules.enabled) return
       void (async () => {
@@ -219,7 +222,7 @@ export function useAutoTrader() {
       })()
     })
 
-    const unsubFeedPatch = wsService.onFeedPatch((token) => {
+    const unsubFeedPatch = wsService.onRegistryPatch((token) => {
       if (!rules.enabled || !token.isActive) return
       void hydrateMarketStateFromApi(token.mint)
     })

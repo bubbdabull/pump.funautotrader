@@ -16,7 +16,7 @@ import { MetricBar } from '@/components/terminal/MetricBar'
 import { BubbleMapViz } from '@/components/terminal/BubbleMapViz'
 import { ProgressionChart } from '@/components/terminal/ProgressionChart'
 import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
-import { useTokenChart } from '@/hooks/useScanner'
+import { useTokenChart } from '@/hooks/useRegistry'
 import { useQuantStore } from '@/stores/quantStore'
 
 export function TokenDetailPage() {

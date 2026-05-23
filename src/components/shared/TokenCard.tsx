@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { TrendingUp, Users, Activity, Zap } from 'lucide-react'
@@ -17,7 +18,7 @@ interface TokenCardProps {
   index?: number
 }
 
-export function TokenCard({ token, index = 0 }: TokenCardProps) {
+function TokenCardInner({ token, index = 0 }: TokenCardProps) {
   const score = token.signalScore ?? token.aiRiskScore ?? 50
   return (
     <motion.div
@@ -99,3 +100,15 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
     </motion.div>
   )
 }
+
+function tokenCardPropsEqual(a: TokenCardProps, b: TokenCardProps) {
+  return (
+    a.token.mint === b.token.mint &&
+    a.token.updatedAt === b.token.updatedAt &&
+    a.token.lastTradeAt === b.token.lastTradeAt &&
+    a.token.signalScore === b.token.signalScore &&
+    a.index === b.index
+  )
+}
+
+export const TokenCard = memo(TokenCardInner, tokenCardPropsEqual)

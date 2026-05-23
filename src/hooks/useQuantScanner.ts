@@ -1,90 +1,108 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { quantApi } from '@/services/api'
 import { wsService } from '@/services/websocket'
 import { useQuantStore } from '@/stores/quantStore'
+import { useRegistryRankings } from '@/hooks/useRegistry'
 import type { QuantRanking, QuantUpdate } from '@/lib/quantTypes'
 
 export function useQuantRankings() {
-  return useQuery({
-    queryKey: ['quant', 'rankings'],
-    queryFn: () => quantApi.rankings(),
-    refetchInterval: 15_000,
-  })
+  const rankings = useRegistryRankings(100)
+  return {
+    data: rankings,
+    isLoading: rankings.length === 0,
+    isFetching: false,
+    isError: false,
+  }
 }
 
-/** Live quant updates over Socket.IO + REST analyze fallback. */
+/** Live quant updates over Socket.IO (signal:update → quant store). */
 export function useQuantLive(mint?: string) {
-  const [live, setLive] = useState<QuantUpdate | null>(null)
+  const live = useQuantStore((s) => (mint ? s.byMint[mint] : undefined))
   const [warnings, setWarnings] = useState<string[]>([])
-
-  const analyze = useQuery({
-    queryKey: ['quant', 'analyze', mint],
-    queryFn: () => (mint ? quantApi.analyze(mint) : null),
-    enabled: Boolean(mint),
-    refetchInterval: 10_000,
-  })
-
-  const patch = useQuantStore((s) => s.patch)
 
   useEffect(() => {
     wsService.connect()
-    const unsub = wsService.onQuantUpdate((payload) => {
-      patch(payload)
-      if (!mint || payload.mint === mint) setLive(payload)
-    })
-    const unsubRug = wsService.onRugWarning(({ mint: m, rug }) => {
-      if (!mint || m === mint) setWarnings(rug.reasons)
+    if (mint) wsService.subscribeToken(mint)
+    const unsub = wsService.onSignalUpdate((payload) => {
+      if (!mint || payload.mint === mint) {
+        if (payload.rug.blocked) setWarnings(payload.riskPenalties)
+      }
     })
     return () => {
       unsub()
-      unsubRug()
     }
-  }, [mint, patch])
+  }, [mint])
 
   return {
-    live,
-    analyze: analyze.data,
+    live: live ?? null,
+    analyze: live,
     rugWarnings: warnings,
-    isLoading: analyze.isLoading,
+    isLoading: Boolean(mint) && !live,
   }
 }
 
 export function useMomentumRankingsState() {
+  const wsRankings = useRegistryRankings(50)
   const [rankings, setRankings] = useState<QuantRanking[]>([])
-  const query = useQuantRankings()
   const patch = useQuantStore((s) => s.patch)
-  const addStrategy = useQuantStore((s) => s.addStrategy)
-
   useEffect(() => {
-    if (query.data) setRankings(query.data)
-  }, [query.data])
+    if (wsRankings.length > 0) setRankings(wsRankings)
+  }, [wsRankings])
 
   useEffect(() => {
     wsService.connect()
-    const unsub = wsService.onQuantUpdate((u) => {
-      if (!u.scores) return
-      patch(u)
-      const confidence = u.scores.tradeConfidenceScore
-      if (confidence == null || !Number.isFinite(confidence)) return
+    const unsub = wsService.onSignalUpdate((s) => {
+      const update: QuantUpdate = {
+        mint: s.mint,
+        scores: {
+          momentumScore: s.momentumScore,
+          liquidityScore: 0,
+          buyPressureScore: 0,
+          volatilityScore: 0,
+          holderQualityScore: 0,
+          whaleConfidenceScore: 0,
+          rugProbabilityScore: s.rug.rugScore,
+          tradeConfidenceScore: s.tradeConfidenceScore,
+          vwap: 0,
+          ema: 0,
+          volumeDelta: 0,
+          orderFlowImbalance: 0,
+          priceVelocity: 0,
+          liquidityGrowth: 0,
+          tradeVelocity: 0,
+          sharpeLike: 0,
+        },
+        rug: {
+          rugScore: s.rug.rugScore,
+          blocked: s.rug.blocked,
+          fakeVolumeProbability: s.rug.fakeVolumeProbability ?? 0,
+          creatorRisk: 0,
+          holderConcentration: 0,
+          liquidityWeakness: 0,
+          suspiciousWallets: 0,
+          reasons: s.riskPenalties,
+        },
+        strategies: [],
+        risk: { allowed: !s.rug.blocked },
+        at: s.at,
+      }
+      patch(update)
       setRankings((prev) => {
-        const next = [...prev.filter((r) => r.mint !== u.mint)]
-        next.push({ mint: u.mint, confidence })
+        const next = [...prev.filter((r) => r.mint !== s.mint)]
+        next.push({ mint: s.mint, confidence: s.tradeConfidenceScore })
         return next.sort((a, b) => b.confidence - a.confidence).slice(0, 50)
       })
     })
-    const unsubHolders = wsService.onQuantHolders((h) => {
-      useQuantStore.getState().patchHolders(h)
-    })
-    const unsubStrat = wsService.onQuantStrategy(({ mint, signal }) => addStrategy(mint, signal))
     return () => {
       unsub()
-      unsubHolders()
-      unsubStrat()
     }
-  }, [patch, addStrategy])
+  }, [patch])
 
-  return { rankings, ...query }
+  return {
+    rankings,
+    isLoading: rankings.length === 0,
+    isFetching: false,
+    isError: false,
+  }
 }
 
 /** Merge live holder counts from quant stream into token list. */

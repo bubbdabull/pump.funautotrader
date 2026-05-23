@@ -51,6 +51,7 @@ import {
 import type { TokenChartSeries, ChartPoint, OhlcvCandle } from './chart.types'
 import { TokenMetadataService } from './token-metadata.service'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
+import { SupabasePersistenceService } from '../supabase/supabase-persistence.service'
 import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 import { EventsGateway } from '../events/events.gateway'
 import { TokenDiscoveryService } from './token-discovery.service'
@@ -74,6 +75,7 @@ export class TokensService {
     private liveFeed: LiveFeedService,
     private metadata: TokenMetadataService,
     private supabase: SupabaseDbService,
+    private supabasePersist: SupabasePersistenceService,
     @Inject(forwardRef(() => HolderEnrichmentService))
     private holderEnrichment: HolderEnrichmentService,
     @Inject(forwardRef(() => EventsGateway))
@@ -121,7 +123,11 @@ export class TokensService {
   async getFeed(lane: ScannerLane = 'tradeable'): Promise<FeedToken[]> {
     await this.ensureRegistryWarm()
     const list = this.registry.list(lane)
-    await this.hydrateActivityFromDb(list)
+    try {
+      await this.hydrateActivityFromDb(list)
+    } catch (err) {
+      this.logger.debug(`hydrateActivityFromDb: ${(err as Error).message}`)
+    }
     return list.map((t) => this.liveFeed.get(t.mint) ?? t)
   }
 
@@ -151,10 +157,10 @@ export class TokensService {
 
   /** Fill activity from DB when in-memory state is cold (e.g. after restart). */
   private async hydrateActivityFromDb(tokens: FeedToken[]) {
-    if (!this.supabase.enabled) return
+    if (!this.supabasePersist.enabled) return
     const cold = tokens.filter((t) => !t.lastTradeAt && !t.isActive).slice(0, 30)
     for (const t of cold) {
-      const row = await this.supabase.findTokenByMint(t.mint)
+      const row = await this.supabasePersist.safeFindTokenByMint(t.mint)
       if (!row?.lastTradeAt) continue
       const lastMs = new Date(row.lastTradeAt as string).getTime()
       const patch: Partial<FeedToken> = {
@@ -288,8 +294,8 @@ export class TokensService {
     if (this.prisma.enabled) {
       const db = await this.prisma.token.findUnique({ where: { mint } })
       if (db) return this.formatDb(db)
-    } else if (this.supabase.enabled) {
-      const db = await this.supabase.findTokenByMint(mint)
+    } else if (this.supabasePersist.enabled) {
+      const db = await this.supabasePersist.safeFindTokenByMint(mint)
       if (db) return this.formatDb(db as Parameters<typeof this.formatDb>[0])
     }
 
@@ -319,8 +325,8 @@ export class TokensService {
         }))
     }
 
-    if (this.supabase.enabled) {
-      const rows = await this.supabase.loadRecentWalletActivity(mint, limit)
+    if (this.supabasePersist.enabled) {
+      const rows = await this.supabasePersist.safeLoadRecentWalletActivity(mint, limit)
       return rows
         .reverse()
         .map((a) => {
@@ -376,16 +382,7 @@ export class TokensService {
   }
 
   patchHoldersToDb(mint: string, snap: { holders: number; verified?: boolean; top1Pct?: number; top5Pct?: number; entropy?: number }): void {
-    if (!this.supabase.enabled) return
-    void this.supabase
-      .patchTokenHolders(mint, snap.holders, Boolean(snap.verified), {
-        top1Pct: snap.top1Pct,
-        top5Pct: snap.top5Pct,
-        entropy: snap.entropy,
-      })
-      .catch((err) =>
-        this.logger.debug(`patchHolders ${mint.slice(0, 8)}: ${(err as Error).message}`),
-      )
+    this.supabasePersist.firePatchHolders(mint, snap)
   }
 
   getStats() {
@@ -401,7 +398,7 @@ export class TokensService {
     const enriched = this.enrichFromMarketState(token.mint, token)
     const saved = this.liveFeed.upsert(enriched) ?? this.liveFeed.patch(enriched)
     if (!saved) return null
-    void this.persistToSupabase(saved, options)
+    this.enqueuePersistSideEffects(saved, options)
     return saved
   }
 
@@ -447,11 +444,7 @@ export class TokensService {
     const saved = this.buildStreamPatch(mint)
     if (!saved) return null
     if (!saved.holdersVerified) void this.holderEnrichment.enrichMint(mint)
-    if (options?.whaleSol && options.whaleSol >= 5) {
-      void this.persistToSupabase(saved, { whaleSol: options.whaleSol })
-    } else if (options?.isNew) {
-      void this.persistToSupabase(saved, { isNew: true })
-    }
+    this.enqueuePersistSideEffects(saved, options)
     return saved
   }
 
@@ -504,95 +497,96 @@ export class TokensService {
     const saved = this.liveFeed.patch(enriched) ?? this.liveFeed.upsert(enriched)
     if (!saved) return null
     if (whaleSol && whaleSol >= 5) {
-      void this.persistToSupabase(saved, { whaleSol })
+      this.enqueuePersistSideEffects(saved, { whaleSol })
     }
     return saved
   }
 
-  private async persistToSupabase(
+  /** Off hot path — queue + fire-and-forget only; never throws. */
+  private enqueuePersistSideEffects(
     token: FeedToken,
     options?: { isNew?: boolean; whaleSol?: number },
   ) {
-    try {
-      if (this.supabase.enabled && !this.prisma.enabled) {
-        await this.supabase.upsertFeedToken(token)
-        if (options?.isNew) {
-          await this.supabase.createAlert({
-            type: 'token',
-            title: `New launch: ${token.symbol}`,
-            message: `${token.name} · curve ${token.bondingCurvePercent}% · signal ${token.signalScore}`,
-            mint: token.mint,
-          })
-        }
-        if (options?.whaleSol && options.whaleSol >= 5) {
-          await this.supabase.createAlert({
-            type: 'whale',
-            title: `Whale ${token.symbol}`,
-            message: `${options.whaleSol.toFixed(2)} SOL trade on ${token.name}`,
-            mint: token.mint,
-          })
-        }
-        return
-      }
+    this.persistFeedToken(token)
+    if (options?.isNew) {
+      this.supabasePersist.fireCreateAlert({
+        type: 'token',
+        title: `New launch: ${token.symbol}`,
+        message: `${token.name} · curve ${token.bondingCurvePercent}% · signal ${token.signalScore}`,
+        mint: token.mint,
+      })
+    }
+    if (options?.whaleSol && options.whaleSol >= 5) {
+      this.supabasePersist.fireCreateAlert({
+        type: 'whale',
+        title: `Whale ${token.symbol}`,
+        message: `${options.whaleSol.toFixed(2)} SOL trade on ${token.name}`,
+        mint: token.mint,
+      })
+    }
+    if (!this.prisma.enabled) return
+    void this.persistToPrisma(token, options).catch((err) =>
+      this.logger.debug(`Prisma persist ${token.mint.slice(0, 8)}: ${(err as Error).message}`),
+    )
+  }
 
-      if (!this.prisma.enabled) return
+  private async persistToPrisma(
+    token: FeedToken,
+    options?: { isNew?: boolean; whaleSol?: number },
+  ) {
+    await this.prisma.token.upsert({
+      where: { mint: token.mint },
+      create: {
+        mint: token.mint,
+        name: token.name,
+        symbol: token.symbol,
+        image: token.image,
+        marketCap: token.marketCap,
+        bondingCurvePercent: token.bondingCurvePercent,
+        holders: token.holders,
+        volume24h: token.volume24h,
+        aiRiskScore: token.signalScore,
+        momentumScore: token.momentumScore,
+        whaleActivity: token.whaleActivity,
+        priceUsd: token.priceUsd,
+        priceChange24h: token.priceChange24h,
+        liquidity: token.liquidity,
+        launchedAt: new Date(token.launchedAt),
+      },
+      update: {
+        marketCap: token.marketCap,
+        bondingCurvePercent: token.bondingCurvePercent,
+        holders: token.holders,
+        volume24h: token.volume24h,
+        aiRiskScore: token.signalScore,
+        momentumScore: token.momentumScore,
+        whaleActivity: token.whaleActivity,
+        priceChange24h: token.priceChange24h,
+        liquidity: token.liquidity,
+        updatedAt: new Date(),
+      },
+    })
 
-      await this.prisma.token.upsert({
-        where: { mint: token.mint },
-        create: {
+    if (options?.isNew) {
+      await this.prisma.alert.create({
+        data: {
+          type: 'token',
+          title: `New launch: ${token.symbol}`,
+          message: `${token.name} · curve ${token.bondingCurvePercent}% · signal ${token.signalScore}`,
           mint: token.mint,
-          name: token.name,
-          symbol: token.symbol,
-          image: token.image,
-          marketCap: token.marketCap,
-          bondingCurvePercent: token.bondingCurvePercent,
-          holders: token.holders,
-          volume24h: token.volume24h,
-          aiRiskScore: token.signalScore,
-          momentumScore: token.momentumScore,
-          whaleActivity: token.whaleActivity,
-          priceUsd: token.priceUsd,
-          priceChange24h: token.priceChange24h,
-          liquidity: token.liquidity,
-          launchedAt: new Date(token.launchedAt),
-        },
-        update: {
-          marketCap: token.marketCap,
-          bondingCurvePercent: token.bondingCurvePercent,
-          holders: token.holders,
-          volume24h: token.volume24h,
-          aiRiskScore: token.signalScore,
-          momentumScore: token.momentumScore,
-          whaleActivity: token.whaleActivity,
-          priceChange24h: token.priceChange24h,
-          liquidity: token.liquidity,
-          updatedAt: new Date(),
         },
       })
+    }
 
-      if (options?.isNew) {
-        await this.prisma.alert.create({
-          data: {
-            type: 'token',
-            title: `New launch: ${token.symbol}`,
-            message: `${token.name} · curve ${token.bondingCurvePercent}% · signal ${token.signalScore}`,
-            mint: token.mint,
-          },
-        })
-      }
-
-      if (options?.whaleSol && options.whaleSol >= 5) {
-        await this.prisma.alert.create({
-          data: {
-            type: 'whale',
-            title: `Whale ${token.symbol}`,
-            message: `${options.whaleSol.toFixed(2)} SOL trade on ${token.name}`,
-            mint: token.mint,
-          },
-        })
-      }
-    } catch (err) {
-      this.logger.warn(`Supabase persist failed: ${(err as Error).message}`)
+    if (options?.whaleSol && options.whaleSol >= 5) {
+      await this.prisma.alert.create({
+        data: {
+          type: 'whale',
+          title: `Whale ${token.symbol}`,
+          message: `${options.whaleSol.toFixed(2)} SOL trade on ${token.name}`,
+          mint: token.mint,
+        },
+      })
     }
   }
 
@@ -717,7 +711,7 @@ export class TokensService {
       })
       if (saved) {
         this.persistFeedToken(saved)
-        void this.supabase.patchTokenMedia(mint, {
+        this.supabasePersist.firePatchMedia(mint, {
           image: media.image,
           metadataUri: media.metadataUri ?? saved.metadataUri,
           twitter: media.twitter,

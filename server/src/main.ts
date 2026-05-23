@@ -79,10 +79,12 @@ async function bootstrap() {
 }
 
 process.on('unhandledRejection', (reason) => {
-  console.error('[unhandledRejection]', reason)
+  const msg = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+  console.error('[unhandledRejection] (process continues)', msg)
 })
+
 process.on('uncaughtException', (err) => {
-  console.error('[uncaughtException]', err)
+  console.error('[uncaughtException] (process continues)', err.stack ?? err.message)
 })
 
 bootstrap().catch((err) => {

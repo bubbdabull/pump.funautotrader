@@ -57,7 +57,9 @@ export class SupabaseDbService implements OnModuleInit {
       this.client = client
       this.enabled = true
       this.logger.log('Supabase REST database connected (service role)')
-      void this.runStartupFeedMaintenance()
+      void this.runStartupFeedMaintenance().catch((err) =>
+        this.logger.warn(`Supabase startup maintenance: ${(err as Error).message}`),
+      )
     } catch (err) {
       this.logger.error(`Supabase init failed: ${(err as Error).message}`)
     }
@@ -66,6 +68,7 @@ export class SupabaseDbService implements OnModuleInit {
   /** Drop junk rows so DB only accumulates strict tradeable tokens over time. */
   private async runStartupFeedMaintenance() {
     if (!this.client) return
+    try {
     if (this.config.get('SUPABASE_PURGE_FEED_ON_START') === 'true') {
       const n = await this.purgeAllFeedTokens()
       this.logger.warn(`Supabase feed purge (SUPABASE_PURGE_FEED_ON_START): removed ${n} tokens`)
@@ -74,6 +77,9 @@ export class SupabaseDbService implements OnModuleInit {
     const removed = await this.purgeNonTradeableTokens()
     if (removed > 0) {
       this.logger.log(`Supabase: removed ${removed} non-tradeable token rows`)
+    }
+    } catch (err) {
+      this.logger.warn(`Supabase feed maintenance: ${(err as Error).message}`)
     }
   }
 
@@ -183,10 +189,12 @@ export class SupabaseDbService implements OnModuleInit {
             updatedAt: row.updatedAt,
           })
           .eq('mint', token.mint)
-        if (updErr) throw new Error(updErr.message)
+        if (updErr) {
+          this.logger.debug(`upsertFeedToken update ${token.mint.slice(0, 8)}: ${updErr.message}`)
+        }
         return
       }
-      throw new Error(error.message)
+      this.logger.debug(`upsertFeedToken ${token.mint.slice(0, 8)}: ${error.message}`)
     }
   }
 
@@ -244,7 +252,10 @@ export class SupabaseDbService implements OnModuleInit {
   async findTokenByMint(mint: string) {
     if (!this.client) return null
     const { data, error } = await this.client.from('Token').select('*').eq('mint', mint).maybeSingle()
-    if (error) throw new Error(error.message)
+    if (error) {
+      this.logger.debug(`findTokenByMint ${mint.slice(0, 8)}: ${error.message}`)
+      return null
+    }
     return data
   }
 
@@ -264,7 +275,7 @@ export class SupabaseDbService implements OnModuleInit {
       read: false,
       triggeredAt: new Date().toISOString(),
     })
-    if (error) throw new Error(error.message)
+    if (error) this.logger.debug(`createAlert: ${error.message}`)
   }
 
   async listAlerts(limit = 50) {
@@ -274,7 +285,10 @@ export class SupabaseDbService implements OnModuleInit {
       .select('*')
       .order('triggeredAt', { ascending: false })
       .limit(limit)
-    if (error) throw new Error(error.message)
+    if (error) {
+      this.logger.debug(`listAlerts: ${error.message}`)
+      return []
+    }
     return data ?? []
   }
 
@@ -286,7 +300,10 @@ export class SupabaseDbService implements OnModuleInit {
       .eq('id', id)
       .select()
       .single()
-    if (error) throw new Error(error.message)
+    if (error) {
+      this.logger.debug(`markAlertRead: ${error.message}`)
+      return { id, read: true }
+    }
     return data
   }
 
@@ -312,7 +329,10 @@ export class SupabaseDbService implements OnModuleInit {
       })
       .select()
       .single()
-    if (error) throw new Error(error.message)
+    if (error) {
+      this.logger.debug(`createTrade: ${error.message}`)
+      return { ...order, id: 'offline', status: 'pending' }
+    }
     return data
   }
 
@@ -604,7 +624,10 @@ export class SupabaseDbService implements OnModuleInit {
       .select('*')
       .order('pnl24h', { ascending: false })
       .limit(limit)
-    if (error) throw new Error(error.message)
+    if (error) {
+      this.logger.debug(`listSmartWallets: ${error.message}`)
+      return []
+    }
     return data ?? []
   }
 }

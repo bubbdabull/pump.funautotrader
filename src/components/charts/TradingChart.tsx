@@ -9,7 +9,7 @@ import {
   CrosshairMode,
 } from 'lightweight-charts'
 import { TrendingDown, TrendingUp } from 'lucide-react'
-import { useTokenChart } from '@/hooks/useScanner'
+import { useTokenChart } from '@/hooks/useRegistry'
 import { useLiveTick, secondsSince, formatSecondsAgo } from '@/hooks/useLiveTick'
 import {
   CHART_INTERVAL_OPTIONS,

@@ -1,24 +1,22 @@
 import { useEffect, useState } from 'react'
 import { wsService } from '@/services/websocket'
+import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
 
-/** Tracks Socket.IO connection — feed patches only apply when this is true. */
+/** Tracks Socket.IO connection — registry patches only apply when live. */
 export function useWsConnection(): boolean {
-  const [connected, setConnected] = useState(() => wsService.connected)
+  const storeConnected = useTokenRegistryStore((s) => s.wsConnected)
+  const [connected, setConnected] = useState(() => wsService.connected || storeConnected)
 
   useEffect(() => {
-    const socket = wsService.connect()
-    const on = () => setConnected(true)
-    const off = () => setConnected(false)
-    socket.on('connect', on)
-    socket.on('disconnect', off)
-    socket.on('connect_error', off)
-    if (socket.connected) setConnected(true)
+    wsService.connect()
+    const unsubOn = wsService.onConnect(() => setConnected(true))
+    const unsubOff = wsService.onDisconnect(() => setConnected(false))
+    setConnected(wsService.connected)
     return () => {
-      socket.off('connect', on)
-      socket.off('disconnect', off)
-      socket.off('connect_error', off)
+      unsubOn()
+      unsubOff()
     }
   }, [])
 
-  return connected
+  return connected || storeConnected
 }
