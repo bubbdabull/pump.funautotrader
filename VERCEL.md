@@ -81,7 +81,31 @@ npm run dev
 
 | Issue | Fix |
 |-------|-----|
+| **Git push but no new Vercel deployment** | See [Git push not deploying](#git-push-not-deploying) below |
 | White / blank page | Check Vercel build logs; open browser Console |
 | No tokens / "Cannot reach API" | Fix Fly API first; **redeploy Vercel** after env changes (Vite bakes `VITE_*` at build time) |
 | CORS errors | Railway already allows CORS; check `VITE_API_URL` ends with `/api` |
 | Socket.IO fails | Set `VITE_WS_URL` to Fly URL (no `/api` suffix) and redeploy |
+
+### Git push not deploying
+
+Your commit can be on GitHub while Vercel never builds (broken or missing Git integration).
+
+1. **Confirm GitHub has the commit** — `main` should show your latest SHA on [github.com/bubbdabull/pump.funautotrader](https://github.com/bubbdabull/pump.funautotrader).
+2. **Vercel → Project → Settings → Git**
+   - Repository: `bubbdabull/pump.funautotrader`
+   - Production Branch: `main`
+   - Root Directory: **empty** (repo root, not `server/`)
+3. **Deployments** → **Redeploy** → Production (pick latest commit).
+4. If still no auto-deploy: **Settings → Git → Disconnect → Connect** again (reinstalls the GitHub webhook).
+5. **GitHub → repo → Settings → Webhooks** — you should see a Vercel hook with recent deliveries; fix if failing.
+
+**CI fallback:** `.github/workflows/vercel-frontend.yml` deploys on every `main` push if you add Actions secrets:
+
+| Secret | Where to get it |
+|--------|-----------------|
+| `VERCEL_TOKEN` | [vercel.com/account/tokens](https://vercel.com/account/tokens) |
+| `VERCEL_ORG_ID` | Vercel → Team/Project Settings → General |
+| `VERCEL_PROJECT_ID` | Same page (`prj_…`) |
+
+Then **Actions → Deploy frontend (Vercel) → Run workflow** (or push again).
