@@ -18,6 +18,12 @@ export type PumpPortalStatusSnapshot = {
   tradeMessagesReceived?: number
   lastMessageAt?: string
   lastTradeSubRotationAt?: string
+  ingestionLeader?: boolean
+  leaderId?: string | null
+  streamEpoch?: number
+  /** When this instance is a follower, leader-reported subscription health. */
+  leaderConnected?: boolean
+  leaderSubscribedTradeMints?: number
 }
 
 export interface DataHealthReport {
@@ -56,13 +62,16 @@ export class DataHealthService {
     const feed = this.liveFeed.getAll()
     const coverage = this.feedPin.coverageStats(feed)
 
+    const effectiveConnected = pumpStatus.leaderConnected ?? pumpStatus.connected
+    const effectiveSubs =
+      pumpStatus.leaderSubscribedTradeMints ?? pumpStatus.subscribedTradeMints
     const tradeMsgs = pumpStatus.tradeMessagesReceived ?? 0
     if (!this.config.get('PUMPPORTAL_API_KEY')?.trim()) {
       issues.push('PUMPPORTAL_API_KEY missing — no live trade ticks')
-    } else if (!pumpStatus.connected) {
+    } else if (!effectiveConnected) {
       issues.push('PumpPortal WebSocket disconnected')
-    } else if (pumpStatus.subscribedTradeMints < 10) {
-      issues.push(`Only ${pumpStatus.subscribedTradeMints} trade subscriptions active`)
+    } else if (effectiveSubs < 10) {
+      issues.push(`Only ${effectiveSubs} trade subscriptions active`)
     } else if (tradeMsgs < 5 && pumpStatus.messagesReceived > 100) {
       issues.push(
         `Almost no trade ticks parsed (${tradeMsgs} trades / ${pumpStatus.messagesReceived} WS msgs) — check PumpPortal wallet balance`,
@@ -108,14 +117,20 @@ export class DataHealthService {
     const db = { tradesLast5m, activeTokensLast2m }
 
     let grade: DataHealthReport['grade'] = 'good'
-    if (issues.length >= 3 || !pumpStatus.connected) grade = 'poor'
+    if (issues.length >= 3 || !effectiveConnected) grade = 'poor'
     else if (issues.length > 0) grade = 'degraded'
+
+    const pumpportal: PumpPortalStatusSnapshot = {
+      ...pumpStatus,
+      connected: effectiveConnected,
+      subscribedTradeMints: effectiveSubs,
+    }
 
     return {
       ok: grade !== 'poor',
       grade,
       issues,
-      pumpportal: pumpStatus,
+      pumpportal,
       ingestion: this.ingestion.getStats(),
       supabase: this.supabase.enabled,
       helius: Boolean(this.config.get('HELIUS_API_KEY')?.trim()),

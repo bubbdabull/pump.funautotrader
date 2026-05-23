@@ -10,6 +10,7 @@ import { TradeDataModule } from '../trade-data/trade-data.module'
 import { IntelligenceModule } from '../intelligence/intelligence.module'
 import { FeedModule } from '../feed/feed.module'
 import { ChartsModule } from '../charts/charts.module'
+import { PumpPortalModule } from '../pumpportal/pumpportal.module'
 
 @Global()
 @Module({
@@ -23,6 +24,7 @@ import { ChartsModule } from '../charts/charts.module'
     forwardRef(() => EventsModule),
     AutoTraderModule,
     TradeDataModule,
+    forwardRef(() => PumpPortalModule),
   ],
   providers: [TokenRegistryService, RawEventProcessorService],
   exports: [TokenRegistryService, RawEventProcessorService],

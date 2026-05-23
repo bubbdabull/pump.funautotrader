@@ -21,6 +21,8 @@ export const REDIS_KEYS = {
   ingestionChannel: 'phronis:ingestion',
   ingestionLeader: 'phronis:ingestion:leader',
   streamEpoch: 'phronis:stream:epoch',
+  /** Leader PumpPortal WS stats — followers read for accurate stream counts. */
+  pumpportalStatus: 'phronis:pumpportal:status',
   persistChannel: 'phronis:persist:jobs',
   hotToken: (mint: string) => `token:hot:${mint}`,
   tokenWindow: (mint: string, suffix: 'volume:5s' | 'volume:15s' | 'wallets:15s' | 'trades:5s') =>

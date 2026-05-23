@@ -13,6 +13,7 @@ import { LiveFeedService } from '../feed/live-feed.service'
 import { RedisCacheHooksService } from '../redis/redis-cache-hooks.service'
 import { ChartAggregationService } from '../charts/chart-aggregation.service'
 import { EventsGateway } from '../events/events.gateway'
+import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 import type { DynamicsAnalytics } from '@phronis/trading'
 
 /**
@@ -40,6 +41,8 @@ export class RawEventProcessorService implements OnModuleInit {
     private chartAgg: ChartAggregationService,
     @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
+    @Inject(forwardRef(() => PumpPortalDataGateway))
+    private pumpportal: PumpPortalDataGateway,
     @Optional() private ingestionHealth?: IngestionHealthService,
   ) {}
 
@@ -99,9 +102,11 @@ export class RawEventProcessorService implements OnModuleInit {
       this.redisHooks.onTradeProcessed(mint, intel.analytics, saved)
     }
 
-    const normalized = this.registry.normalize(saved, 'stream', intel.analytics)
-    this.batcher.scheduleRegistryPatch(normalized)
-    this.tokens.publishStreamEvents(mint, saved)
+    const row = this.liveFeed.get(mint) ?? saved
+    const normalized = this.registry.normalize(row, 'stream', intel.analytics)
+    const urgentPatch = event.type === 'token.trade'
+    this.batcher.scheduleRegistryPatch(normalized, urgentPatch)
+    this.tokens.publishStreamEvents(mint, row)
 
     if (event.type === 'token.trade') {
       const progressionPoint =
@@ -129,7 +134,12 @@ export class RawEventProcessorService implements OnModuleInit {
         priceVelocity: intel.analytics?.velocity.marketCapVelocity,
       })
       if (chartPayload && this.chartAgg.markEmittedIfDue(mint)) {
-        this.events.emitChartDelta(chartPayload)
+        const enriched = {
+          ...chartPayload,
+          tradeStreamSubscribed: this.pumpportal.isTradeSubscribed(mint),
+          pumpportalKeyConfigured: this.pumpportal.getHealth().apiKeyConfigured,
+        }
+        this.events.emitChartDelta(enriched)
       }
       this.hotMints.recordTrade(mint, normalized.lastTradeAt)
       this.autoTrader.onTradeTick(mint)
@@ -148,7 +158,13 @@ export class RawEventProcessorService implements OnModuleInit {
       signalScore: Math.round(analytics.tradeConfidenceScore * 100),
       momentumScore: Math.round(analytics.decayedMomentumScore * 100),
       buyPressure1m: Math.round(analytics.buyPressure1m * 100),
+      migrationProbability: Math.round(analytics.migration.probability * 100),
+      burstIgnition: Math.round(analytics.burst.ignitionScore * 100),
       holders: Math.max(row.holders, analytics.holderEstimate),
+      isActive: true,
+      lastTradeAt: analytics.updatedAt,
+      trades1m: analytics.windows.w60.tradeCount,
+      volume5mSol: analytics.windows.w30.volumeSol,
     })
   }
 }

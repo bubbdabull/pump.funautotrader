@@ -37,6 +37,12 @@ export interface TradeTickPayload {
   bondingCurvePercent?: number
   holders?: number
   holdersVerified?: boolean
+  signalScore?: number
+  momentumScore?: number
+  buyPressure1m?: number
+  migrationProbability?: number
+  burstIgnition?: number
+  isActive?: boolean
 }
 
 @WebSocketGateway({ cors: { origin: '*' }, path: '/socket.io' })
@@ -70,11 +76,13 @@ export class EventsGateway implements OnGatewayConnection {
     client.join('feed')
     const epochRaw = await this.redis.get(REDIS_KEYS.streamEpoch)
     const streamEpoch = Number(epochRaw) || Date.now()
+    const pumpportal = await this.resolvePumpPortalMeta()
     client.emit('stream:meta', {
       epoch: streamEpoch,
       leaderId: this.ingestionLeader.getLeaderId(),
       instanceId: this.ingestionLeader.getInstanceId(),
       isLeader: this.ingestionLeader.isIngestionLeader(),
+      pumpportal,
     })
     const feed = await this.tokens.getFeed('all')
     const slice = feed.slice(0, 120)
@@ -89,11 +97,71 @@ export class EventsGateway implements OnGatewayConnection {
   @SubscribeMessage('subscribe:token')
   async handleTokenSubscribe(client: Socket, data: { mint: string }) {
     client.join(`token:${data.mint}`)
-    this.pumpportal.ensureTradeSubscription(data.mint)
+    const sub = this.pumpportal.ensureTradeSubscription(data.mint)
     const token = await this.tokens.getToken(data.mint)
     if (token) client.emit('token:update', token)
-    client.emit('chart:update', this.chartAgg.getSeries(data.mint, 5_000))
+    const series = this.chartAgg.getSeries(data.mint, 5_000)
+    const health = this.pumpportal.getHealth()
+    client.emit('chart:update', {
+      ...series,
+      tradeStreamSubscribed: sub.subscribed,
+      pumpportalKeyConfigured: health.apiKeyConfigured,
+    })
     void this.tokens.warmTerminalContext(data.mint)
+  }
+
+  private async resolvePumpPortalMeta(): Promise<{
+    connected: boolean
+    subscribedTradeMints: number
+    maxTradeSubscriptions: number
+    tradeMessagesReceived: number
+    messagesReceived: number
+  }> {
+    const local = this.pumpportal.getHealth()
+    const raw = await this.redis.get(REDIS_KEYS.pumpportalStatus)
+    if (!raw) {
+      return {
+        connected: local.connected,
+        subscribedTradeMints: local.subscribedTradeMints,
+        maxTradeSubscriptions: local.maxTradeSubscriptions,
+        tradeMessagesReceived: local.tradeMessagesReceived,
+        messagesReceived: local.messagesReceived,
+      }
+    }
+    try {
+      const leader = JSON.parse(raw) as {
+        connected?: boolean
+        subscribedTradeMints?: number
+        maxTradeSubscriptions?: number
+        tradeMessagesReceived?: number
+        messagesReceived?: number
+      }
+      return {
+        connected: leader.connected ?? local.connected,
+        subscribedTradeMints: Math.max(
+          local.subscribedTradeMints,
+          leader.subscribedTradeMints ?? 0,
+        ),
+        maxTradeSubscriptions:
+          leader.maxTradeSubscriptions ?? local.maxTradeSubscriptions,
+        tradeMessagesReceived: Math.max(
+          local.tradeMessagesReceived,
+          leader.tradeMessagesReceived ?? 0,
+        ),
+        messagesReceived: Math.max(
+          local.messagesReceived,
+          leader.messagesReceived ?? 0,
+        ),
+      }
+    } catch {
+      return {
+        connected: local.connected,
+        subscribedTradeMints: local.subscribedTradeMints,
+        maxTradeSubscriptions: local.maxTradeSubscriptions,
+        tradeMessagesReceived: local.tradeMessagesReceived,
+        messagesReceived: local.messagesReceived,
+      }
+    }
   }
 
   async broadcastFeed() {

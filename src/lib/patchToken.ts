@@ -26,12 +26,18 @@ export function patchToken(prev: PumpToken | undefined, next: PumpToken): PumpTo
     holders,
     holdersVerified:
       (prev.holdersVerified && holders >= 2) || (next.holdersVerified && holders >= 2),
-    signalScore: next.signalScore ?? prev.signalScore,
-    momentumScore: next.momentumScore ?? prev.momentumScore,
+    signalScore: next.signalScore !== undefined ? next.signalScore : prev.signalScore,
+    momentumScore:
+      next.momentumScore !== undefined ? next.momentumScore : prev.momentumScore,
     lifecycle: next.lifecycle ?? prev.lifecycle,
-    migrationProbability: next.migrationProbability ?? prev.migrationProbability,
-    burstIgnition: next.burstIgnition ?? prev.burstIgnition,
-    buyPressure1m: next.buyPressure1m ?? prev.buyPressure1m,
+    migrationProbability:
+      next.migrationProbability !== undefined
+        ? next.migrationProbability
+        : prev.migrationProbability,
+    burstIgnition:
+      next.burstIgnition !== undefined ? next.burstIgnition : prev.burstIgnition,
+    buyPressure1m:
+      next.buyPressure1m !== undefined ? next.buyPressure1m : prev.buyPressure1m,
     mcapChange5m: next.mcapChange5m ?? prev.mcapChange5m,
     lastTradeAt: next.lastTradeAt ?? prev.lastTradeAt,
     isActive: next.isActive ?? prev.isActive,
@@ -41,13 +47,17 @@ export function patchToken(prev: PumpToken | undefined, next: PumpToken): PumpTo
   }
 }
 
+function scaleScore(v: number): number {
+  return v <= 1 ? Math.round(v * 100) : Math.round(v)
+}
+
 export function applySignalToToken(token: PumpToken, signal: SignalUpdatePayload): PumpToken {
   return {
     ...token,
-    signalScore: signal.tradeConfidenceScore,
-    momentumScore: signal.momentumScore,
+    signalScore: scaleScore(signal.tradeConfidenceScore),
+    momentumScore: scaleScore(signal.momentumScore),
     lifecycle: signal.lifecycle,
-    migrationProbability: signal.migrationProbability,
+    migrationProbability: scaleScore(signal.migrationProbability),
     burstIgnition: signal.burstIgnition,
     coordinationPenalty: signal.coordinationPenalty,
     aiRiskScore: signal.rug.rugScore,

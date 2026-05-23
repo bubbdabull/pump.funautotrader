@@ -4,13 +4,21 @@ import { Link } from 'react-router-dom'
 import { TrendingUp, Users, Activity, Zap } from 'lucide-react'
 import { GlassCard } from './GlassCard'
 import { Badge } from '@/components/ui/badge'
-import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor } from '@/lib/utils'
+import {
+  formatUsd,
+  formatSol,
+  formatHolders,
+  riskBg,
+  riskColor,
+  tokenVolumeSol,
+} from '@/lib/utils'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { tokenMediaProps } from '@/lib/tokenMediaProps'
 import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { ActivityPulse } from '@/components/shared/TokenActivityBadges'
 import { LifecycleBadge } from '@/components/terminal/LifecycleBadge'
 import { MetricBar } from '@/components/terminal/MetricBar'
+import { holderDepthScore } from '@/lib/holderDepth'
 import type { PumpToken } from '@/types'
 
 interface TokenCardProps {
@@ -18,8 +26,16 @@ interface TokenCardProps {
   index?: number
 }
 
+function formatBuyPressure(pct?: number): string {
+  if (pct == null) return '—'
+  return `${Math.round(pct)}%`
+}
+
 function TokenCardInner({ token, index = 0 }: TokenCardProps) {
-  const score = token.signalScore ?? token.aiRiskScore ?? 50
+  const score = token.signalScore ?? token.aiRiskScore
+  const depth = holderDepthScore(token)
+  const change = token.mcapChange5m ?? token.priceChange24h
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -39,21 +55,22 @@ function TokenCardInner({ token, index = 0 }: TokenCardProps) {
                   {displayTokenSymbol(token)}
                 </span>
                 <LifecycleBadge state={token.lifecycle} compact />
-                <Badge
-                  variant={(token.mcapChange5m ?? token.priceChange24h) >= 0 ? 'success' : 'danger'}
-                  className="shrink-0"
-                >
-                  {(token.mcapChange5m ?? token.priceChange24h) >= 0 ? '+' : ''}
-                  {(token.mcapChange5m ?? token.priceChange24h).toFixed(1)}%
-                </Badge>
+                {change != null && (
+                  <Badge variant={change >= 0 ? 'success' : 'danger'} className="shrink-0">
+                    {change >= 0 ? '+' : ''}
+                    {change.toFixed(1)}%
+                  </Badge>
+                )}
               </div>
               <p className="truncate text-xs text-zinc-500">{displayTokenName(token)}</p>
             </div>
-            <div
-              className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-mono font-bold ${riskBg(score)}`}
-            >
-              <span className={riskColor(score)}>{score}</span>
-            </div>
+            {score != null && (
+              <div
+                className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-mono font-bold ${riskBg(score)}`}
+              >
+                <span className={riskColor(score)}>{Math.round(score)}</span>
+              </div>
+            )}
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
             <div>
@@ -66,10 +83,10 @@ function TokenCardInner({ token, index = 0 }: TokenCardProps) {
             </div>
             <div>
               <p className="text-zinc-500">Buy%</p>
-              <p className="font-mono text-emerald-400/90">{token.buyPressure1m ?? 50}%</p>
+              <p className="font-mono text-emerald-400/90">{formatBuyPressure(token.buyPressure1m)}</p>
             </div>
           </div>
-          {(token.migrationProbability != null || token.burstIgnition != null) && (
+          {(token.migrationProbability != null || token.burstIgnition != null || depth != null) && (
             <div className="mt-2 grid grid-cols-2 gap-2">
               {token.migrationProbability != null && (
                 <MetricBar label="Migration" value={token.migrationProbability} tone="purple" />
@@ -77,15 +94,23 @@ function TokenCardInner({ token, index = 0 }: TokenCardProps) {
               {token.burstIgnition != null && (
                 <MetricBar label="Burst" value={token.burstIgnition} tone="amber" />
               )}
+              {depth != null && (
+                <MetricBar label="Holder depth" value={depth} tone="emerald" />
+              )}
             </div>
           )}
           <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
             <span className="flex items-center gap-1">
-              <Users className="h-3 w-3" /> {formatHolders(token.holders)}
+              <Users className="h-3 w-3" /> {formatHolders(token.holders, token.holdersVerified)}
             </span>
             <span className="flex items-center gap-1">
               <Activity className="h-3 w-3" /> {formatSol(tokenVolumeSol(token))}
             </span>
+            {token.momentumScore != null && token.momentumScore > 0 && (
+              <span className="font-mono text-purple-400/90">
+                mom {Math.round(token.momentumScore)}
+              </span>
+            )}
             {token.burstIgnition != null && token.burstIgnition > 55 && (
               <span className="flex items-center gap-1 text-amber-400/90">
                 <Zap className="h-3 w-3" /> burst
@@ -102,12 +127,23 @@ function TokenCardInner({ token, index = 0 }: TokenCardProps) {
 }
 
 function tokenCardPropsEqual(a: TokenCardProps, b: TokenCardProps) {
+  const t = a.token
+  const u = b.token
   return (
-    a.token.mint === b.token.mint &&
-    a.token.updatedAt === b.token.updatedAt &&
-    a.token.lastTradeAt === b.token.lastTradeAt &&
-    a.token.signalScore === b.token.signalScore &&
-    a.index === b.index
+    a.index === b.index &&
+    t.mint === u.mint &&
+    t.updatedAt === u.updatedAt &&
+    t.lastTradeAt === u.lastTradeAt &&
+    t.marketCap === u.marketCap &&
+    t.bondingCurvePercent === u.bondingCurvePercent &&
+    t.buyPressure1m === u.buyPressure1m &&
+    t.momentumScore === u.momentumScore &&
+    t.migrationProbability === u.migrationProbability &&
+    t.burstIgnition === u.burstIgnition &&
+    t.signalScore === u.signalScore &&
+    t.holders === u.holders &&
+    t.isActive === u.isActive &&
+    t.top1Pct === u.top1Pct
   )
 }
 

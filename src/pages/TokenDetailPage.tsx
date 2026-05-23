@@ -80,18 +80,22 @@ export function TokenDetailPage() {
             <ProgressionChart points={chart?.progression} metric="score" />
           </GlassCard>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricBar label="Migration prob." value={token.migrationProbability ?? 0} tone="purple" />
-            <MetricBar label="Burst" value={token.burstIgnition ?? 0} tone="amber" />
-            <MetricBar
-              label="Buy pressure"
-              value={token.buyPressure1m ?? 50}
-              tone="emerald"
-            />
-            <MetricBar
-              label="Rug risk"
-              value={quant?.rug?.rugScore ?? token.aiRiskScore ?? 50}
-              tone="red"
-            />
+            {token.migrationProbability != null && (
+              <MetricBar label="Migration prob." value={token.migrationProbability} tone="purple" />
+            )}
+            {token.burstIgnition != null && (
+              <MetricBar label="Burst" value={token.burstIgnition} tone="amber" />
+            )}
+            {token.buyPressure1m != null && (
+              <MetricBar label="Buy pressure" value={token.buyPressure1m} tone="emerald" />
+            )}
+            {(quant?.rug?.rugScore != null || token.aiRiskScore != null) && (
+              <MetricBar
+                label="Rug risk"
+                value={quant?.rug?.rugScore ?? token.aiRiskScore ?? 0}
+                tone="red"
+              />
+            )}
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <GlassCard>

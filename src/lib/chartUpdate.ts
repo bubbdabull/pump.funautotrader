@@ -110,8 +110,9 @@ export function mergeChartUpdate(
     changePct: patch.changePct,
     tradeCount: patch.tradeCount,
     lastTradeAt: patch.lastTradeAt,
-    tradeStreamSubscribed: prev?.tradeStreamSubscribed,
-    pumpportalKeyConfigured: prev?.pumpportalKeyConfigured,
+    tradeStreamSubscribed: patch.tradeStreamSubscribed ?? prev?.tradeStreamSubscribed,
+    pumpportalKeyConfigured:
+      patch.pumpportalKeyConfigured ?? prev?.pumpportalKeyConfigured,
   }, progression)
 }
 

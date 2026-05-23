@@ -24,6 +24,8 @@ export interface ChartUpdatePayload {
   volumeVelocity?: number
   priceVelocity?: number
   progressionPoint?: ProgressionPoint
+  tradeStreamSubscribed?: boolean
+  pumpportalKeyConfigured?: boolean
 }
 
 export function isChartUpdatePayload(payload: unknown): payload is ChartUpdatePayload {

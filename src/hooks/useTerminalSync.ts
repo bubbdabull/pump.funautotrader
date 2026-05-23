@@ -73,7 +73,21 @@ export function useTerminalSync() {
 
   useEffect(() => {
     const unsubs = [
-      realtimeGateway.onStreamMeta((meta) => setStreamEpoch(meta.epoch)),
+      realtimeGateway.onStreamMeta((meta) => {
+        if (meta.epoch) setStreamEpoch(meta.epoch)
+        if (meta.pumpportal) {
+          useRealtimeStore.getState().setStreamHealth({
+            subscribedTradeMints: meta.pumpportal.subscribedTradeMints,
+            maxTradeSubscriptions: meta.pumpportal.maxTradeSubscriptions,
+            connected: meta.pumpportal.connected,
+            tradeMessagesReceived: meta.pumpportal.tradeMessagesReceived ?? 0,
+            messagesReceived: meta.pumpportal.messagesReceived ?? 0,
+            leaderId: meta.leaderId,
+            isLeader: meta.isLeader,
+            streamEpoch: meta.epoch,
+          })
+        }
+      }),
       realtimeGateway.onReconnectSnapshot((tokens) => {
         if (tokens.length > 0) hydrateFeed(tokens)
       }),

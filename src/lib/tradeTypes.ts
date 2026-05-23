@@ -12,4 +12,10 @@ export interface TradeTickPayload {
   bondingCurvePercent?: number
   holders?: number
   holdersVerified?: boolean
+  signalScore?: number
+  momentumScore?: number
+  buyPressure1m?: number
+  migrationProbability?: number
+  burstIgnition?: number
+  isActive?: boolean
 }

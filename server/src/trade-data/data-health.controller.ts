@@ -1,18 +1,17 @@
-import { Controller, Get, Header, Inject, forwardRef } from '@nestjs/common'
+import { Controller, Get, Header } from '@nestjs/common'
 import { DataHealthService } from './data-health.service'
-import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
+import { PumpPortalStatusResolver } from './pumpportal-status.resolver'
 
 @Controller('data')
 export class DataHealthController {
   constructor(
     private health: DataHealthService,
-    @Inject(forwardRef(() => PumpPortalDataGateway))
-    private pumpportal: PumpPortalDataGateway,
+    private pumpStatus: PumpPortalStatusResolver,
   ) {}
 
   @Get('health')
   @Header('Cache-Control', 'no-store')
   async report() {
-    return this.health.getReport(this.pumpportal.getStatus())
+    return this.health.getReport(await this.pumpStatus.resolve())
   }
 }

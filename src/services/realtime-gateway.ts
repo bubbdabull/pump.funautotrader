@@ -126,9 +126,9 @@ class RealtimeGateway {
       const epoch = Number(meta?.epoch) || 0
       if (epoch > 0 && epoch >= this.streamEpoch) {
         this.streamEpoch = epoch
-        registryDebug.event('stream:meta', meta)
-        this.streamMetaHandlers.forEach((h) => h(meta))
       }
+      registryDebug.event('stream:meta', meta)
+      this.streamMetaHandlers.forEach((h) => h(meta))
     })
 
     socket.on('feed:update', (payload: unknown) => {

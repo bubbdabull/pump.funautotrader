@@ -13,8 +13,12 @@ export class AnalyticsBatcherService {
     private events: EventsGateway,
   ) {}
 
-  scheduleRegistryPatch(token: NormalizedToken) {
+  scheduleRegistryPatch(token: NormalizedToken, immediate = false) {
     this.patchQueue.set(token.mint, token)
+    if (immediate) {
+      this.events.emitRegistryPatch(token)
+      return
+    }
     if (!this.patchTimer) {
       this.patchTimer = setTimeout(() => this.flushPatches(), REGISTRY_PATCH_BATCH_MS)
     }

@@ -77,6 +77,8 @@ export interface ChartUpdatePayload {
   volumeVelocity?: number
   priceVelocity?: number
   progressionPoint?: ProgressionPoint
+  tradeStreamSubscribed?: boolean
+  pumpportalKeyConfigured?: boolean
 }
 
 export type ChartMetric = 'mcap' | 'price' | 'curve'

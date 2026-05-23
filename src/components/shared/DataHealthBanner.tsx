@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle2, Radio } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Radio, Wifi } from 'lucide-react'
 import { api } from '@/services/api'
 import { cn } from '@/lib/utils'
+import { useRealtimeStore } from '@/stores/realtimeStore'
+import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
 
 export interface DataHealthReport {
   ok: boolean
@@ -12,6 +14,9 @@ export interface DataHealthReport {
     subscribedTradeMints: number
     maxTradeSubscriptions: number
     messagesReceived: number
+    tradeMessagesReceived?: number
+    ingestionLeader?: boolean
+    leaderId?: string | null
   }
   supabase: boolean
   helius: boolean
@@ -27,6 +32,10 @@ export interface DataHealthReport {
 }
 
 export function DataHealthBanner() {
+  const streamHealth = useRealtimeStore((s) => s.streamHealth)
+  const wsConnected = useTokenRegistryStore((s) => s.wsConnected)
+  const registryUpdatedAt = useTokenRegistryStore((s) => s.updatedAt)
+
   const { data } = useQuery({
     queryKey: ['data', 'health'],
     queryFn: () => api.get<DataHealthReport>('/data/health').then((r) => r.data),
@@ -36,6 +45,15 @@ export function DataHealthBanner() {
 
   if (!data) return null
 
+  const subs =
+    streamHealth.updatedAt > 0
+      ? streamHealth.subscribedTradeMints
+      : data.pumpportal.subscribedTradeMints
+  const maxSubs =
+    streamHealth.maxTradeSubscriptions || data.pumpportal.maxTradeSubscriptions
+  const pumpConnected =
+    streamHealth.updatedAt > 0 ? streamHealth.connected : data.pumpportal.connected
+
   const gradeStyles = {
     good: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200',
     degraded: 'border-amber-500/30 bg-amber-500/10 text-amber-200',
@@ -43,6 +61,7 @@ export function DataHealthBanner() {
   }
 
   const Icon = data.grade === 'good' ? CheckCircle2 : AlertTriangle
+  const liveFeed = data.feed.coverage.feedWithRecentTrade ?? data.feed.coverage.mandatoryWithRecentTrade
 
   return (
     <div className={cn('mb-4 rounded-xl border px-4 py-3 text-sm', gradeStyles[data.grade])}>
@@ -53,10 +72,31 @@ export function DataHealthBanner() {
             Trade data: {data.grade === 'good' ? 'live' : data.grade === 'degraded' ? 'degraded' : 'poor'}
             {' · '}
             <span className="font-normal opacity-90">
-              {data.pumpportal.subscribedTradeMints}/{data.pumpportal.maxTradeSubscriptions} streams ·{' '}
-              {data.feed.coverage.feedWithRecentTrade ?? data.feed.coverage.mandatoryWithRecentTrade}/
-              {data.feed.size} live · {data.db.tradesLast5m} DB trades (5m)
+              {subs}/{maxSubs} streams · {liveFeed}/{data.feed.size} live ·{' '}
+              {data.db.tradesLast5m} DB trades (5m)
             </span>
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-3 text-[11px] opacity-80">
+            <span className="inline-flex items-center gap-1">
+              <Wifi className="h-3 w-3" />
+              Socket {wsConnected ? 'connected' : 'disconnected'}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Radio className="h-3 w-3" />
+              PumpPortal {pumpConnected ? 'up' : 'down'}
+              {streamHealth.leaderId ? ` · leader ${streamHealth.leaderId.slice(0, 8)}` : ''}
+            </span>
+            {registryUpdatedAt > 0 && (
+              <span>
+                Registry {Math.max(0, Math.round((Date.now() - registryUpdatedAt) / 1000))}s ago
+              </span>
+            )}
+            {(streamHealth.tradeMessagesReceived > 0 || data.pumpportal.tradeMessagesReceived) && (
+              <span>
+                {streamHealth.tradeMessagesReceived || data.pumpportal.tradeMessagesReceived} trade
+                msgs
+              </span>
+            )}
           </p>
           {data.issues.length > 0 && (
             <ul className="mt-1.5 list-inside list-disc text-xs opacity-90">
@@ -65,9 +105,9 @@ export function DataHealthBanner() {
               ))}
             </ul>
           )}
-          {!data.pumpportal.connected && (
+          {!pumpConnected && (
             <p className="mt-1 flex items-center gap-1 text-xs">
-              <Radio className="h-3 w-3" /> PumpPortal disconnected — charts and activity will be empty.
+              <Radio className="h-3 w-3" /> PumpPortal disconnected — charts need live trade stream.
             </p>
           )}
         </div>

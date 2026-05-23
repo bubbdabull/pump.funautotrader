@@ -28,21 +28,55 @@ const emptyDiagnostics = (): RealtimeDiagnostics => ({
   avgEventLatencyMs: 0,
 })
 
+export type StreamHealthSnapshot = {
+  subscribedTradeMints: number
+  maxTradeSubscriptions: number
+  connected: boolean
+  tradeMessagesReceived: number
+  messagesReceived: number
+  leaderId?: string | null
+  isLeader?: boolean
+  streamEpoch: number
+  updatedAt: number
+}
+
 interface RealtimeState {
   connected: boolean
   reconnecting: boolean
   diagnostics: RealtimeDiagnostics
+  streamHealth: StreamHealthSnapshot
   setConnected: (v: boolean) => void
   setReconnecting: (v: boolean) => void
+  setStreamHealth: (patch: Partial<StreamHealthSnapshot>) => void
   patchDiagnostics: (patch: Partial<RealtimeDiagnostics>) => void
   recordReconnect: () => void
   resetDiagnostics: () => void
 }
 
+const emptyStreamHealth = (): StreamHealthSnapshot => ({
+  subscribedTradeMints: 0,
+  maxTradeSubscriptions: 250,
+  connected: false,
+  tradeMessagesReceived: 0,
+  messagesReceived: 0,
+  streamEpoch: 0,
+  updatedAt: 0,
+})
+
 export const useRealtimeStore = create<RealtimeState>((set, get) => ({
   connected: false,
   reconnecting: false,
   diagnostics: emptyDiagnostics(),
+  streamHealth: emptyStreamHealth(),
+
+  setStreamHealth: (patch) =>
+    set((s) => ({
+      streamHealth: {
+        ...s.streamHealth,
+        ...patch,
+        updatedAt: Date.now(),
+      },
+    })),
 
   setConnected: (v) => set({ connected: v, reconnecting: v ? false : get().reconnecting }),
   setReconnecting: (v) => set({ reconnecting: v }),

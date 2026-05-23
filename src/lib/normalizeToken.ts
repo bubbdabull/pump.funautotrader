@@ -30,6 +30,9 @@ export function mergePumpTokens(prev: PumpToken, next: PumpToken): PumpToken {
     ...next,
     image,
     metadataUri,
+    twitter: next.twitter || prev.twitter,
+    telegram: next.telegram || prev.telegram,
+    website: next.website || prev.website,
     holders: Math.max(prev.holders ?? 0, next.holders ?? 0),
     holdersVerified:
       (prev.holdersVerified && (prev.holders ?? 0) >= 2) ||

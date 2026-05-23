@@ -908,6 +908,7 @@ export class TokensService {
     const state = this.trading.getState(mint)
     const last = state?.trades[state.trades.length - 1]
     if (!last) return
+    const live = this.liveFeed.get(mint) ?? token
     this.events.emitTradeTick({
       mint,
       signature: last.signature,
@@ -918,9 +919,15 @@ export class TokensService {
       timestampMs: last.timestamp,
       slot: last.slot,
       marketCapUsd: last.marketCapUsd ?? state?.marketCapUsd,
-      bondingCurvePercent: token.bondingCurvePercent,
-      holders: token.holders,
-      holdersVerified: token.holdersVerified,
+      bondingCurvePercent: live.bondingCurvePercent,
+      holders: live.holders,
+      holdersVerified: live.holdersVerified,
+      signalScore: live.signalScore,
+      momentumScore: live.momentumScore,
+      buyPressure1m: live.buyPressure1m,
+      migrationProbability: live.migrationProbability,
+      burstIgnition: live.burstIgnition,
+      isActive: true,
     })
   }
 

@@ -32,6 +32,11 @@ export interface FeedToken {
   mcapChange5m?: number
   /** Trade in the last 60s */
   isActive?: boolean
+  lifecycle?: string
+  migrationProbability?: number
+  burstIgnition?: number
+  top1Pct?: number
+  top5Pct?: number
 }
 
 export interface FeedTrade {

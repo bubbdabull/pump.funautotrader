@@ -247,12 +247,38 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   private heartbeatCheck() {
+    void this.publishStatusSnapshot()
     if (!this.connected || !this.ws) return
     const age = this.lastMessageAtMs ? Date.now() - this.lastMessageAtMs : Infinity
     if (age > PUMPPORTAL_WS_STALE_MS) {
       this.logger.warn(`PumpPortal WS stale (${Math.round(age / 1000)}s) — forcing reconnect`)
       this.forceReconnect('stale')
     }
+  }
+
+  /** Publish leader WS stats so health API / stream:meta on any Fly machine stay accurate. */
+  publishStatusSnapshot() {
+    if (!this.ingestionLeader.isIngestionLeader()) return
+    const h = this.getHealth()
+    const payload = JSON.stringify({
+      connected: h.connected,
+      apiKeyConfigured: h.apiKeyConfigured,
+      tradeSubscriptionsEnabled: h.tradeSubscriptionsEnabled,
+      maxTradeSubscriptions: h.maxTradeSubscriptions,
+      subscribedTradeMints: h.subscribedTradeMints,
+      pendingTradeSubscriptions: h.pendingTradeSubscriptions,
+      pinnedPriorityMints: h.pinnedPriorityMints,
+      liveFeedCount: h.liveFeedCount,
+      messagesReceived: h.messagesReceived,
+      tradeMessagesReceived: h.tradeMessagesReceived,
+      lastMessageAt: h.lastMessageAt,
+      lastTradeSubRotationAt: h.lastTradeSubRotationAt,
+      ingestionLeader: true,
+      leaderId: this.ingestionLeader.getInstanceId(),
+      streamEpoch: h.streamEpoch,
+      at: new Date().toISOString(),
+    })
+    void this.redis.set(REDIS_KEYS.pumpportalStatus, payload, 45)
   }
 
   private forceReconnect(reason: string) {
@@ -353,6 +379,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       this.trimDesiredTradeSubs()
       this.streamEpoch = Date.now()
       void this.redis.set(REDIS_KEYS.streamEpoch, String(this.streamEpoch))
+      this.publishStatusSnapshot()
       this.logger.log(
         `PumpPortal WS connected (${this.apiKey ? 'authenticated' : 'public'})` +
           ` epoch=${this.streamEpoch}`,
@@ -609,6 +636,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     } else {
       this.logger.debug(msg)
     }
+    this.publishStatusSnapshot()
 
     if (
       this.pendingTradeQueue.length > 0 &&

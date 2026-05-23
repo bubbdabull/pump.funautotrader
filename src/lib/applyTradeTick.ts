@@ -15,7 +15,12 @@ export function applyTradeTickToToken(token: PumpToken, tick: TradeTickPayload):
     lastTradeAt: tick.timestampMs,
     marketCap: tick.marketCapUsd ?? token.marketCap,
     bondingCurvePercent: tick.bondingCurvePercent ?? token.bondingCurvePercent,
-    isActive: true,
+    signalScore: tick.signalScore ?? token.signalScore,
+    momentumScore: tick.momentumScore ?? token.momentumScore,
+    buyPressure1m: tick.buyPressure1m ?? token.buyPressure1m,
+    migrationProbability: tick.migrationProbability ?? token.migrationProbability,
+    burstIgnition: tick.burstIgnition ?? token.burstIgnition,
+    isActive: tick.isActive ?? true,
     updatedAt: tick.timestampMs,
   }
 }

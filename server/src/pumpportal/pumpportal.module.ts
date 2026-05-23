@@ -18,7 +18,7 @@ import { PumpModule } from '../pump/pump.module'
     TradingModule,
     IngestionModule,
     HoldersModule,
-    TradeDataModule,
+    forwardRef(() => TradeDataModule),
     forwardRef(() => QuantModule),
     forwardRef(() => EventsModule),
     forwardRef(() => TokensModule),

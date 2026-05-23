@@ -18,4 +18,11 @@ export type StreamMetaPayload = {
   leaderId?: string | null
   instanceId?: string
   isLeader?: boolean
+  pumpportal?: {
+    connected: boolean
+    subscribedTradeMints: number
+    maxTradeSubscriptions: number
+    tradeMessagesReceived?: number
+    messagesReceived?: number
+  }
 }
