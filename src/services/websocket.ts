@@ -29,8 +29,18 @@ const CANONICAL_EVENTS = [
   'wallet:update',
 ] as const
 
+function parseFeedSnapshot(payload: unknown): PumpToken[] {
+  if (Array.isArray(payload)) return payload as PumpToken[]
+  if (payload && typeof payload === 'object' && Array.isArray((payload as { tokens?: unknown }).tokens)) {
+    return (payload as { tokens: PumpToken[] }).tokens
+  }
+  return []
+}
+
 class WebSocketService {
   private socket: Socket | null = null
+  private listenersAttached = false
+  private lastFeedSnapshot: PumpToken[] | null = null
   private registryPatchHandlers = new Set<RegistryPatchHandler>()
   private feedSnapshotHandlers = new Set<FeedSnapshotHandler>()
   private chartHandlers = new Set<ChartHandler>()
@@ -44,68 +54,94 @@ class WebSocketService {
   private connectHandlers = new Set<() => void>()
   private disconnectHandlers = new Set<() => void>()
 
-  connect() {
-    if (this.socket?.connected) return this.socket
+  private wsUrl(): string {
+    if (WS_URL) return WS_URL
+    if (typeof window !== 'undefined') return window.location.origin
+    return 'http://localhost:5173'
+  }
 
-    const url =
-      WS_URL ||
-      (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173')
-    this.socket = io(url, {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 20,
-      reconnectionDelay: 1000,
-      timeout: 20_000,
-    })
+  private deliverFeedSnapshot(tokens: PumpToken[]) {
+    if (tokens.length === 0) return
+    this.lastFeedSnapshot = tokens
+    this.feedSnapshotHandlers.forEach((h) => h(tokens))
+  }
+
+  private requestFeedSubscribe() {
+    if (!this.socket?.connected) return
+    registryDebug.event('subscribe:feed')
+    this.socket.emit('subscribe:feed')
+  }
+
+  private attachListeners(socket: Socket) {
+    if (this.listenersAttached) return
+    this.listenersAttached = true
 
     for (const event of CANONICAL_EVENTS) {
-      this.socket.on(event, (payload: unknown) => {
+      socket.on(event, (payload: unknown) => {
         registryDebug.event(event, payload)
         this.dispatch(event, payload)
       })
     }
 
-    this.socket.on('feed:update', (payload: unknown) => {
-      registryDebug.event('feed:update', { count: Array.isArray(payload) ? payload.length : 0 })
-      const tokens = Array.isArray(payload) ? (payload as PumpToken[]) : []
-      this.feedSnapshotHandlers.forEach((h) => h(tokens))
+    socket.on('feed:update', (payload: unknown) => {
+      const tokens = parseFeedSnapshot(payload)
+      registryDebug.event('feed:update', { count: tokens.length })
+      this.deliverFeedSnapshot(tokens)
     })
 
-    this.socket.on('feed:patch', (token: PumpToken) => {
+    socket.on('feed:patch', (token: PumpToken) => {
       registryDebug.event('feed:patch', token?.mint)
       this.registryPatchHandlers.forEach((h) => h(token))
     })
 
-    this.socket.on('feed:prepend', (token: PumpToken) => {
+    socket.on('feed:prepend', (token: PumpToken) => {
       registryDebug.event('feed:prepend', token?.mint)
       this.registryPatchHandlers.forEach((h) => h(token))
     })
 
-    this.socket.on('token:update', (token: PumpToken) => {
+    socket.on('token:update', (token: PumpToken) => {
       registryDebug.event('token:update', token?.mint)
       this.registryPatchHandlers.forEach((h) => h(token))
     })
 
-    this.socket.on('autotrader:signal', (signal: AutoTradeSignal) => {
+    socket.on('autotrader:signal', (signal: AutoTradeSignal) => {
       registryDebug.event('autotrader:signal')
       this.autotraderHandlers.forEach((h) => h(signal))
     })
 
-    this.socket.on('connect', () => {
+    socket.on('connect', () => {
       registryDebug.event('connect')
-      this.socket?.emit('subscribe:feed')
+      this.requestFeedSubscribe()
       this.connectHandlers.forEach((h) => h())
     })
 
-    this.socket.on('disconnect', () => {
+    socket.on('disconnect', () => {
       registryDebug.event('disconnect')
       this.disconnectHandlers.forEach((h) => h())
     })
 
-    this.socket.on('connect_error', (err) => {
-      console.warn('[socket.io] connect_error', err.message, 'url=', url)
+    socket.on('connect_error', (err) => {
+      console.warn('[socket.io] connect_error', err.message, 'url=', this.wsUrl())
     })
+  }
+
+  connect() {
+    if (!this.socket) {
+      const url = this.wsUrl()
+      this.socket = io(url, {
+        path: '/socket.io',
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 20,
+        reconnectionDelay: 1000,
+        timeout: 20_000,
+      })
+      this.attachListeners(this.socket)
+    }
+
+    if (this.socket.connected) {
+      this.requestFeedSubscribe()
+    }
 
     return this.socket
   }
@@ -150,6 +186,7 @@ class WebSocketService {
 
   onConnect(handler: () => void) {
     this.connectHandlers.add(handler)
+    if (this.socket?.connected) handler()
     return () => this.connectHandlers.delete(handler)
   }
 
@@ -165,6 +202,8 @@ class WebSocketService {
 
   onFeedSnapshot(handler: FeedSnapshotHandler) {
     this.feedSnapshotHandlers.add(handler)
+    if (this.lastFeedSnapshot?.length) handler(this.lastFeedSnapshot)
+    this.requestFeedSubscribe()
     return () => this.feedSnapshotHandlers.delete(handler)
   }
 

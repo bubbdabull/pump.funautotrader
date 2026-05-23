@@ -1,4 +1,4 @@
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
 import { useQuantStore } from '@/stores/quantStore'
@@ -62,8 +62,12 @@ function applyLane(tokens: PumpToken[], lane: ScannerLane): RegistryLanePayload 
 
 /** WebSocket-driven lane feed — single registry source. */
 export function useRegistryLane(lane: ScannerLane = 'all') {
+  const [bootstrapTimedOut, setBootstrapTimedOut] = useState(false)
+
   useEffect(() => {
     wsService.connect()
+    const t = window.setTimeout(() => setBootstrapTimedOut(true), 5_000)
+    return () => clearTimeout(t)
   }, [])
 
   const { byMint, version, updatedAt, wsConnected } = useTokenRegistryStore(
@@ -92,7 +96,7 @@ export function useRegistryLane(lane: ScannerLane = 'all') {
     tokens,
     displayMode: payload.mode,
     tradeableCount: payload.tradeableCount,
-    isLoading: !wsConnected && tokens.length === 0,
+    isLoading: tokens.length === 0 && !bootstrapTimedOut && !updatedAt,
     isFetching: false,
     isError: false,
     error: null as Error | null,

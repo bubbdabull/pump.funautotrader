@@ -16,17 +16,13 @@ export function useBackendStatus() {
   const [socketConnected, setSocketConnected] = useState(false)
 
   useEffect(() => {
-    const socket = wsService.connect()
-    const onConnect = () => setSocketConnected(true)
-    const onDisconnect = () => setSocketConnected(false)
-    socket.on('connect', onConnect)
-    socket.on('disconnect', onDisconnect)
-    socket.on('connect_error', onDisconnect)
-    if (socket.connected) setSocketConnected(true)
+    wsService.connect()
+    const unsubOn = wsService.onConnect(() => setSocketConnected(true))
+    const unsubOff = wsService.onDisconnect(() => setSocketConnected(false))
+    setSocketConnected(wsService.connected)
     return () => {
-      socket.off('connect', onConnect)
-      socket.off('disconnect', onDisconnect)
-      socket.off('connect_error', onDisconnect)
+      unsubOn()
+      unsubOff()
     }
   }, [])
 

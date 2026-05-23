@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common'
+import { Global, Module, forwardRef } from '@nestjs/common'
 import { DedupService } from './dedup.service'
 import { EventBusService } from './event-bus.service'
 import { IngestionOrchestratorService } from './ingestion-orchestrator.service'
@@ -9,7 +9,7 @@ import { IntelligenceModule } from '../intelligence/intelligence.module'
 
 @Global()
 @Module({
-  imports: [TradingModule, IntelligenceModule],
+  imports: [TradingModule, forwardRef(() => IntelligenceModule)],
   providers: [
     DedupService,
     EventBusService,

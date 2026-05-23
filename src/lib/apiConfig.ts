@@ -19,19 +19,21 @@ function isLocalDevHost(): boolean {
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]'
 }
 
-const envApi = normalizeEnvUrl(import.meta.env.VITE_API_URL, FLY_API_BASE)
-const envWs = normalizeEnvUrl(import.meta.env.VITE_WS_URL, FLY_API_ORIGIN)
+const envApiRaw = import.meta.env.VITE_API_URL?.trim() ?? ''
+const envWsRaw = import.meta.env.VITE_WS_URL?.trim() ?? ''
+const envApi = envApiRaw ? normalizeEnvUrl(envApiRaw, FLY_API_BASE) : ''
+const envWs = envWsRaw ? normalizeEnvUrl(envWsRaw, FLY_API_ORIGIN) : ''
 
-/** Prefer explicit VITE_* URLs when set (production can point at any API host). */
+/** Prefer explicit VITE_* URLs when set; local dev uses Vite proxy (`/api` + same-origin WS). */
 export const API_BASE = envApi.startsWith('http')
   ? envApi
   : isLocalDevHost()
-    ? envApi
+    ? '/api'
     : FLY_API_BASE
 export const WS_URL = envWs.startsWith('http')
   ? envWs
   : isLocalDevHost()
-    ? envWs
+    ? ''
     : FLY_API_ORIGIN
 
 export function backendLabel(): string {
