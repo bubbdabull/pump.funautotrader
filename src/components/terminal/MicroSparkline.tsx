@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useStreamStore } from '@/core/streamStore'
 import { cn } from '@/lib/utils'
 
 interface MicroSparklineProps {
@@ -10,7 +10,7 @@ interface MicroSparklineProps {
 }
 
 function MicroSparklineInner({ mint, width = 56, height = 22, className }: MicroSparklineProps) {
-  const series = useTokenRegistryStore((s) => s.charts[`${mint}::5000`])
+  const series = useStreamStore((s) => s.charts[`${mint}::5000`])
   const points = useMemo(() => {
     const candles = series?.candles ?? []
     if (candles.length < 2) return null

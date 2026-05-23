@@ -38,9 +38,9 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
     return (
       <div className="panel flex min-h-[280px] flex-col items-center justify-center gap-2 text-center">
         <Radio className="h-8 w-8 text-zinc-600" />
-        <p className="text-sm font-medium text-zinc-400">No tokens in feed yet</p>
+        <p className="text-sm font-medium text-zinc-400">Waiting for live stream</p>
         <p className="max-w-sm text-xs text-zinc-600">
-          New Pump.fun launches appear here as the API stream receives them.
+          Tokens appear on registry:patch — early-stage launches are included, not filtered by score.
         </p>
       </div>
     )

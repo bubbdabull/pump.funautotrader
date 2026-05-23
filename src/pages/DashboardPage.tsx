@@ -33,10 +33,10 @@ export function DashboardPage() {
     isLoading,
     isFetching,
     dataUpdatedAt,
-    displayMode,
+    mode,
     tradeableCount,
     wsConnected,
-  } = useScannerFeed('tradeable')
+  } = useScannerFeed('all')
   const { data: graduatingData } = useScannerFeed('graduating')
   const tokens = ensureArray<PumpToken>(feedData)
   const graduating = ensureArray<PumpToken>(graduatingData)
@@ -72,7 +72,7 @@ export function DashboardPage() {
           Live Pump.fun ·{' '}
           {isLoading
             ? 'loading…'
-            : `${tokens.length} ranked · ${tradeableCount} high confidence (${displayModeLabel(displayMode)})`}
+            : `${tokens.length} live · ${tradeableCount} high confidence · ${displayModeLabel(mode)}`}
           {dataUpdatedAt > 0 && (
             <span className="text-zinc-600">
               {' '}
@@ -102,7 +102,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      {displayMode === 'low_confidence' && !streamDown && (
+      {mode === 'low_confidence' && !streamDown && (
         <div className="mb-4 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-2 text-xs text-violet-200/90">
           Live stream active — early tokens shown with low confidence scores until holder depth and volume build.
         </div>

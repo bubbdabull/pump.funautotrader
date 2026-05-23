@@ -15,7 +15,7 @@ import { LifecycleBadge } from '@/components/terminal/LifecycleBadge'
 import { MetricBar } from '@/components/terminal/MetricBar'
 import { BubbleMapViz } from '@/components/terminal/BubbleMapViz'
 import { ProgressionChart } from '@/components/terminal/ProgressionChart'
-import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useStreamStore } from '@/core/streamStore'
 import { useTokenChart } from '@/hooks/useRegistry'
 import { useQuantStore } from '@/stores/quantStore'
 
@@ -24,7 +24,7 @@ export function TokenDetailPage() {
   const { data: token, isLoading } = useToken(mint)
   const { data: trades = [] } = useTokenTrades(mint)
   const { data: chart } = useTokenChart(mint)
-  const walletGraph = useTokenRegistryStore((s) => s.getGraph(mint))
+  const walletGraph = useStreamStore((s) => s.getGraph(mint))
   const quant = useQuantStore((s) => s.byMint[mint])
 
   if (isLoading || !token) {

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useStreamStore } from '@/core/streamStore'
 
 /** Throttle registry-driven UI repaints during WS bursts (100–250ms). */
 export function useBatchedRegistryTick(intervalMs = 150): number {
-  const version = useTokenRegistryStore((s) => s.version)
+  const version = useStreamStore((s) => s.version)
   const [tick, setTick] = useState(version)
   const latest = useRef(version)
 

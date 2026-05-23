@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Radio, Wifi } from 'lucide-react'
 import { api } from '@/services/api'
 import { cn } from '@/lib/utils'
 import { useRealtimeStore } from '@/stores/realtimeStore'
-import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useStreamStore } from '@/core/streamStore'
 
 export interface DataHealthReport {
   ok: boolean
@@ -34,8 +34,8 @@ export interface DataHealthReport {
 export function DataHealthBanner() {
   const streamHealth = useRealtimeStore((s) => s.streamHealth)
   const ingestionDegraded = useRealtimeStore((s) => s.ingestionDegraded)
-  const wsConnected = useTokenRegistryStore((s) => s.wsConnected)
-  const registryUpdatedAt = useTokenRegistryStore((s) => s.updatedAt)
+  const wsConnected = useStreamStore((s) => s.wsConnected)
+  const registryUpdatedAt = useStreamStore((s) => s.updatedAt)
 
   const { data } = useQuery({
     queryKey: ['data', 'health'],

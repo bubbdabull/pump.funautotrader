@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
 import { WalletProvider } from './WalletProvider'
-import { useTerminalSync } from '@/hooks/useTerminalSync'
+import { useStreamSync } from '@/hooks/useStreamSync'
 import { useRealtimeDiagnostics } from '@/hooks/useRealtimeDiagnostics'
 
 const queryClient = new QueryClient({
@@ -11,7 +11,7 @@ const queryClient = new QueryClient({
 })
 
 export function AppProviders({ children }: { children: ReactNode }) {
-  useTerminalSync()
+  useStreamSync()
   useRealtimeDiagnostics()
 
   return (

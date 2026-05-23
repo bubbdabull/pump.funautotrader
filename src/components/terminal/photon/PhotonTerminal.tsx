@@ -11,7 +11,7 @@ import { PhotonCenterPanel } from '@/components/terminal/photon/PhotonCenterPane
 import { PhotonQuickSwap } from '@/components/terminal/photon/PhotonQuickSwap'
 import { PhotonSecurityPanel } from '@/components/terminal/photon/PhotonSecurityPanel'
 import { HolderBubbleMap } from '@/components/terminal/HolderBubbleMap'
-import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useStreamStore } from '@/core/streamStore'
 import { ensureArray } from '@/lib/ensureArray'
 import type { ScannerLane } from '@/lib/feedQuality'
 import type { PumpToken } from '@/types'
@@ -27,7 +27,7 @@ export function PhotonTerminal() {
   const hotCount = useMemo(() => tokens.filter((t) => t.isActive).length, [tokens])
 
   const { data: selectedToken } = useRegistryToken(selectedMint)
-  const graph = useTokenRegistryStore((s) => (selectedMint ? s.walletGraphs[selectedMint] : undefined))
+  const graph = useStreamStore((s) => (selectedMint ? s.walletGraphs[selectedMint] : undefined))
   useTokenSubscription(selectedMint)
 
   const wsLive = useWsConnection()

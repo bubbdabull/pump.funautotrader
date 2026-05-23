@@ -21,7 +21,7 @@ export function LiveFeedCards({ tokens }: LiveFeedCardsProps) {
   if (tokens.length === 0) {
     return (
       <div className="panel flex min-h-[200px] items-center justify-center p-6 text-sm text-zinc-500">
-        No tokens in feed
+        Waiting for live stream…
       </div>
     )
   }

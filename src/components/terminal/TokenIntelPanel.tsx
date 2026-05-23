@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { ExternalLink, Globe } from 'lucide-react'
 import { HolderBubbleMap } from '@/components/terminal/HolderBubbleMap'
-import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useStreamStore } from '@/core/streamStore'
 import { feedConfidenceScore, tradeableRejectionReasons } from '@/lib/feedQuality'
 import type { PumpToken } from '@/types'
 
@@ -11,7 +11,7 @@ interface TokenIntelPanelProps {
 }
 
 function TokenIntelPanelInner({ token, mint }: TokenIntelPanelProps) {
-  const graph = useTokenRegistryStore((s) => (mint ? s.walletGraphs[mint] : undefined))
+  const graph = useStreamStore((s) => (mint ? s.walletGraphs[mint] : undefined))
 
   if (!token) {
     return (

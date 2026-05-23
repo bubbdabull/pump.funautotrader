@@ -7,7 +7,7 @@ import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { LifecycleBadge } from '@/components/terminal/LifecycleBadge'
 import { HolderBubbleMap } from '@/components/terminal/HolderBubbleMap'
 import { PhotonTxTable } from '@/components/terminal/photon/PhotonTxTable'
-import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useStreamStore } from '@/core/streamStore'
 import { cn, formatUsd, formatSol, tokenVolumeSol, shortenAddress } from '@/lib/utils'
 import type { PumpToken } from '@/types'
 
@@ -20,7 +20,7 @@ interface PhotonCenterPanelProps {
 
 function PhotonCenterPanelInner({ token, mint }: PhotonCenterPanelProps) {
   const [tab, setTab] = useState<CenterTab>('transactions')
-  const graph = useTokenRegistryStore((s) => (mint ? s.walletGraphs[mint] : undefined))
+  const graph = useStreamStore((s) => (mint ? s.walletGraphs[mint] : undefined))
 
   if (!token || !mint) {
     return (
