@@ -175,3 +175,142 @@ body::before {
 .curve-bar-fill {
   transition: width 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
+
+/* —— Pro Scanner terminal —— */
+.terminal-root {
+  background: linear-gradient(180deg, rgba(12, 14, 20, 0.95) 0%, rgba(8, 9, 12, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5) inset,
+    0 8px 40px rgba(0, 0, 0, 0.45);
+}
+
+.terminal-panel {
+  background: rgba(10, 11, 15, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  height: 100%;
+}
+
+.terminal-feed-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.terminal-feed-row-selected {
+  background: linear-gradient(90deg, rgba(124, 58, 237, 0.18) 0%, transparent 70%);
+  border-left: 2px solid rgba(167, 139, 250, 0.8);
+}
+
+.terminal-flow-inflow {
+  box-shadow: inset 2px 0 0 rgba(34, 197, 94, 0.45);
+}
+
+.terminal-flow-sell {
+  box-shadow: inset 2px 0 0 rgba(239, 68, 68, 0.4);
+}
+
+.terminal-flow-active {
+  animation: terminal-pulse-border 1.8s ease-in-out infinite;
+}
+
+@keyframes terminal-pulse-border {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.15);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.45);
+  }
+}
+
+.terminal-heartbeat {
+  animation: terminal-heartbeat 1.4s ease-in-out infinite;
+}
+
+@keyframes terminal-heartbeat {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.terminal-chart-pulse-wrap {
+  position: relative;
+}
+
+.terminal-chart-pulse-wrap::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(34, 197, 94, 0.03) 100%
+  );
+  opacity: 0;
+  animation: terminal-chart-glow 2s ease-in-out infinite;
+}
+
+@keyframes terminal-chart-glow {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.terminal-chart-trade-pulse {
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+  animation: terminal-trade-flash 0.38s ease-out;
+}
+
+@keyframes terminal-trade-flash {
+  0% {
+    background: rgba(34, 197, 94, 0.12);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.terminal-tape-buy {
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.12) 0%, transparent 100%);
+}
+
+.terminal-tape-sell {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.1) 0%, transparent 100%);
+}
+
+.terminal-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: terminal-shimmer 1.2s linear infinite;
+}
+
+@keyframes terminal-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.terminal-warmup {
+  background: radial-gradient(ellipse at center, rgba(124, 58, 237, 0.06) 0%, transparent 70%);
+}
