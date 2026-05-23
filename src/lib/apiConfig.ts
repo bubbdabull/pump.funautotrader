@@ -22,9 +22,17 @@ function isLocalDevHost(): boolean {
 const envApi = normalizeEnvUrl(import.meta.env.VITE_API_URL, FLY_API_BASE)
 const envWs = normalizeEnvUrl(import.meta.env.VITE_WS_URL, FLY_API_ORIGIN)
 
-/** Local dev defaults to Fly unless you set VITE_API_URL=/api with local Nest on :3001. */
-export const API_BASE = isLocalDevHost() ? envApi : FLY_API_BASE
-export const WS_URL = isLocalDevHost() ? envWs : FLY_API_ORIGIN
+/** Prefer explicit VITE_* URLs when set (production can point at any API host). */
+export const API_BASE = envApi.startsWith('http')
+  ? envApi
+  : isLocalDevHost()
+    ? envApi
+    : FLY_API_BASE
+export const WS_URL = envWs.startsWith('http')
+  ? envWs
+  : isLocalDevHost()
+    ? envWs
+    : FLY_API_ORIGIN
 
 export function backendLabel(): string {
   try {

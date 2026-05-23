@@ -1,5 +1,5 @@
 import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, forwardRef } from '@nestjs/common'
-import { PUMP_FUN_SCAN_INTERVAL_MS } from '@phronis/trading'
+import { PUMP_REST_DISCOVERY_INTERVAL_MS } from '@phronis/trading'
 import { TokensService } from './tokens.service'
 import { EventsGateway } from '../events/events.gateway'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
@@ -21,10 +21,10 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    this.timer = setInterval(() => void this.runSync(), PUMP_FUN_SCAN_INTERVAL_MS)
-    void this.runSync()
+    this.timer = setInterval(() => void this.runSync(), PUMP_REST_DISCOVERY_INTERVAL_MS)
+    setTimeout(() => void this.runSync(), 15_000)
     this.logger.log(
-      `pump.fun REST sync every ${Math.round(PUMP_FUN_SCAN_INTERVAL_MS / 1000)}s`,
+      `pump.fun REST discovery every ${Math.round(PUMP_REST_DISCOVERY_INTERVAL_MS / 1000)}s (WS is live tape)`,
     )
   }
 
@@ -34,7 +34,7 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
 
   getStatus() {
     return {
-      intervalMs: PUMP_FUN_SCAN_INTERVAL_MS,
+      intervalMs: PUMP_REST_DISCOVERY_INTERVAL_MS,
       lastSyncAt: this.lastSyncAt,
       lastSyncCount: this.lastSyncCount,
     }
@@ -50,14 +50,7 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
         this.pumpportal.ensureTradeSubscription(mint)
       }
       if (count > 0) {
-        const [feed, graduating] = await Promise.all([
-          this.tokens.getFeed('all'),
-          this.tokens.getGraduatingFeed(),
-        ])
-        this.events.server?.to('feed').emit('feed:update', feed)
-        if (graduating.length > 0) {
-          this.events.server?.emit('feed:graduating', graduating)
-        }
+        this.logger.log(`REST discovery merged ${count} coins (registry updated)`)
       }
     } catch (err) {
       this.logger.warn(`pump.fun sync failed: ${(err as Error).message}`)

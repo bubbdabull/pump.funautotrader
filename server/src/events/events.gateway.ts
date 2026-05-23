@@ -47,7 +47,7 @@ export class EventsGateway implements OnGatewayConnection {
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`)
     if (!this.feedInterval) {
-      this.feedInterval = setInterval(() => this.broadcastFeed(), 8_000)
+      this.feedInterval = setInterval(() => this.broadcastFeed(), 60_000)
     }
   }
 
@@ -83,6 +83,20 @@ export class EventsGateway implements OnGatewayConnection {
   emitTradeTick(payload: TradeTickPayload) {
     this.server.to(`token:${payload.mint}`).emit('trade:tick', payload)
     this.server.to('feed').emit('trade:tick', payload)
+  }
+
+  /** Normalized registry patch — primary UI update path (stream-first). */
+  emitRegistryPatch(token: unknown) {
+    this.server.to('feed').emit('registry:patch', token)
+    this.server.to('feed').emit('feed:patch', token)
+    const mint = (token as { mint?: string })?.mint
+    if (mint) {
+      this.server.to(`token:${mint}`).emit('token:update', token)
+    }
+  }
+
+  emitFeedPrepend(token: unknown) {
+    this.server.to('feed').emit('feed:prepend', token)
   }
 
   emitChartUpdate(mint: string, intervalMs = 1_000) {

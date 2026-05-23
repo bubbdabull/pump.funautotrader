@@ -1,5 +1,7 @@
 import {
   isRecentlyActive,
+  isDeadFeedToken,
+  liveActivityScore,
   rankByLiveActivity,
   rankScannerQuality,
 } from './liveActivity'
@@ -212,6 +214,27 @@ export function pickNearGraduation<T extends FeedQualityFields>(
     .slice(0, limit)
 }
 
+/** All Live lane — broader than rankScannerQuality; still anti-rug. */
+export function rankAllLiveFeed<T extends FeedQualityFields & FeedQualityWithActivity>(
+  tokens: T[],
+  limit = 120,
+): T[] {
+  const now = Date.now()
+  return [...tokens]
+    .filter((t) => passesAlphaFilter(t) || (passesIngestGate(t) && !isDeadFeedToken(t, now)))
+    .filter((t) => !isDeadFeedToken(t, now))
+    .filter((t) => passesMinHolderDepth(t) || activitySol(t) >= 0.22)
+    .sort((a, b) => liveActivityScore(b, now) - liveActivityScore(a, now))
+    .slice(0, limit)
+}
+
+type FeedQualityWithActivity = FeedQualityFields & {
+  lastTradeAt?: number
+  isActive?: boolean
+  trades1m?: number
+  volume5mSol?: number
+}
+
 export function filterForLane<T extends FeedQualityFields>(
   tokens: T[],
   lane: ScannerLane,
@@ -226,9 +249,10 @@ export function filterForLane<T extends FeedQualityFields>(
     }
     case 'active':
       return rankByLiveActivity(tokens, 60)
-    case 'alpha':
     case 'all':
-      return rankScannerQuality(tokens, lane === 'all' ? 100 : 60)
+      return rankAllLiveFeed(tokens, 120)
+    case 'alpha':
+      return rankScannerQuality(tokens, 60)
     case 'tradeable':
     default:
       return resolveDisplayFeed(tokens, 80).tokens
@@ -238,6 +262,7 @@ export function filterForLane<T extends FeedQualityFields>(
 export {
   isRecentlyActive,
   hasRealTimeTradeActivity,
+  hasRestMarketActivity,
   isDeadFeedToken,
   liveActivityScore,
   passesActiveScannerFilter,

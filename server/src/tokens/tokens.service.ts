@@ -54,6 +54,7 @@ import { SupabaseDbService } from '../supabase/supabase-db.service'
 import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 import { EventsGateway } from '../events/events.gateway'
 import { TokenDiscoveryService } from './token-discovery.service'
+import { TokenRegistryService } from '../pipeline/token-registry.service'
 
 @Injectable()
 export class TokensService {
@@ -77,6 +78,7 @@ export class TokensService {
     @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
     private discovery: TokenDiscoveryService,
+    private registry: TokenRegistryService,
   ) {}
 
   getScanStats() {
@@ -115,10 +117,34 @@ export class TokensService {
   }
 
   async getFeed(lane: ScannerLane = 'tradeable'): Promise<FeedToken[]> {
-    const all = await this.getAllTokens()
-    const filtered = filterForLane(all, lane)
-    await this.hydrateActivityFromDb(filtered)
-    return filtered.map((t) => this.liveFeed.get(t.mint) ?? t)
+    await this.ensureRegistryWarm()
+    const list = this.registry.list(lane)
+    await this.hydrateActivityFromDb(list)
+    return list.map((t) => this.liveFeed.get(t.mint) ?? t)
+  }
+
+  private registryBootstrapped = false
+
+  private async ensureRegistryWarm() {
+    if (this.registry.size > 0) {
+      if (!this.registryBootstrapped) {
+        this.registryBootstrapped = true
+        void this.backgroundDiscoverySync()
+      }
+      return
+    }
+    await this.bootstrapFeedFromPump()
+    this.registryBootstrapped = true
+  }
+
+  /** REST metadata for discovery only — does not replace WS live state. */
+  private async backgroundDiscoverySync() {
+    try {
+      const count = await this.syncFromPump()
+      if (count > 0) this.logger.debug(`Discovery REST merge: ${count} coins`)
+    } catch (err) {
+      this.logger.debug(`Discovery sync: ${(err as Error).message}`)
+    }
   }
 
   /** Fill activity from DB when in-memory state is cold (e.g. after restart). */
@@ -171,7 +197,7 @@ export class TokensService {
     for (const c of [...coins, ...nearGrad]) byMint.set(c.mint, c)
     const mapped = await this.mapCoinsBatch([...byMint.values()])
     this.discovery.ingest(mapped)
-    this.liveFeed.mergeBootstrap(mapped)
+    this.registry.mergeDiscoveryRows(mapped)
     void this.kickMetaEnrichBatch(mapped)
     return this.liveFeed.getAll()
   }
@@ -401,8 +427,42 @@ export class TokensService {
     return saved
   }
 
-  /** Push live trade activity to feed + clients even when full upsert gates fail. */
+  /**
+   * Stream path: update in-memory registry from market state (no socket emit).
+   * Socket/UI emits happen in RawEventProcessorService.
+   */
+  async applyStreamUpdate(
+    mint: string,
+    options?: { isNew?: boolean; whaleSol?: number },
+  ): Promise<FeedToken | null> {
+    const saved = this.buildStreamPatch(mint)
+    if (!saved) return null
+    if (!saved.holdersVerified) void this.holderEnrichment.enrichMint(mint)
+    if (options?.whaleSol && options.whaleSol >= 5) {
+      void this.persistToSupabase(saved, { whaleSol: options.whaleSol })
+    } else if (options?.isNew) {
+      void this.persistToSupabase(saved, { isNew: true })
+    }
+    return saved
+  }
+
+  publishStreamEvents(mint: string, saved: FeedToken) {
+    this.emitLastTradeTick(mint, saved)
+    this.events.emitChartUpdate(mint, 1_000)
+    this.persistFeedToken(saved)
+  }
+
+  /** @deprecated Use applyStreamUpdate + publishStreamEvents via pipeline */
   emitFeedPatch(mint: string, whaleSol?: number): FeedToken | null {
+    const saved = this.buildStreamPatch(mint, whaleSol)
+    if (!saved) return null
+    this.events.server?.emit('token:update', saved)
+    this.events.server?.to('feed').emit('feed:patch', saved)
+    this.publishStreamEvents(mint, saved)
+    return saved
+  }
+
+  private buildStreamPatch(mint: string, whaleSol?: number): FeedToken | null {
     const state = this.trading.getState(mint)
     let live = this.liveFeed.get(mint)
     if (!live && state?.trades.length) {
@@ -428,12 +488,6 @@ export class TokensService {
     })
     const saved = this.liveFeed.patch(enriched) ?? this.liveFeed.upsert(enriched)
     if (!saved) return null
-    this.events.server?.emit('token:update', saved)
-    this.events.server?.to('feed').emit('feed:patch', saved)
-    this.emitLastTradeTick(mint, saved)
-    this.events.emitChartUpdate(mint, 1_000)
-    this.persistFeedToken(saved)
-    if (!saved.holdersVerified) void this.holderEnrichment.enrichMint(mint)
     if (whaleSol && whaleSol >= 5) {
       void this.persistToSupabase(saved, { whaleSol })
     }

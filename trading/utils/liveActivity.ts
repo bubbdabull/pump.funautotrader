@@ -21,7 +21,18 @@ export type FeedQualityWithActivity = FeedQualityFields & {
   volume5mSol?: number
 }
 
-/** WS / in-memory ticks only — not pump.fun REST timestamps alone. */
+/** Recent pump.fun REST trade time (bootstrap / DB) — not PumpPortal WS ticks. */
+export function hasRestMarketActivity(
+  token: FeedQualityWithActivity,
+  now = Date.now(),
+  maxAgeMs = 600_000,
+): boolean {
+  const last = token.lastTradeAt ?? 0
+  if (!last || now - last > maxAgeMs) return false
+  return activitySol(token) >= MIN_FEED_VOLUME_24H_SOL * 0.5
+}
+
+/** Live ticks (WS) or recent REST/DB trade timestamp with volume. */
 export function hasRealTimeTradeActivity(
   token: FeedQualityWithActivity,
   now = Date.now(),
@@ -37,6 +48,7 @@ export function hasRealTimeTradeActivity(
   ) {
     return true
   }
+  if (hasRestMarketActivity(token, now, LIVE_ACTIVITY_MAX_AGE_MS)) return true
   return false
 }
 
@@ -92,6 +104,7 @@ export function passesActiveScannerFilter(token: FeedQualityWithActivity): boole
 /** Meaningful volume or live ticks — not a dead bootstrap row. */
 export function passesTradingActivity(token: FeedQualityWithActivity): boolean {
   if (hasRealTimeTradeActivity(token)) return true
+  if (hasRestMarketActivity(token)) return true
   if (activitySol(token) >= MIN_FEED_VOLUME_24H_SOL) return true
   if ((token.trades1m ?? 0) >= 2 && (token.volume5mSol ?? 0) >= 0.02) return true
   return false

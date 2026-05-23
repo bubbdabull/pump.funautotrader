@@ -7,6 +7,7 @@ import {
   MIN_FEED_VOLUME_24H_SOL,
   normalizeVirtualSol,
   passesAlphaFilter,
+  passesIngestGate,
   isPlaceholderTokenImage,
   normalizeFeedTokenLabels,
   pickTokenName,
@@ -55,9 +56,7 @@ export class LiveFeedService {
       ...labels,
       image: this.pickImage(token.image, prev.image),
       metadataUri: token.metadataUri || prev.metadataUri,
-      holders: token.holdersVerified
-        ? (token.holders ?? prev.holders)
-        : Math.max(prev.holders, token.holders ?? 0),
+      holders: Math.max(prev.holders ?? 0, token.holders ?? 0),
       holdersVerified: prev.holdersVerified || token.holdersVerified,
       volume24h: Math.max(prev.volume24h, token.volume24h),
       lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
@@ -90,15 +89,13 @@ export class LiveFeedService {
           ...labels,
           image: this.pickImage(token.image, prev.image),
           metadataUri: token.metadataUri || prev.metadataUri,
-          holders: token.holdersVerified
-            ? (token.holders ?? prev.holders)
-            : Math.max(prev.holders, token.holders ?? 0),
+          holders: Math.max(prev.holders ?? 0, token.holders ?? 0),
           holdersVerified: prev.holdersVerified || token.holdersVerified,
           volume24h: Math.max(prev.volume24h, token.volume24h),
           launchedAt: prev.launchedAt || token.launchedAt,
           lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
           trades1m: token.trades1m ?? prev.trades1m,
-          volume5mSol: token.volume5mSol ?? prev.volume5mSol,
+          volume5mSol: Math.max(prev.volume5mSol ?? 0, token.volume5mSol ?? 0),
           buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
           mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
           isActive: token.isActive ?? prev.isActive,
@@ -111,7 +108,7 @@ export class LiveFeedService {
 
   mergeBootstrap(tokens: FeedToken[]) {
     for (const t of tokens) {
-      if (!this.shouldStore(t)) continue
+      if (!passesIngestGate(t)) continue
       const prev = this.tokens.get(t.mint)
       this.tokens.set(
         t.mint,

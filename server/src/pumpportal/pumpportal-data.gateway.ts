@@ -322,9 +322,6 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     )
     if (direct > 0) return direct
 
-    const vSol = Number(data.vSolInBondingCurve ?? data.v_sol_in_bonding_curve ?? 0)
-    if (vSol > 0 && vSol < 500) return vSol * 0.002
-
     const tokenAmt = Number(
       data.tokenAmount ?? data.token_amount ?? data.newTokenBalance ?? 0,
     )
@@ -380,9 +377,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       const normalized = normalizePumpPortalTrade(data)
       const sol = normalized?.solAmount ?? (this.extractSolAmount(data) || 0.005)
       this.hotMints.recordTrade(mint, normalized?.timestampMs)
-      void this.ingestTrade(mint, data, tradeSide, normalized).then(() =>
-        this.publishTokenUpdate(mint, sol),
-      )
+      void this.ingestTrade(mint, data, tradeSide, normalized)
       return
     }
 
@@ -406,7 +401,6 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
           this.events.server?.to('feed').emit('feed:patch', saved)
         }
       }
-      void this.publishTokenUpdate(mint)
       this.autoTrader.pinTradeStream(mint)
       this.queueTradeSubscription(mint, true)
       void this.publishIngest('token.migration', mint, data, `migrate-${mint}`)
@@ -473,9 +467,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     const saved = this.tokens.upsertLiveToken(token, { isNew: true })
     this.events.server?.emit('pumpportal:newToken', saved ?? token)
     if (saved) {
-      if (saved.bondingCurvePercent < 78) {
-        this.events.server?.to('feed').emit('feed:prepend', saved)
-      } else {
+      if (saved.bondingCurvePercent >= 78) {
         this.events.server?.emit('token:graduating', saved)
       }
       this.logger.log(`Tradeable: ${saved.symbol} (${mint.slice(0, 8)}…)`)

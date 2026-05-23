@@ -101,6 +101,7 @@ export {
   passesTradingActivity,
   passesScannerQualityFilter,
   rankScannerQuality,
+  rankAllLiveFeed,
   resolveDisplayFeed,
   type FeedDisplayMode,
   pickNearGraduation,

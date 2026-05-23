@@ -8,6 +8,7 @@ import type { PumpToken } from '@/types'
 import type { FeedTrade } from '@/services/api'
 import type { TradeTickPayload } from '@/lib/tradeTypes'
 import { ensureArray } from '@/lib/ensureArray'
+import { passesAlphaFilter } from '@/lib/feedQuality'
 function applyTradeTickToToken(token: PumpToken, tick: TradeTickPayload): PumpToken {
   const holders =
     tick.holders != null && tick.holders > 0
@@ -80,13 +81,14 @@ export function useTokenFeed() {
     }
 
     const prepend = (token: PumpToken) => {
+      if (!passesAlphaFilter(token)) return
       queryClient.setQueryData<PumpToken[]>(['tokens', 'feed'], (old) =>
         prependToken(old ?? [], token),
       )
     }
 
-    const unsubFeed = wsService.onFeedUpdate((tokens) => {
-      queryClient.setQueryData(['tokens', 'feed'], ensureArray<PumpToken>(tokens))
+    const unsubFeed = wsService.onFeedUpdate(() => {
+      void queryClient.invalidateQueries({ queryKey: ['tokens', 'feed'] })
     })
     const unsubPrepend = wsService.onFeedPrepend(prepend)
     const unsubPatch = wsService.onFeedPatch(patchFeed)

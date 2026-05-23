@@ -9,9 +9,11 @@ import { PumpPortalModule } from '../pumpportal/pumpportal.module'
 import { TradingModule } from '../trading/trading.module'
 import { EventsModule } from '../events/events.module'
 import { HoldersModule } from '../holders/holders.module'
+import { PipelineModule } from '../pipeline/pipeline.module'
 
 @Module({
   imports: [
+    PipelineModule,
     PumpModule,
     TradingModule,
     forwardRef(() => EventsModule),

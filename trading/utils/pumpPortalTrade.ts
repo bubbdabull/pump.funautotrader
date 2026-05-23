@@ -55,9 +55,6 @@ function extractSolAmount(data: Record<string, unknown>): number {
   )
   if (direct > 0) return direct
 
-  const vSol = Number(data.vSolInBondingCurve ?? data.v_sol_in_bonding_curve ?? 0)
-  if (vSol > 0 && vSol < 500) return vSol * 0.002
-
   const tokenAmt = Number(data.tokenAmount ?? data.token_amount ?? 0)
   const mcapSol = Number(data.marketCapSol ?? data.market_cap_sol ?? 0)
   if (tokenAmt > 0 && mcapSol > 1) {

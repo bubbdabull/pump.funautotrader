@@ -19,6 +19,7 @@ class WebSocketService {
   private socket: Socket | null = null
   private tokenHandlers = new Set<TokenUpdateHandler>()
   private feedHandlers = new Set<FeedHandler>()
+  private graduatingFeedHandlers = new Set<FeedHandler>()
   private feedPrependHandlers = new Set<TokenUpdateHandler>()
   private feedPatchHandlers = new Set<TokenUpdateHandler>()
   private pumpPortalHandlers = new Set<TokenUpdateHandler>()
@@ -63,11 +64,19 @@ class WebSocketService {
       this.feedHandlers.forEach((h) => h(tokens))
     })
 
+    this.socket.on('feed:graduating', (tokens: PumpToken[]) => {
+      this.graduatingFeedHandlers.forEach((h) => h(tokens))
+    })
+
     this.socket.on('feed:prepend', (token: PumpToken) => {
       this.feedPrependHandlers.forEach((h) => h(token))
     })
 
     this.socket.on('feed:patch', (token: PumpToken) => {
+      this.feedPatchHandlers.forEach((h) => h(token))
+    })
+
+    this.socket.on('registry:patch', (token: PumpToken) => {
       this.feedPatchHandlers.forEach((h) => h(token))
     })
 
@@ -127,6 +136,13 @@ class WebSocketService {
   onFeedUpdate(handler: FeedHandler) {
     this.feedHandlers.add(handler)
     return () => this.feedHandlers.delete(handler)
+  }
+
+  onFeedGraduating(handler: FeedHandler) {
+    this.graduatingFeedHandlers.add(handler)
+    return () => {
+      this.graduatingFeedHandlers.delete(handler)
+    }
   }
 
   onFeedPrepend(handler: TokenUpdateHandler) {

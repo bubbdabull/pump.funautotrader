@@ -25,6 +25,7 @@ import { ExecutionModule } from './execution/execution.module'
 import { RiskModule } from './risk/risk.module'
 import { BacktestModule } from './backtest/backtest.module'
 import { HoldersModule } from './holders/holders.module'
+import { PipelineModule } from './pipeline/pipeline.module'
 
 /** Bull/Redis is optional — live feed uses PumpPortal WS, not the job queue. */
 function redisEnabled(): boolean {
@@ -50,6 +51,7 @@ const bullImports: (Type | DynamicModule)[] = redisEnabled()
     SupabaseModule,
     PumpModule,
     FeedModule,
+    PipelineModule,
     TradingModule,
     PumpPortalModule,
     AutoTraderModule,

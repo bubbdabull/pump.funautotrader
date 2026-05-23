@@ -43,7 +43,10 @@ export const PUMP_FUN_SCAN_TARGET = 4000
 export const PUMP_FUN_SCAN_PAGE_SIZE = 100
 /** Pages per sort axis (100 × 40 = 4000 rows per sort before dedupe). */
 export const PUMP_FUN_SCAN_PAGES_PER_SORT = 40
-export const PUMP_FUN_SCAN_INTERVAL_MS = 30_000
+/** REST discovery/metadata only — live tape is PumpPortal WS, not polling. */
+export const PUMP_REST_DISCOVERY_INTERVAL_MS = 300_000
+/** @deprecated Use PUMP_REST_DISCOVERY_INTERVAL_MS; kept for older env references */
+export const PUMP_FUN_SCAN_INTERVAL_MS = PUMP_REST_DISCOVERY_INTERVAL_MS
 export const PUMP_NEAR_GRAD_LIMIT = 80
 export const PUMP_FEATURED_FETCH_LIMIT = 200
 

@@ -114,9 +114,12 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
       globalMarketState.patchOnChainHolders(mint, merged)
       if (exclude.length) globalMarketState.addExcludeWallets(mint, exclude)
 
+      const verified = Boolean(
+        (heliusSnap?.holders ?? 0) >= 2 || (bubbleSnap?.holders ?? 0) >= 2,
+      ) && Boolean(heliusSnap || bubbleSnap)
       const patched = this.tokens.applyHolderSnapshot(mint, {
         holders: merged.holders,
-        verified: true,
+        verified,
       })
       void this.tokens.promoteIfTradeable(mint, merged.holders)
       void this.tokens.patchHoldersToDb(mint, merged)
@@ -124,7 +127,7 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
       this.events.server?.emit('quant:holders', {
         mint,
         holders: patched?.holders ?? merged.holders,
-        holdersVerified: true,
+        holdersVerified: verified,
         at: new Date().toISOString(),
       })
 

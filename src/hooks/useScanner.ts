@@ -9,7 +9,6 @@ import { ensureArray } from '@/lib/ensureArray'
 import {
   passesAlphaFilter,
   passesActiveScannerFilter,
-  passesScannerQualityFilter,
   passesTradeableFilter,
   isGraduatingSoon,
   resolveDisplayFeed,
@@ -174,12 +173,10 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
       }
       if (lane === 'active') {
         if (passesActiveScannerFilter(token)) pushToken(token)
-      } else if (lane === 'all') {
-        if (passesScannerQualityFilter(token)) pushToken(token)
+      } else if (lane === 'all' || lane === 'alpha') {
+        pushToken(token)
       } else if (lane === 'tradeable') {
         if (passesTradeableFilter(token)) pushToken(token)
-      } else if (lane === 'alpha' && passesAlphaFilter(token)) {
-        pushToken(token)
       }
     }
 
@@ -231,6 +228,12 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
       if (list.length === 0) return
       queryClient.setQueryData(key, payloadFromServer(list, lane))
     })
+    const u6 = wsService.onFeedGraduating((tokens) => {
+      if (lane !== 'graduating') return
+      const list = ensureArray<PumpToken>(tokens)
+      if (list.length === 0) return
+      queryClient.setQueryData(key, payloadFromServer(list, 'graduating'))
+    })
 
     return () => {
       u1()
@@ -239,6 +242,7 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
       u3b()
       u4()
       u5()
+      u6()
     }
   }, [queryClient, lane])
 

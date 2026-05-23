@@ -44,9 +44,6 @@ export class TradePersistService implements OnModuleInit {
     this.hotMints.recordTrade(mint, last.timestamp)
     const activity = computeFeedActivity(state)
     let feedToken = this.liveFeed.get(mint)
-    void this.tokens.emitFeedPatch(mint)
-    this.autoTrader.onTradeTick(mint)
-
     if (!this.supabase.enabled) return
 
     const inFeed = Boolean(feedToken)

@@ -142,15 +142,17 @@ export class AutoTraderService {
   ): AutoTradeSignal | null {
     if (!this.rules.enabled || !this.rules.snipeNewTokens) return null
 
-    this.trading.ingestNewToken({
-      mint: event.mint,
-      symbol: event.symbol,
-      name: event.name,
-      vSolInBondingCurve: event.vSolInBondingCurve,
-      vTokensInBondingCurve: event.vTokensInBondingCurve,
-      marketCapSol: event.marketCapSol,
-      traderPublicKey: event.traderPublicKey,
-    })
+    if (!this.trading.getState(event.mint)) {
+      this.trading.ingestNewToken({
+        mint: event.mint,
+        symbol: event.symbol,
+        name: event.name,
+        vSolInBondingCurve: event.vSolInBondingCurve,
+        vTokensInBondingCurve: event.vTokensInBondingCurve,
+        marketCapSol: event.marketCapSol,
+        traderPublicKey: event.traderPublicKey,
+      })
+    }
 
     const decision = this.trading.evaluateMint(event.mint, 'snipe')
     if (!decision?.allowed) return null
