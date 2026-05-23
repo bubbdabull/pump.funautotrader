@@ -31,12 +31,12 @@ import { RedisModule } from './redis/redis.module'
 import { PersistenceModule } from './persistence/persistence.module'
 import { RpcModule } from './rpc/rpc.module'
 import { isApiProcess } from './process-role'
+import { normalizeRedisUrl } from './redis/redis-url'
 
 /** Bull/Redis is optional — live feed uses PumpPortal WS, not the job queue. */
 function redisEnabled(): boolean {
   if (process.env.REDIS_DISABLED === 'true') return false
-  const url = process.env.REDIS_URL?.trim()
-  return Boolean(url)
+  return Boolean(normalizeRedisUrl(process.env.REDIS_URL))
 }
 
 /** Bull blocks Nest bootstrap on Redis connect — off by default on Fly API. */
@@ -50,7 +50,7 @@ const bullImports: (Type | DynamicModule)[] = bullEnabled()
   ? [
       BullModule.forRoot({
         connection: {
-          url: process.env.REDIS_URL!,
+          url: normalizeRedisUrl(process.env.REDIS_URL)!,
           connectTimeout: 8_000,
           maxRetriesPerRequest: 2,
         },

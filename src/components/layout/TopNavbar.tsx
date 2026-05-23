@@ -47,7 +47,7 @@ export function TopNavbar() {
             )}
           />
         </span>
-        {backend.socketConnected ? 'Stream' : 'Offline'}
+        {backend.socketConnected ? 'Stream' : backend.apiReachable ? 'API only' : 'Offline'}
       </span>
 
       {enabled && (

@@ -20,6 +20,7 @@ primary_region = 'dfw'
   PUMPPORTAL_WS_URL = 'wss://pumpportal.fun/api/data'
   PUMPPORTAL_TRADE_URL = 'https://pumpportal.fun/api/trade-local'
   PUMPPORTAL_TRADE_SUB_ROTATE_MS = '20000'
+  PUMPPORTAL_CONNECT_DEFER_MS = '12000'
   BULL_DISABLED = 'true'
 
 [processes]
@@ -35,11 +36,11 @@ primary_region = 'dfw'
   processes = ['app']
 
   [[http_service.checks]]
-    grace_period = '90s'
+    grace_period = '120s'
     interval = '15s'
     method = 'GET'
     path = '/api/health'
-    timeout = '10s'
+    timeout = '20s'
 
 [[vm]]
   memory = '1gb'

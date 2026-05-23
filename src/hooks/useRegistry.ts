@@ -1,8 +1,10 @@
 import { useMemo, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useShallow } from 'zustand/react/shallow'
 import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
 import { useQuantStore } from '@/stores/quantStore'
 import { wsService } from '@/services/websocket'
+import { tokenApi } from '@/services/api'
 import type { PumpToken } from '@/types'
 import type { TokenChartSeries } from '@/lib/chartTypes'
 import type { FeedTrade } from '@/services/api'
@@ -63,6 +65,7 @@ function applyLane(tokens: PumpToken[], lane: ScannerLane): RegistryLanePayload 
 /** WebSocket-driven lane feed — single registry source. */
 export function useRegistryLane(lane: ScannerLane = 'all') {
   const [bootstrapTimedOut, setBootstrapTimedOut] = useState(false)
+  const hydrateFeed = useTokenRegistryStore((s) => s.hydrateFeed)
 
   useEffect(() => {
     wsService.connect()
@@ -78,6 +81,19 @@ export function useRegistryLane(lane: ScannerLane = 'all') {
       wsConnected: s.wsConnected,
     })),
   )
+
+  const restFallback = useQuery({
+    queryKey: ['registry-rest', lane],
+    queryFn: () => tokenApi.feed('all'),
+    enabled: !wsConnected,
+    refetchInterval: wsConnected ? false : 25_000,
+    staleTime: 12_000,
+    retry: 1,
+  })
+
+  useEffect(() => {
+    if (restFallback.data?.length) hydrateFeed(restFallback.data)
+  }, [restFallback.data, hydrateFeed])
 
   const quantByMint = useQuantStore(useShallow((s) => s.byMint))
 
@@ -97,11 +113,12 @@ export function useRegistryLane(lane: ScannerLane = 'all') {
     displayMode: payload.mode,
     tradeableCount: payload.tradeableCount,
     isLoading: tokens.length === 0 && !bootstrapTimedOut && !updatedAt,
-    isFetching: false,
+    isFetching: restFallback.isFetching,
     isError: false,
     error: null as Error | null,
     dataUpdatedAt: updatedAt,
     wsConnected,
+    restSync: !wsConnected && Boolean(restFallback.data?.length || restFallback.isSuccess),
   }
 }
 

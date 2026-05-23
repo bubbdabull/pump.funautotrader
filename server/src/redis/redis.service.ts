@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type Redis from 'ioredis'
+import { normalizeRedisUrl, redisTlsOptions } from './redis-url'
 
 export interface RedisZMember {
   member: string
@@ -14,12 +15,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private subscriber: Redis | null = null
   private connected = false
   private lastPingMs: number | null = null
+  private invalidUrlWarned = false
 
   constructor(private config: ConfigService) {}
 
   get enabled(): boolean {
     if (this.config.get('REDIS_DISABLED') === 'true') return false
-    return Boolean(this.config.get('REDIS_URL')?.trim())
+    return Boolean(this.resolveUrl())
+  }
+
+  private resolveUrl(): string | null {
+    const raw = this.config.get('REDIS_URL')
+    const url = normalizeRedisUrl(raw)
+    if (raw?.trim() && !url && !this.invalidUrlWarned) {
+      this.invalidUrlWarned = true
+      this.logger.warn(
+        'REDIS_URL is not a valid redis:// or rediss:// URL — use Upstash format only, not redis-cli flags. Example: rediss://default:TOKEN@xxx.upstash.io:6379',
+      )
+    }
+    return url
   }
 
   get isConnected(): boolean {
@@ -44,8 +58,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.connected = false
   }
 
+  private attachErrorHandler(client: Redis, label: string) {
+    client.on('error', (err) => {
+      this.connected = false
+      this.logger.debug(`Redis ${label}: ${err.message}`)
+    })
+  }
+
   private async connect(retries = 2) {
-    const url = this.config.get('REDIS_URL')!.trim()
+    const url = this.resolveUrl()
+    if (!url) return
+
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const { default: IORedis } = await import('ioredis')
@@ -55,9 +78,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
           enableReadyCheck: true,
           connectTimeout: 8_000,
           commandTimeout: 5_000,
-          tls: url.startsWith('rediss://') ? {} : undefined,
+          retryStrategy: () => null,
+          tls: redisTlsOptions(url),
         }
         this.client = new IORedis(url, opts)
+        this.attachErrorHandler(this.client, 'client')
         await Promise.race([
           this.client.connect(),
           new Promise<never>((_, reject) =>
@@ -68,9 +93,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         this.logger.log('Redis connected (Upstash/ioredis)')
         return
       } catch (err) {
+        await this.client?.quit().catch(() => undefined)
+        this.client = null
         if (attempt === retries) {
           this.logger.warn(`Redis unavailable: ${(err as Error).message}`)
-          this.client = null
           this.connected = false
         } else {
           await new Promise((r) => setTimeout(r, 400 * (attempt + 1)))
@@ -163,14 +189,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async subscribe(channel: string, handler: (msg: string) => void): Promise<void> {
     if (!this.client || !this.enabled) return
-    const url = this.config.get('REDIS_URL')!.trim()
+    const url = this.resolveUrl()
+    if (!url) return
     try {
       const { default: IORedis } = await import('ioredis')
       this.subscriber = new IORedis(url, {
         maxRetriesPerRequest: 2,
         lazyConnect: true,
-        tls: url.startsWith('rediss://') ? {} : undefined,
+        retryStrategy: () => null,
+        tls: redisTlsOptions(url),
       })
+      this.attachErrorHandler(this.subscriber, 'subscriber')
       await this.subscriber.connect()
       await this.subscriber.subscribe(channel)
       this.subscriber.on('message', (_ch, payload) => handler(payload))

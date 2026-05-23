@@ -160,6 +160,7 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 | **502 / not listening on 8080** | **Do not set `PORT` or `HOST` in fly secrets** — `fly secrets sync` can copy `PORT=3001` or `HOST=127.0.0.1` from `server/.env`. Run `fly secrets unset PORT HOST -a pump-funautotrader` then redeploy. App binds `0.0.0.0:8080` on Fly automatically. |
 | **Deploy: not listening on 8080** | **Do not set `PHRONIS_PROCESS_ROLE=persist` as a global secret** — that makes `app` machines run the persist worker (no HTTP). Use process groups in `fly.toml` only: `fly secrets unset PHRONIS_PROCESS_ROLE -a pump-funautotrader`. |
 | **Deploy uses `--image deployment-…`** | That skips a fresh Docker build. Deploy from repo root: `fly deploy -a pump-funautotrader` (no `--image`). |
+| **Redis `ENOENT %20--tls%20-u%20redis://…`** | `REDIS_URL` was set to a **redis-cli command**, not the URL. Use only `rediss://default:TOKEN@YOUR.upstash.io:6379` from the Upstash dashboard (TLS tab). |
 | 502 / not responding | `fly status` + `fly logs`; ensure secrets are set |
 
 ### Crash loop (machines restarting)

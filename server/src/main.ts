@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
 import { ExpressAdapter } from '@nestjs/platform-express'
+import { IoAdapter } from '@nestjs/platform-socket.io'
 import express from 'express'
 import { createServer } from 'http'
 import type { Response } from 'express'
@@ -70,14 +71,24 @@ async function bootstrapApi() {
   }
 
   const expressApp = express()
+  let nestReady = false
   const healthJson = () => ({
     ok: true,
     service: 'phronis-api',
-    booting: true,
+    booting: !nestReady,
     bootRole: resolveBootRole(),
     flyProcessGroup: process.env.FLY_PROCESS_GROUP,
     at: new Date().toISOString(),
   })
+
+  /** Fly probe must answer even when Nest/PumpPortal block the event loop during boot. */
+  function handleFlyProbe(req: import('http').IncomingMessage, res: import('http').ServerResponse) {
+    const path = req.url?.split('?')[0]
+    if (path !== '/health' && path !== '/api/health') return false
+    res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
+    res.end(JSON.stringify({ ok: true, probe: true, booting: !nestReady }))
+    return true
+  }
 
   expressApp.get(['/api/health', '/health'], (_req, res: Response) => {
     res.status(200).json(healthJson())
@@ -86,7 +97,10 @@ async function bootstrapApi() {
     res.status(200).json({ ...healthJson(), health: '/api/health' })
   })
 
-  const httpServer = createServer(expressApp)
+  const httpServer = createServer((req, res) => {
+    if (handleFlyProbe(req, res)) return
+    expressApp(req, res)
+  })
   await listenHttp(httpServer, host, port)
   console.log(`[boot] HTTP bound on http://${host}:${port} (Fly health can pass while Nest loads)`)
 
@@ -95,6 +109,7 @@ async function bootstrapApi() {
       logger: ['error', 'warn', 'log'],
       abortOnError: false,
     })
+    app.useWebSocketAdapter(new IoAdapter(httpServer))
     app.setGlobalPrefix('api')
     app.enableCors({ origin: true, credentials: true })
     app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -111,6 +126,7 @@ async function bootstrapApi() {
     })
 
     await app.init()
+    nestReady = true
     console.log(`[ready] Phronis API initialized on http://${host}:${port} (role=${resolveBootRole()})`)
   } catch (err) {
     console.error(

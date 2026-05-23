@@ -2,25 +2,40 @@ import { Wifi, WifiOff, RefreshCw } from 'lucide-react'
 import { useLiveTick, secondsSince } from '@/hooks/useLiveTick'
 import { cn } from '@/lib/utils'
 
+export type LiveStreamMode = 'ws' | 'rest' | 'connecting'
+
 interface LiveSyncBarProps {
+  /** Socket.IO connected to Fly API */
   wsConnected?: boolean
+  /** REST fallback polling when WS is down */
+  restSync?: boolean
   dataUpdatedAt?: number
   isFetching?: boolean
-  activeCount?: number
+  /** Tokens with a trade in the last ~2m */
+  hotCount?: number
   totalCount?: number
   className?: string
 }
 
+function resolveStreamMode(wsConnected: boolean, restSync: boolean): LiveStreamMode {
+  if (wsConnected) return 'ws'
+  if (restSync) return 'rest'
+  return 'connecting'
+}
+
 export function LiveSyncBar({
   wsConnected = false,
+  restSync = false,
   dataUpdatedAt = 0,
   isFetching = false,
-  activeCount,
+  hotCount,
   totalCount,
   className,
 }: LiveSyncBarProps) {
   useLiveTick()
   const ago = dataUpdatedAt > 0 ? secondsSince(dataUpdatedAt) : null
+  const mode = resolveStreamMode(wsConnected, restSync)
+  const hasData = (totalCount ?? 0) > 0
 
   return (
     <div
@@ -32,10 +47,19 @@ export function LiveSyncBar({
       <span
         className={cn(
           'inline-flex items-center gap-1.5 font-medium',
-          wsConnected ? 'text-emerald-400' : 'text-amber-400',
+          mode === 'ws' && 'text-emerald-400',
+          mode === 'rest' && 'text-cyan-400',
+          mode === 'connecting' && 'text-amber-400',
         )}
+        title={
+          mode === 'ws'
+            ? 'Socket.IO stream from Fly API'
+            : mode === 'rest'
+              ? 'Fly API reachable; polling feed until Socket.IO connects'
+              : 'Waiting for Fly API stream (check VITE_WS_URL on Vercel)'
+        }
       >
-        {wsConnected ? (
+        {mode === 'ws' ? (
           <>
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
@@ -43,30 +67,35 @@ export function LiveSyncBar({
             </span>
             LIVE
           </>
+        ) : mode === 'rest' ? (
+          <>
+            <Wifi className="h-3 w-3" />
+            API sync
+          </>
         ) : (
           <>
             <WifiOff className="h-3 w-3" />
-            Reconnecting
+            {hasData ? 'Stream connecting…' : 'Reconnecting'}
           </>
         )}
       </span>
 
-      {activeCount != null && totalCount != null && (
-        <span className="tabular-nums text-cyan-400/90">
-          {activeCount}/{totalCount} active
+      {hotCount != null && totalCount != null && (
+        <span className="tabular-nums text-cyan-400/90" title="Tokens with a trade in the last ~2 minutes">
+          {hotCount}/{totalCount} hot
         </span>
       )}
 
       {ago != null && (
         <span className="text-zinc-500">
-          sync {ago}s ago
+          updated {ago}s ago
           {isFetching && (
             <RefreshCw className="ml-1 inline h-3 w-3 animate-spin text-violet-400" />
           )}
         </span>
       )}
 
-      {wsConnected && (
+      {mode === 'ws' && (
         <Wifi className="ml-auto h-3 w-3 text-zinc-600" aria-hidden />
       )}
     </div>

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import type { IngestionEvent } from './ingestion.types'
+import { normalizeRedisUrl, redisTlsOptions } from '../redis/redis-url'
 
 type Handler = (event: IngestionEvent) => void | Promise<void>
 
@@ -27,11 +28,22 @@ export class EventBusService implements OnModuleDestroy {
 
   private async initRedis() {
     if (this.config.get('REDIS_DISABLED') === 'true') return
-    const url = this.config.get('REDIS_URL')?.trim()
-    if (!url) return
+    const url = normalizeRedisUrl(this.config.get('REDIS_URL'))
+    if (!url) {
+      if (this.config.get('REDIS_URL')?.trim()) {
+        this.logger.warn('Redis bus skipped — REDIS_URL must be rediss://… not redis-cli flags')
+      }
+      return
+    }
     try {
       const { default: Redis } = await import('ioredis')
-      const client = new Redis(url, { maxRetriesPerRequest: 2, lazyConnect: true })
+      const client = new Redis(url, {
+        maxRetriesPerRequest: 2,
+        lazyConnect: true,
+        retryStrategy: () => null,
+        tls: redisTlsOptions(url),
+      })
+      client.on('error', (err) => this.logger.debug(`Redis bus: ${err.message}`))
       await client.connect()
       this.redisPublisher = client
       this.logger.log('Redis ingestion bus connected')

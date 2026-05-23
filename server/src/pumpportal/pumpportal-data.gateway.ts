@@ -114,7 +114,14 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         'PUMPPORTAL_API_KEY not set — only free streams (newToken, migration). Set key on Fly for trade ticks.',
       )
     }
-    this.connect()
+    const deferMs = Number(process.env.PUMPPORTAL_CONNECT_DEFER_MS ?? 0) ||
+      (process.env.FLY_APP_NAME ? 12_000 : 0)
+    if (deferMs > 0) {
+      this.logger.log(`PumpPortal WS connect deferred ${deferMs}ms (Fly health window)`)
+      setTimeout(() => this.connect(), deferMs)
+    } else {
+      this.connect()
+    }
     this.heartbeatTimer = setInterval(() => this.heartbeatCheck(), PUMPPORTAL_WS_HEARTBEAT_MS)
     const rotateMs = Number(this.config.get('PUMPPORTAL_TRADE_SUB_ROTATE_MS') ?? 20_000)
     if (this.apiKey && Number.isFinite(rotateMs) && rotateMs >= 15_000) {
@@ -288,9 +295,13 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     if (!batch.length || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
     this.ws.send(JSON.stringify({ method: 'subscribeTokenTrade', keys: batch }))
-    this.logger.log(
-      `Subscribed to trades for ${batch.length} token(s) (${this.subscribedMints.size}/${this.maxTradeSubscriptions})`,
-    )
+    const total = this.subscribedMints.size
+    const msg = `Trade subscriptions: +${batch.length} (${total}/${this.maxTradeSubscriptions})`
+    if (total === this.maxTradeSubscriptions || total <= 5 || total % 50 === 0) {
+      this.logger.log(msg)
+    } else {
+      this.logger.debug(msg)
+    }
 
     if (
       this.pendingTradeQueue.length > 0 &&

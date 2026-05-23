@@ -19,10 +19,20 @@ function isLocalDevHost(): boolean {
   return h === 'localhost' || h === '127.0.0.1' || h === '[::1]'
 }
 
+/** Socket.IO client needs https:// origin — not wss:// and no /api suffix. */
+function normalizeWsOrigin(raw: string, fallback: string): string {
+  let v = normalizeEnvUrl(raw, fallback)
+  if (!v) return fallback
+  if (v.startsWith('wss://')) v = `https://${v.slice('wss://'.length)}`
+  else if (v.startsWith('ws://')) v = `http://${v.slice('ws://'.length)}`
+  v = v.replace(/\/api\/?$/i, '').replace(/\/$/, '')
+  return v.startsWith('http') ? v : fallback
+}
+
 const envApiRaw = import.meta.env.VITE_API_URL?.trim() ?? ''
 const envWsRaw = import.meta.env.VITE_WS_URL?.trim() ?? ''
 const envApi = envApiRaw ? normalizeEnvUrl(envApiRaw, FLY_API_BASE) : ''
-const envWs = envWsRaw ? normalizeEnvUrl(envWsRaw, FLY_API_ORIGIN) : ''
+const envWs = envWsRaw ? normalizeWsOrigin(envWsRaw, FLY_API_ORIGIN) : ''
 
 /** Prefer explicit VITE_* URLs when set; local dev uses Vite proxy (`/api` + same-origin WS). */
 export const API_BASE = envApi.startsWith('http')
@@ -30,7 +40,7 @@ export const API_BASE = envApi.startsWith('http')
   : isLocalDevHost()
     ? '/api'
     : FLY_API_BASE
-export const WS_URL = envWs.startsWith('http')
+export const WS_URL = envWsRaw
   ? envWs
   : isLocalDevHost()
     ? ''
