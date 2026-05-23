@@ -15,6 +15,7 @@ import {
   type OnChainHolderSnapshot,
   filterForLane,
   passesTradeableFilter,
+  rankTradeable,
   bondingCurvePercentFromSol,
   buildOhlcvFromTrades,
   buildChartPointsFromCandles,
@@ -45,6 +46,7 @@ import { TokenMetadataService } from './token-metadata.service'
 import { SupabaseDbService } from '../supabase/supabase-db.service'
 import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 import { EventsGateway } from '../events/events.gateway'
+import { TokenDiscoveryService } from './token-discovery.service'
 
 @Injectable()
 export class TokensService {
@@ -67,11 +69,51 @@ export class TokensService {
     private holderEnrichment: HolderEnrichmentService,
     @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
+    private discovery: TokenDiscoveryService,
   ) {}
 
+  private pumpScanLimit(): number {
+    const n = Number(this.config.get('PUMP_FUN_SCAN_LIMIT') ?? 800)
+    return Number.isFinite(n) && n >= 50 ? Math.min(n, 3000) : 800
+  }
+
   private pumpBootstrapLimit(): number {
-    const n = Number(this.config.get('PUMP_FUN_BOOTSTRAP_LIMIT') ?? 100)
-    return Number.isFinite(n) && n >= 10 ? Math.min(n, 200) : 100
+    return Math.min(this.pumpScanLimit(), 500)
+  }
+
+  getScanStats() {
+    const live = this.liveFeed.getAll(500)
+    return {
+      liveFeedSize: live.length,
+      discovery: this.discovery.getStats(),
+      tradeableInLive: live.filter(passesTradeableFilter).length,
+      tradeableInDiscovery: this.discovery.getTopTradeable(500).length,
+    }
+  }
+
+  /** Mints to subscribe for trade ticks after a broad pump.fun scan. */
+  getAutotradePriorityMints(limit = 100): string[] {
+    const live = rankTradeable(this.liveFeed.getAll(limit * 2), limit).map((t) => t.mint)
+    const fromDiscovery = this.discovery.getTopForTradePins(limit)
+    const out: string[] = []
+    const seen = new Set<string>()
+    for (const m of [...live, ...fromDiscovery]) {
+      if (!m || seen.has(m)) continue
+      seen.add(m)
+      out.push(m)
+      if (out.length >= limit) break
+    }
+    return out
+  }
+
+  async primeAutotradeFromDiscovery(limit = 80) {
+    const candidates = this.discovery.getTopTradeable(limit)
+    for (const t of candidates) {
+      if (!this.trading.getState(t.mint)) {
+        this.trading.seedFromFeedToken(t)
+      }
+    }
+    return candidates.length
   }
 
   async getFeed(lane: ScannerLane = 'tradeable'): Promise<FeedToken[]> {
@@ -105,6 +147,11 @@ export class TokensService {
     return this.getFeed('graduating')
   }
 
+  /** Top REST-scanned pump.fun tokens (for autotrade review — wider than live WS feed). */
+  getDiscoveryFeed(limit = 80): FeedToken[] {
+    return this.discovery.getTopTradeable(limit)
+  }
+
   private async getAllTokens(): Promise<FeedToken[]> {
     const cached = this.liveFeed.getAll()
     if (cached.length > 0) {
@@ -120,15 +167,14 @@ export class TokensService {
   }
 
   private async bootstrapFeedFromPump(): Promise<FeedToken[]> {
-    const limit = this.pumpBootstrapLimit()
-    const [active, nearGrad] = await Promise.all([
-      this.pump.fetchActiveTradingCoins(limit),
-      this.pump.fetchNearGraduation(Math.min(40, limit)),
-    ])
+    const coins = await this.pump.fetchBroadMarketScan(this.pumpScanLimit())
+    const nearGrad = await this.pump.fetchNearGraduation(40)
     const byMint = new Map<string, PumpCoin>()
-    for (const c of [...active, ...nearGrad]) byMint.set(c.mint, c)
+    for (const c of [...coins, ...nearGrad]) byMint.set(c.mint, c)
     const mapped = await Promise.all([...byMint.values()].map((c) => this.mapCoin(c)))
+    this.discovery.ingest(mapped)
     this.liveFeed.mergeBootstrap(mapped)
+    void this.kickMetaEnrichBatch(mapped)
     return this.liveFeed.getAll()
   }
 
@@ -305,7 +351,9 @@ export class TokensService {
   }
 
   getStats() {
-    return this.liveFeed.getStats()
+    const live = this.liveFeed.getStats()
+    const scan = this.getScanStats()
+    return { ...live, scan }
   }
 
   upsertLiveToken(
@@ -476,16 +524,15 @@ export class TokensService {
   }
 
   async syncFromPump() {
-    const limit = this.pumpBootstrapLimit()
-    const [latest, nearGrad] = await Promise.all([
-      this.pump.fetchActiveTradingCoins(limit),
-      this.pump.fetchNearGraduation(30),
-    ])
+    const coins = await this.pump.fetchBroadMarketScan(this.pumpScanLimit())
+    const nearGrad = await this.pump.fetchNearGraduation(40)
     const byMint = new Map<string, PumpCoin>()
-    for (const c of [...latest, ...nearGrad]) byMint.set(c.mint, c)
+    for (const c of [...coins, ...nearGrad]) byMint.set(c.mint, c)
 
+    const mappedAll: FeedToken[] = []
     for (const coin of byMint.values()) {
       const mapped = await this.mapCoin(coin)
+      mappedAll.push(mapped)
       this.liveFeed.upsert(mapped)
       void this.enrichTokenMedia(mapped.mint, {
         metadataUri: coin.metadata_uri,
@@ -530,7 +577,30 @@ export class TokensService {
         },
       })
     }
+    this.discovery.ingest(mappedAll)
+    void this.kickMetaEnrichBatch(mappedAll)
+    void this.primeAutotradeFromDiscovery(100)
     return byMint.size
+  }
+
+  /** Enrich symbol/name/image from pump.fun for rows still missing metadata. */
+  private kickMetaEnrichBatch(tokens: FeedToken[]) {
+    const batch = tokens
+      .filter(
+        (t) =>
+          !isValidTicker(t.symbol, t.mint) ||
+          !isUsableTokenImageUrl(t.image) ||
+          !t.metadataUri,
+      )
+      .slice(0, 40)
+    for (const t of batch) {
+      void this.enrichTokenMedia(t.mint, {
+        metadataUri: t.metadataUri,
+        image: t.image,
+        symbol: t.symbol,
+        name: t.name,
+      })
+    }
   }
 
   private async enrichTokenMedia(
@@ -655,6 +725,7 @@ export class TokensService {
         | 'medium'
         | 'high',
       launchedAt: new Date(coin.created_timestamp ?? Date.now()).toISOString(),
+      lastTradeAt: this.pump.lastTradeMs(coin),
       priceUsd: marketCap > 0 ? marketCap / 1_000_000_000 : 0,
       priceChange24h: coin.price_change_24h ?? 0,
       liquidity: liquidity || marketCap * 0.01,

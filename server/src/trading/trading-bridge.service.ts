@@ -39,6 +39,38 @@ export class TradingBridgeService implements OnModuleInit {
     return scoreFromStaticFields(fields)
   }
 
+  /** Seed EV engine from pump.fun REST snapshot (discovery / broad scan). */
+  seedFromFeedToken(token: {
+    mint: string
+    symbol?: string
+    name?: string
+    bondingCurvePercent: number
+    marketCap: number
+    volume24h: number
+    holders: number
+    liquidity?: number
+  }) {
+    if (this.getState(token.mint)?.trades.length) return
+    const vSol = token.liquidity ?? (token.bondingCurvePercent / 100) * 85
+    this.ingestNewToken({
+      mint: token.mint,
+      symbol: token.symbol,
+      name: token.name,
+      vSolInBondingCurve: vSol,
+      marketCapSol: token.marketCap / 200,
+      vTokensInBondingCurve: 1,
+    })
+    void this.scoreStatic({
+      mint: token.mint,
+      symbol: token.symbol,
+      name: token.name,
+      bondingCurvePercent: token.bondingCurvePercent,
+      marketCap: token.marketCap,
+      volume24h: token.volume24h,
+      holders: token.holders,
+    })
+  }
+
   getState(mint: string) {
     return globalMarketState.getState(mint)
   }

@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit, forwardRef }
 import { ConfigService } from '@nestjs/config'
 import { TokensService } from './tokens.service'
 import { EventsGateway } from '../events/events.gateway'
+import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 
 /** Periodically enriches the live feed from pump.fun REST (holders, volume, mcap). */
 @Injectable()
@@ -16,6 +17,8 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
     private tokens: TokensService,
     @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
+    @Inject(forwardRef(() => PumpPortalDataGateway))
+    private pumpportal: PumpPortalDataGateway,
   ) {}
 
   onModuleInit() {
@@ -44,6 +47,10 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
       const count = await this.tokens.syncFromPump()
       this.lastSyncCount = count
       this.lastSyncAt = new Date().toISOString()
+      const priority = this.tokens.getAutotradePriorityMints(120)
+      for (const mint of priority) {
+        this.pumpportal.ensureTradeSubscription(mint)
+      }
       if (count > 0) {
         const [feed, graduating] = await Promise.all([
           this.tokens.getFeed('all'),

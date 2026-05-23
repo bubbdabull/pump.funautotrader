@@ -60,6 +60,22 @@ export const tokenApi = {
       `/tokens/${mint}/watch-trades`,
     ).then((r) => r.data),
   stats: () => api.get<FeedStats>('/tokens/stats').then((r) => r.data),
+  scanStats: () =>
+    api
+      .get<{
+        liveFeedSize: number
+        tradeableInLive: number
+        tradeableInDiscovery: number
+        discovery: {
+          poolSize: number
+          tradeableInPool: number
+          lastScanAt?: string
+          lastScanCount: number
+        }
+      }>('/tokens/scan/stats')
+      .then((r) => r.data),
+  discovery: (limit = 80) =>
+    api.get('/tokens/discovery', { params: { limit } }).then((r) => ensureArray<PumpToken>(r.data)),
   trades: (mint: string) => api.get(`/tokens/${mint}/trades`).then((r) => ensureArray<FeedTrade>(r.data)),
 }
 

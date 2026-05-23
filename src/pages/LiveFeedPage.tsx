@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Activity, AlertTriangle, Radio, Rocket, Shield, Sparkles } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { LiveFeedTable } from '@/components/feed/LiveFeedTable'
@@ -14,6 +15,7 @@ import type { ScannerLane } from '@/lib/feedQuality'
 import { cn } from '@/lib/utils'
 import { useWsConnection } from '@/hooks/useWsConnection'
 import { API_BASE, backendLabel } from '@/lib/apiConfig'
+import { tokenApi } from '@/services/api'
 import { isVercelSecurityCheckpoint, VERCEL_CHECKPOINT_HINT } from '@/lib/vercelCheckpoint'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
@@ -70,6 +72,11 @@ export function LiveFeedPage() {
     sort === 'curve' ? 'curve' : sort,
   )
   const activeCount = tokens.filter((t) => t.isActive).length
+  const { data: scanStats } = useQuery({
+    queryKey: ['tokens', 'scan-stats'],
+    queryFn: () => tokenApi.scanStats(),
+    refetchInterval: 30_000,
+  })
 
   return (
     <PageTransition>
@@ -148,7 +155,9 @@ export function LiveFeedPage() {
         ))}
         <div className="flex flex-1 items-center justify-end gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[11px] text-emerald-400/90">
           <Shield className="h-3.5 w-3.5 shrink-0" />
-          Only trade-grade tokens are stored — thousands of daily launches filtered out
+          {scanStats
+            ? `Scanning ${scanStats.discovery.poolSize.toLocaleString()} pump.fun tokens · ${scanStats.tradeableInDiscovery} tradeable candidates · live feed ${scanStats.liveFeedSize}`
+            : 'Broad pump.fun scan + live PumpPortal feed — filtered for autotrade'}
         </div>
       </div>
 

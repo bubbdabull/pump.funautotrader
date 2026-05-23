@@ -10,6 +10,7 @@ import {
 } from '@phronis/trading'
 import type { FeedToken } from '../feed/feed.types'
 import { HotMintsService } from './hot-mints.service'
+import { TokenDiscoveryService } from '../tokens/token-discovery.service'
 
 /** Mints that must keep PumpPortal trade streams (visible feed + user pins). */
 @Injectable()
@@ -20,10 +21,11 @@ export class FeedTradePinService {
     private liveFeed: LiveFeedService,
     private autoTrader: AutoTraderService,
     private hotMints: HotMintsService,
+    private discovery: TokenDiscoveryService,
     config: ConfigService,
   ) {
-    const n = Number(config.get('FEED_TRADE_PIN_MAX') ?? 60)
-    this.maxPins = Number.isFinite(n) && n >= 20 ? Math.min(n, 120) : 60
+    const n = Number(config.get('FEED_TRADE_PIN_MAX') ?? 120)
+    this.maxPins = Number.isFinite(n) && n >= 20 ? Math.min(n, 400) : 120
   }
 
   getMandatoryMints(): string[] {
@@ -46,6 +48,9 @@ export class FeedTradePinService {
     for (const m of pinned) push(m)
     for (const m of hot.slice(0, 40)) push(m)
     for (const m of activeInFeed) push(m)
+    for (const m of this.discovery.getTopForTradePins(Math.floor(this.maxPins * 0.6))) {
+      push(m)
+    }
 
     return ordered.slice(0, this.maxPins)
   }

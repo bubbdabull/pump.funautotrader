@@ -87,6 +87,8 @@ export class PumpService {
 
   /** Tokens with recent on-chain trades (best bootstrap for live scanner). */
   async fetchActiveTradingCoins(limit = 80): Promise<PumpCoin[]> {
+    const broad = await this.fetchBroadMarketScan(limit)
+    if (broad.length > 0) return broad.slice(0, limit)
     const batch = await this.fetchCoins({
       limit: Math.min(150, limit * 2),
       sort: 'last_trade_timestamp',
@@ -98,6 +100,79 @@ export class PumpService {
       return active.slice(0, limit)
     }
     return []
+  }
+
+  /**
+   * Paginated multi-sort scan — pulls hundreds–thousands of active pump.fun coins.
+   * Used for discovery / autotrade (not only the ~80-token PumpPortal WS window).
+   */
+  async fetchBroadMarketScan(maxCoins = 800): Promise<PumpCoin[]> {
+    const cap = Math.min(Math.max(maxCoins, 50), 3000)
+    const pageSize = Math.min(
+      50,
+      Math.max(20, Number(this.config.get('PUMP_FUN_SCAN_PAGE_SIZE') ?? 50)),
+    )
+    const byMint = new Map<string, PumpCoin>()
+
+    const add = (list: PumpCoin[]): boolean => {
+      for (const c of list) {
+        if (!c?.mint || c.mint.length < 32) continue
+        if (c.complete) continue
+        byMint.set(c.mint, c)
+        if (byMint.size >= cap) return true
+      }
+      return byMint.size >= cap
+    }
+
+    const sorts = [
+      'last_trade_timestamp',
+      'created_timestamp',
+      'market_cap',
+    ] as const
+
+    for (const sort of sorts) {
+      for (let offset = 0; offset < cap && byMint.size < cap; offset += pageSize) {
+        const batch = await this.fetchCoins({
+          limit: pageSize,
+          offset,
+          sort,
+          order: 'DESC',
+        })
+        if (!batch.length) break
+        if (add(batch.filter((c) => !c.complete))) break
+        await this.delay(100)
+      }
+      if (byMint.size >= cap) break
+    }
+
+    for (const path of ['/coins/latest', '/coins/king-of-the-hill']) {
+      if (byMint.size >= cap) break
+      for (const baseUrl of this.baseUrls) {
+        try {
+          const { data } = await axios.get<PumpCoin[] | { coins?: PumpCoin[] }>(
+            `${baseUrl.replace(/\/$/, '')}${path}`,
+            {
+              params: { limit: pageSize, includeNsfw: false },
+              timeout: 12000,
+              headers: this.headers(),
+            },
+          )
+          const list = Array.isArray(data) ? data : (data?.coins ?? [])
+          add(list.filter((c) => !c.complete))
+          if (list.length > 0) break
+        } catch {
+          /* next */
+        }
+      }
+    }
+
+    const out = [...byMint.values()]
+    this.logger.log(`Pump.fun broad scan: ${out.length} unique active coins (cap ${cap})`)
+    return out
+  }
+
+  private delay(ms: number) {
+    return new Promise((r) => setTimeout(r, ms))
   }
 
   async fetchLatestCoins(limit = 50): Promise<PumpCoin[]> {

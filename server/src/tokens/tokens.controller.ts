@@ -53,6 +53,19 @@ export class TokensController {
     return this.tokens.getStats()
   }
 
+  @Get('scan/stats')
+  @Header('Cache-Control', 'no-store')
+  scanStats() {
+    return this.tokens.getScanStats()
+  }
+
+  @Get('discovery')
+  @Header('Cache-Control', 'no-store')
+  discovery(@Query('limit') limit?: string) {
+    const n = Math.min(200, Math.max(10, Number(limit) || 80))
+    return this.tokens.getDiscoveryFeed(n)
+  }
+
   @Get()
   list(@Query('lane') lane?: ScannerLane) {
     return this.tokens.getFeed(lane ?? 'tradeable')
