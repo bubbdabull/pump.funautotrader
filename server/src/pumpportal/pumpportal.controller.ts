@@ -24,11 +24,7 @@ export class PumpPortalController {
     return {
       ...this.dataGateway.getStatus(),
       pumpFunSync: this.pumpSync.getStatus(),
-      leader: {
-        isLeader: this.ingestionLeader.isIngestionLeader(),
-        leaderId: this.ingestionLeader.getLeaderId(),
-        instanceId: this.ingestionLeader.getInstanceId(),
-      },
+      leader: this.ingestionLeader.getDiagnostics(),
     }
   }
 

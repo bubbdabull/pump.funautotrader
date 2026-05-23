@@ -6,12 +6,14 @@ import { RedisWriteQueueService } from './redis/redis-write-queue.service'
 import { PersistenceQueueService } from './persistence/persistence-queue.service'
 import { SolanaRpcService } from './rpc/solana-rpc.service'
 import { resolveBootRole } from './process-role'
+import { IngestionLeaderService } from './ingestion/ingestion-leader.service'
 
 @Controller()
 export class HealthController {
   constructor(
     private config: ConfigService,
     private supabase: SupabaseDbService,
+    @Optional() private ingestionLeader?: IngestionLeaderService,
     @Optional() private redis?: RedisService,
     @Optional() private redisQueue?: RedisWriteQueueService,
     @Optional() private persistQueue?: PersistenceQueueService,
@@ -24,6 +26,7 @@ export class HealthController {
       this.config.get('SUPABASE_URL')?.trim() &&
         this.config.get('SUPABASE_SERVICE_ROLE_KEY')?.trim(),
     )
+    const redisReachable = this.redis?.enabled ? this.redis.isConnected : true
     return {
       ok: true,
       service: 'phronis-api',
@@ -37,13 +40,14 @@ export class HealthController {
       rpcProvider: this.solanaRpc?.provider ?? 'unknown',
       rpcDedicated: this.solanaRpc?.isDedicated ?? false,
       redis: this.redis?.enabled ?? false,
-      redisConnected: this.redis?.isConnected ?? false,
+      redisConnected: redisReachable,
       redisWriteQueue: this.redisQueue?.getStats(),
       persistQueue: this.persistQueue?.getStats(),
       holderEnrichIntervalMs: Number(this.config.get('HOLDER_ENRICH_INTERVAL_MS') ?? 90_000),
       supabaseRest: process.env.USE_SUPABASE_REST_DB === 'true',
       redisDisabled: process.env.REDIS_DISABLED === 'true',
       bullDisabled: process.env.BULL_DISABLED !== 'false' && process.env.BULL_ENABLED !== 'true',
+      ingestion: this.ingestionLeader?.getDiagnostics() ?? null,
     }
   }
 }

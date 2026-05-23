@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { realtimeGateway } from '@/services/realtime-gateway'
 import { tokenApi } from '@/services/api'
 import { isChartUpdatePayload } from '@/lib/chartUpdate'
@@ -56,7 +56,10 @@ function signalToQuantUpdate(signal: SignalUpdatePayload) {
  * Mount once at app root: Socket.IO → token registry store.
  * No polling; optional one-time REST bootstrap if socket snapshot is empty.
  */
+const INGESTION_FAILOVER_GRACE_MS = 45_000
+
 export function useTerminalSync() {
+  const lastStreamEpochRef = useRef(0)
   const hydrateFeed = useTokenRegistryStore((s) => s.hydrateFeed)
   const schedulePatch = useTokenRegistryStore((s) => s.schedulePatch)
   const applyTradeTick = useTokenRegistryStore((s) => s.applyTradeTick)
@@ -74,7 +77,17 @@ export function useTerminalSync() {
   useEffect(() => {
     const unsubs = [
       realtimeGateway.onStreamMeta((meta) => {
-        if (meta.epoch) setStreamEpoch(meta.epoch)
+        const prevEpoch = lastStreamEpochRef.current
+        if (meta.epoch) {
+          if (prevEpoch > 0 && meta.epoch !== prevEpoch) {
+            useRealtimeStore.getState().setIngestionDegraded(true)
+            window.setTimeout(() => {
+              useRealtimeStore.getState().setIngestionDegraded(false)
+            }, INGESTION_FAILOVER_GRACE_MS)
+          }
+          lastStreamEpochRef.current = meta.epoch
+          setStreamEpoch(meta.epoch)
+        }
         if (meta.pumpportal) {
           useRealtimeStore.getState().setStreamHealth({
             subscribedTradeMints: meta.pumpportal.subscribedTradeMints,
@@ -86,10 +99,16 @@ export function useTerminalSync() {
             isLeader: meta.isLeader,
             streamEpoch: meta.epoch,
           })
+          if (!meta.pumpportal.connected && meta.isLeader === false) {
+            useRealtimeStore.getState().setIngestionDegraded(true)
+          }
         }
       }),
       realtimeGateway.onReconnectSnapshot((tokens) => {
-        if (tokens.length > 0) hydrateFeed(tokens)
+        if (tokens.length > 0) {
+          hydrateFeed(tokens)
+          useRealtimeStore.getState().setIngestionDegraded(false)
+        }
       }),
       realtimeGateway.onRegistryPatch((t) => schedulePatch(t)),
       realtimeGateway.onTradeTick((tick) => applyTradeTick(tick)),

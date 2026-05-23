@@ -43,10 +43,13 @@ export type StreamHealthSnapshot = {
 interface RealtimeState {
   connected: boolean
   reconnecting: boolean
+  /** Brief ingestion failover — keep buffered feed, show degraded UI. */
+  ingestionDegraded: boolean
   diagnostics: RealtimeDiagnostics
   streamHealth: StreamHealthSnapshot
   setConnected: (v: boolean) => void
   setReconnecting: (v: boolean) => void
+  setIngestionDegraded: (v: boolean) => void
   setStreamHealth: (patch: Partial<StreamHealthSnapshot>) => void
   patchDiagnostics: (patch: Partial<RealtimeDiagnostics>) => void
   recordReconnect: () => void
@@ -66,8 +69,11 @@ const emptyStreamHealth = (): StreamHealthSnapshot => ({
 export const useRealtimeStore = create<RealtimeState>((set, get) => ({
   connected: false,
   reconnecting: false,
+  ingestionDegraded: false,
   diagnostics: emptyDiagnostics(),
   streamHealth: emptyStreamHealth(),
+
+  setIngestionDegraded: (v) => set({ ingestionDegraded: v }),
 
   setStreamHealth: (patch) =>
     set((s) => ({

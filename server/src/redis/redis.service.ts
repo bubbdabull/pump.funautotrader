@@ -175,19 +175,41 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   /** Renew TTL only if current value matches owner (leader heartbeat). */
   async renewLock(key: string, owner: string, ttlSec: number): Promise<boolean> {
+    return this.renewIngestionLease(key, owner, owner, ttlSec)
+  }
+
+  /** Renew lease when value is `ownerId@expiresAtMs` (atomic owner prefix match). */
+  async renewIngestionLease(
+    key: string,
+    ownerId: string,
+    newValue: string,
+    ttlSec: number,
+  ): Promise<boolean> {
     if (!this.client || ttlSec <= 0) return false
     try {
       const script = `
-        if redis.call("get", KEYS[1]) == ARGV[1] then
-          return redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2])
-        else
-          return 0
+        local cur = redis.call("get", KEYS[1])
+        if not cur then return 0 end
+        local owner = string.match(cur, "^([^@]+)")
+        if owner == ARGV[1] then
+          return redis.call("set", KEYS[1], ARGV[2], "EX", ARGV[3])
         end
+        if cur == ARGV[1] then
+          return redis.call("set", KEYS[1], ARGV[2], "EX", ARGV[3])
+        end
+        return 0
       `
-      const result = await this.client.eval(script, 1, key, owner, String(ttlSec))
+      const result = await this.client.eval(
+        script,
+        1,
+        key,
+        ownerId,
+        newValue,
+        String(ttlSec),
+      )
       return result === 'OK'
     } catch (err) {
-      this.logger.debug(`Redis renewLock ${key}: ${(err as Error).message}`)
+      this.logger.debug(`Redis renewIngestionLease ${key}: ${(err as Error).message}`)
       return false
     }
   }

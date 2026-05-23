@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Optional } from '@nestjs/common'
 import { EventBusService } from './event-bus.service'
+import { IngestionLeaderService } from './ingestion-leader.service'
 import type { IngestionOrchestratorService } from './ingestion-orchestrator.service'
 
 /** Aggregated realtime pipeline diagnostics (merge PumpPortal status at health endpoint). */
@@ -9,7 +10,10 @@ export class IngestionHealthService {
   private lastProcessErrorAt?: string
   private lastProcessErrorMsg?: string
 
-  constructor(private bus: EventBusService) {}
+  constructor(
+    private bus: EventBusService,
+    @Optional() private leader?: IngestionLeaderService,
+  ) {}
 
   recordProcessError(err: unknown) {
     this.processErrors++
@@ -37,10 +41,13 @@ export class IngestionHealthService {
       (Number(pumpportal?.liveFeedCount) || 0) > 0 ||
       (Number(pumpportal?.messagesReceived) || 0) > 0
 
+    const leader = this.leader?.getDiagnostics() ?? null
+
     return {
       ok: pumpOk && feedOk,
       ingestionOk: pumpOk && orchestrator.hotQueueDepth < 4_000,
       pumpportal: pumpportal ?? null,
+      leader,
       orchestrator,
       bus,
       processErrors: this.processErrors,

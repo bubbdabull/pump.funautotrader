@@ -77,6 +77,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   private resyncScheduled = false
   private reconnectCooldownUntil = 0
   private streamEpoch = 0
+  private leaderTransitionTimer?: NodeJS.Timeout
+  private pendingLeaderActive: boolean | null = null
   private readonly apiKey: string | undefined
 
   constructor(
@@ -156,6 +158,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       lastTradeSubRotationAt: this.lastRotationAt,
       ingestionLeader: this.ingestionLeader.isIngestionLeader(),
       leaderId: this.ingestionLeader.getLeaderId(),
+      leaderDiagnostics: this.ingestionLeader.getDiagnostics(),
+      ingestionPaused: this.ingestionPaused,
       streamEpoch: this.streamEpoch,
     }
   }
@@ -171,13 +175,29 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       )
     }
     this.ingestionLeader.onLeaderChange((leader) => {
-      if (leader) this.beginIngestion()
-      else this.standDownIngestion()
+      this.pendingLeaderActive = leader
+      if (this.leaderTransitionTimer) clearTimeout(this.leaderTransitionTimer)
+      const delay = leader
+        ? Number(process.env.PUMPPORTAL_LEADER_PROMOTE_MS ?? 400)
+        : Number(process.env.PUMPPORTAL_LEADER_STANDDOWN_MS ?? 4_000)
+      this.leaderTransitionTimer = setTimeout(() => {
+        this.leaderTransitionTimer = undefined
+        if (this.pendingLeaderActive !== leader) return
+        if (!this.ingestionLeader.isIngestionLeader() && leader) return
+        if (this.ingestionLeader.isIngestionLeader() && !leader) return
+        if (leader) this.beginIngestion()
+        else this.standDownIngestion()
+      }, delay)
     })
   }
 
   private beginIngestion() {
+    if (!this.ingestionLeader.isIngestionLeader()) return
     this.ingestionPaused = false
+    this.intentionalClose = false
+    this.reconnectAttempts = 0
+    this.reconnectLocked = false
+    this.connecting = false
     const deferMs =
       Number(process.env.PUMPPORTAL_CONNECT_DEFER_MS ?? 0) ||
       (process.env.FLY_APP_NAME ? 12_000 : 0)
@@ -200,13 +220,28 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   private standDownIngestion() {
+    if (this.ingestionLeader.isIngestionLeader()) return
+    if (this.ingestionPaused && !this.ws && !this.connecting) return
     this.ingestionPaused = true
+    this.intentionalClose = true
+    this.reconnectLocked = false
+    this.connecting = false
     this.clearReconnectTimers()
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = undefined
+    }
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer)
+      this.pingTimer = undefined
+    }
     this.teardownSocket()
+    this.subscribedMints.clear()
     if (this.rotationTimer) {
       clearInterval(this.rotationTimer)
       this.rotationTimer = undefined
     }
+    this.logger.log('PumpPortal WS stood down (ingestion follower)')
   }
 
   private clearReconnectTimers() {
@@ -226,6 +261,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     this.intentionalClose = true
+    if (this.leaderTransitionTimer) clearTimeout(this.leaderTransitionTimer)
     this.clearReconnectTimers()
     if (this.rotationTimer) clearInterval(this.rotationTimer)
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)

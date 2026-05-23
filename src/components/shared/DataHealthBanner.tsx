@@ -33,6 +33,7 @@ export interface DataHealthReport {
 
 export function DataHealthBanner() {
   const streamHealth = useRealtimeStore((s) => s.streamHealth)
+  const ingestionDegraded = useRealtimeStore((s) => s.ingestionDegraded)
   const wsConnected = useTokenRegistryStore((s) => s.wsConnected)
   const registryUpdatedAt = useTokenRegistryStore((s) => s.updatedAt)
 
@@ -76,6 +77,11 @@ export function DataHealthBanner() {
               {data.db.tradesLast5m} DB trades (5m)
             </span>
           </p>
+          {ingestionDegraded && (
+            <p className="mt-1 text-[11px] text-amber-200/90">
+              Ingestion failover in progress — feed buffered, streams may pause briefly.
+            </p>
+          )}
           <p className="mt-1 flex flex-wrap items-center gap-3 text-[11px] opacity-80">
             <span className="inline-flex items-center gap-1">
               <Wifi className="h-3 w-3" />
