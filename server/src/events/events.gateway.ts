@@ -84,13 +84,12 @@ export class EventsGateway implements OnGatewayConnection {
       isLeader: this.ingestionLeader.isIngestionLeader(),
       pumpportal,
     })
-    const feed = await this.tokens.getFeed('all')
-    const slice = feed.slice(0, 120)
-    for (const token of slice) {
+    const bootstrap = this.tokens.getRegistryBootstrap(120)
+    for (const token of bootstrap) {
       client.emit('registry:patch', token)
     }
-    if (slice.length < feed.length) {
-      this.logger.debug(`subscribe:feed sent ${slice.length}/${feed.length} registry patches`)
+    if (bootstrap.length > 0) {
+      this.logger.debug(`subscribe:feed sent ${bootstrap.length} registry patches`)
     }
   }
 

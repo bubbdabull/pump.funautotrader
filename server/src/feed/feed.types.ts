@@ -1,3 +1,5 @@
+import type { TokenDataState } from '@phronis/trading'
+
 /** Token shape returned by feed API (matches frontend PumpToken). */
 export interface FeedToken {
   mint: string
@@ -37,6 +39,8 @@ export interface FeedToken {
   burstIgnition?: number
   top1Pct?: number
   top5Pct?: number
+  /** Enrichment lifecycle — raw/enriching still shown in UI */
+  dataState?: TokenDataState
 }
 
 export interface FeedTrade {

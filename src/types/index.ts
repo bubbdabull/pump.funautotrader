@@ -7,6 +7,8 @@ export type PumpPortalPool =
   | 'bonk'
   | 'auto'
 
+export type TokenDataState = 'raw' | 'enriching' | 'active' | 'invalid'
+
 export type TokenLifecycleState =
   | 'NEW'
   | 'DISCOVERING'
@@ -57,6 +59,8 @@ export interface PumpToken {
   top1Pct?: number
   top5Pct?: number
   coordinationPenalty?: number
+  /** Pipeline readiness — raw/enriching still visible in scanner */
+  dataState?: TokenDataState
 }
 
 export interface AutoTradeRules {

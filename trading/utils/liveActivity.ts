@@ -2,6 +2,7 @@ import type { FeedQualityFields } from './feedQuality'
 import {
   activitySol,
   passesAlphaFilter,
+  passesIngestGate,
   passesMinHolderDepth,
   tradeQualityScore,
 } from './feedQuality'
@@ -93,12 +94,16 @@ export function liveActivityScore(token: FeedQualityWithActivity, now = Date.now
   return score
 }
 
-/** Hot lane — live ticks + multi-holder depth (filters 1–2 wallet rugs). */
-export function passesActiveScannerFilter(token: FeedQualityWithActivity): boolean {
+/** Hot lane — live ticks first; alpha/holder bar for REST-only rows. */
+export function passesActiveScannerFilter(
+  token: FeedQualityWithActivity,
+  now = Date.now(),
+): boolean {
+  if (!passesIngestGate(token) || isDeadFeedToken(token, now)) return false
+  if (hasRealTimeTradeActivity(token, now) || token.isActive) return true
   if (!passesAlphaFilter(token)) return false
-  if (isDeadFeedToken(token)) return false
   if (!passesMinHolderDepth(token)) return false
-  return hasRealTimeTradeActivity(token)
+  return hasRealTimeTradeActivity(token, now)
 }
 
 /** Meaningful volume or live ticks — not a dead bootstrap row. */

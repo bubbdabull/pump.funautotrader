@@ -26,7 +26,8 @@ export class TokenRegistryService {
   }
 
   upsert(row: FeedToken, source: NormalizedToken['source'] = 'stream'): NormalizedToken | null {
-    const saved = this.liveFeed.patch(row) ?? this.liveFeed.upsert(row)
+    const saved =
+      this.liveFeed.patch(row) ?? this.liveFeed.upsertStream(row) ?? this.liveFeed.upsert(row)
     if (!saved) return null
     return this.normalize(saved, source)
   }

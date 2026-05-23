@@ -9,6 +9,15 @@ export function shouldShowWatchlistFallback(params: {
   registrySize: number
 }): boolean {
   if (params.displayMode !== 'watchlist_fallback') return false
+  if (
+    params.registrySize > 0 &&
+    params.wsConnected &&
+    !params.reconnecting &&
+    params.registryUpdatedAt > 0 &&
+    Date.now() - params.registryUpdatedAt <= 45_000
+  ) {
+    return false
+  }
   if (params.registrySize === 0) return true
   if (!params.wsConnected || params.reconnecting) return true
   if (params.registryUpdatedAt <= 0) return true

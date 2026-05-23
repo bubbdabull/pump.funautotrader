@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common'
 import {
   activitySol,
   hasRealTimeTradeActivity,
+  hasStreamTicks,
   isDeadFeedToken,
   liveActivityScore,
   MIN_FEED_VOLUME_24H_SOL,
   normalizeVirtualSol,
   passesAlphaFilter,
   passesIngestGate,
+  resolveTokenDataState,
   isPlaceholderTokenImage,
   normalizeFeedTokenLabels,
   pickTokenName,
@@ -29,14 +31,18 @@ export class LiveFeedService {
     return this.maxFeed
   }
 
-  /** Alpha + volume bar; dead / zero-activity tokens are not stored. */
+  /** Store live stream rows immediately; alpha bar for REST/bootstrap only. */
   shouldStore(token: FeedToken): boolean {
-    if (!passesAlphaFilter(token)) return false
-    if (hasRealTimeTradeActivity(token)) return true
-    if ((token.trades1m ?? 0) > 0 || token.isActive) return true
+    if (!passesIngestGate(token)) return false
+    if (hasRealTimeTradeActivity(token) || hasStreamTicks(token)) return true
     if (token.holdersVerified && (token.holders ?? 0) >= 5) return true
     if (isDeadFeedToken(token)) return false
-    return activitySol(token) >= MIN_FEED_VOLUME_24H_SOL * 0.5
+    if (passesAlphaFilter(token)) return true
+    return activitySol(token) >= MIN_FEED_VOLUME_24H_SOL * 0.35
+  }
+
+  private finalizeRow(token: FeedToken): FeedToken {
+    return { ...token, dataState: resolveTokenDataState(token) }
   }
 
   private mergeLabels(mint: string, ...sources: { symbol?: string; name?: string }[]) {
@@ -48,7 +54,7 @@ export class LiveFeedService {
   /** Merge activity/holders/images without re-running full store gates. */
   patch(token: FeedToken): FeedToken | null {
     const prev = this.tokens.get(token.mint)
-    if (!prev) return this.upsert(token)
+    if (!prev) return this.upsertStream(token) ?? this.upsert(token)
     const labels = this.mergeLabels(token.mint, prev, token)
     const merged: FeedToken = {
       ...prev,
@@ -60,14 +66,47 @@ export class LiveFeedService {
       holdersVerified: prev.holdersVerified || token.holdersVerified,
       volume24h: Math.max(prev.volume24h, token.volume24h),
       lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
-      trades1m: token.trades1m ?? prev.trades1m,
+      trades1m: Math.max(prev.trades1m ?? 0, token.trades1m ?? 0),
       volume5mSol: Math.max(prev.volume5mSol ?? 0, token.volume5mSol ?? 0),
       buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
       mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
       isActive: token.isActive ?? prev.isActive,
     }
-    this.tokens.set(token.mint, merged)
-    return merged
+    const finalized = this.finalizeRow(merged)
+    this.tokens.set(token.mint, finalized)
+    return finalized
+  }
+
+  /** Stream path — ingest gate only; never block on holder enrichment. */
+  upsertStream(token: FeedToken): FeedToken | null {
+    if (!passesIngestGate(token)) return null
+    const prev = this.tokens.get(token.mint)
+    const labels = prev
+      ? this.mergeLabels(token.mint, prev, token)
+      : this.mergeLabels(token.mint, token)
+    const merged: FeedToken = prev
+      ? {
+          ...prev,
+          ...token,
+          ...labels,
+          image: this.pickImage(token.image, prev.image),
+          metadataUri: token.metadataUri || prev.metadataUri,
+          holders: Math.max(prev.holders ?? 0, token.holders ?? 0),
+          holdersVerified: prev.holdersVerified || token.holdersVerified,
+          volume24h: Math.max(prev.volume24h, token.volume24h),
+          launchedAt: prev.launchedAt || token.launchedAt,
+          lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
+          trades1m: Math.max(prev.trades1m ?? 0, token.trades1m ?? 0),
+          volume5mSol: Math.max(prev.volume5mSol ?? 0, token.volume5mSol ?? 0),
+          buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
+          mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
+          isActive: token.isActive ?? prev.isActive,
+        }
+      : { ...token, ...labels }
+    const finalized = this.finalizeRow(merged)
+    this.tokens.set(token.mint, finalized)
+    this.trim()
+    return finalized
   }
 
   private pickImage(next?: string, prev?: string): string {
@@ -94,16 +133,17 @@ export class LiveFeedService {
           volume24h: Math.max(prev.volume24h, token.volume24h),
           launchedAt: prev.launchedAt || token.launchedAt,
           lastTradeAt: token.lastTradeAt ?? prev.lastTradeAt,
-          trades1m: token.trades1m ?? prev.trades1m,
+          trades1m: Math.max(prev.trades1m ?? 0, token.trades1m ?? 0),
           volume5mSol: Math.max(prev.volume5mSol ?? 0, token.volume5mSol ?? 0),
           buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
           mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
           isActive: token.isActive ?? prev.isActive,
         }
       : { ...token, ...labels }
-    this.tokens.set(token.mint, merged)
+    const finalized = this.finalizeRow(merged)
+    this.tokens.set(token.mint, finalized)
     this.trim()
-    return merged
+    return finalized
   }
 
   mergeBootstrap(tokens: FeedToken[]) {

@@ -118,6 +118,11 @@ export class TokensService {
     return candidates.length
   }
 
+  /** Unfiltered in-memory rows for WS subscribe bootstrap (includes raw/enriching). */
+  getRegistryBootstrap(limit = 120) {
+    return this.liveFeed.getAll(limit).map((t) => this.registry.normalize(t))
+  }
+
   async getFeed(lane: ScannerLane = 'tradeable'): Promise<FeedToken[]> {
     await this.ensureRegistryWarm()
     const list = this.registry.list(lane)
@@ -309,8 +314,8 @@ export class TokensService {
     })
     const saved = this.liveFeed.patch(enriched) ?? this.liveFeed.upsert(enriched)
     if (!saved) return null
-    this.events.server?.to('feed').emit('feed:patch', saved)
-    this.events.server?.emit('token:update', saved)
+    const normalized = this.registry.normalize(saved)
+    this.events.emitRegistryPatch(normalized)
     this.persistFeedToken(saved)
     return saved
   }
@@ -362,7 +367,10 @@ export class TokensService {
       holders,
       holdersVerified: Boolean(chain?.verified),
     })
-    const saved = this.liveFeed.upsert(enriched) ?? this.liveFeed.patch(enriched)
+    const saved =
+      this.liveFeed.upsertStream(enriched) ??
+      this.liveFeed.upsert(enriched) ??
+      this.liveFeed.patch(enriched)
     if (saved) this.persistFeedToken(saved)
     return saved
   }
@@ -403,7 +411,11 @@ export class TokensService {
     if (!live && state?.trades.length) {
       const built = this.tokenFromMarketState(mint)
       if (built) {
-        live = this.liveFeed.upsert(built) ?? this.liveFeed.patch(built) ?? undefined
+        live =
+          this.liveFeed.upsertStream(built) ??
+          this.liveFeed.upsert(built) ??
+          this.liveFeed.patch(built) ??
+          undefined
       }
     }
     if (!state && !live) return null
@@ -421,7 +433,10 @@ export class TokensService {
         ? Math.max(base.volume24h, state.trades.reduce((a, t) => a + t.solAmount, 0))
         : base.volume24h,
     })
-    const saved = this.liveFeed.patch(enriched) ?? this.liveFeed.upsert(enriched)
+    const saved =
+      this.liveFeed.patch(enriched) ??
+      this.liveFeed.upsertStream(enriched) ??
+      this.liveFeed.upsert(enriched)
     if (!saved) return null
     if (whaleSol && whaleSol >= 5) {
       this.enqueuePersistSideEffects(saved, { whaleSol })
@@ -996,6 +1011,12 @@ export class TokensService {
       volume24h: Math.max(token.volume24h ?? 0, fromState.volume24h),
       launchedAt: token.launchedAt || fromState.launchedAt,
       priceChange24h: fromState.priceChange24h ?? token.priceChange24h ?? 0,
+      lastTradeAt: token.lastTradeAt ?? fromState.lastTradeAt,
+      trades1m: Math.max(token.trades1m ?? 0, fromState.trades1m ?? 0),
+      volume5mSol: Math.max(token.volume5mSol ?? 0, fromState.volume5mSol ?? 0),
+      isActive: token.isActive ?? fromState.isActive,
+      buyPressure1m: token.buyPressure1m ?? fromState.buyPressure1m,
+      mcapChange5m: token.mcapChange5m ?? fromState.mcapChange5m,
     }
     return this.attachActivity(merged, mint)
   }

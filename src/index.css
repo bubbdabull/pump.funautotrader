@@ -314,3 +314,188 @@ body::before {
 .terminal-warmup {
   background: radial-gradient(ellipse at center, rgba(124, 58, 237, 0.06) 0%, transparent 70%);
 }
+
+/* —— Photon Sol–style terminal —— */
+.photon-page {
+  background: #050506;
+}
+
+.photon-terminal {
+  background: #060608;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8) inset;
+}
+
+.photon-topbar {
+  background: #0a0a0c !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.photon-topbar button[class*="bg-violet"] {
+  background: rgba(0, 211, 149, 0.2) !important;
+  color: #34d399 !important;
+}
+
+.photon-panel {
+  background: #0a0a0c;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  height: 100%;
+}
+
+.photon-panel-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9ca3af;
+}
+
+.photon-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.photon-input {
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #050506;
+  color: #e5e7eb;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.photon-input:focus {
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.photon-segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: #050506;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.photon-segment-btn {
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  transition: background 0.15s, color 0.15s;
+}
+
+.photon-segment-buy-active {
+  background: rgba(0, 211, 149, 0.2);
+  color: #34d399;
+}
+
+.photon-segment-sell-active {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+.photon-preset-btn {
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #111114;
+  padding: 6px 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #d1d5db;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.photon-preset-btn:disabled {
+  opacity: 0.4;
+}
+
+.photon-cta {
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.photon-cta:disabled {
+  opacity: 0.45;
+}
+
+.photon-cta-buy {
+  background: linear-gradient(180deg, #00d395 0%, #00a67d 100%);
+  color: #04120d;
+  box-shadow: 0 0 20px rgba(0, 211, 149, 0.25);
+}
+
+.photon-cta-sell {
+  background: linear-gradient(180deg, #ff4d6d 0%, #e11d48 100%);
+  color: #fff;
+}
+
+.photon-row-selected {
+  background: rgba(0, 211, 149, 0.08) !important;
+  box-shadow: inset 2px 0 0 #00d395;
+}
+
+.photon-table th {
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.photon-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.photon-row-buy {
+  background: rgba(0, 211, 149, 0.04);
+}
+
+.photon-row-sell {
+  background: rgba(255, 77, 109, 0.04);
+}
+
+.photon-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.02) 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  background-size: 200% 100%;
+  animation: terminal-shimmer 1.2s linear infinite;
+  border-radius: 4px;
+}
+
+.photon-warmup {
+  background: radial-gradient(ellipse at center, rgba(0, 211, 149, 0.05) 0%, transparent 70%);
+}
+
+.photon-terminal .terminal-chart-canvas {
+  background: #050506;
+}
+
+.photon-terminal [class*="bg-violet"] {
+  background: rgba(0, 211, 149, 0.25) !important;
+}
+
+.photon-terminal [class*="bg-cyan"] {
+  background: rgba(52, 211, 153, 0.2) !important;
+}

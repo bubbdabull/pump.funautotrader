@@ -15,6 +15,8 @@ import {
   resolveDisplayFeed,
   rankLiveStreamFeed,
   hasRealTimeTradeActivity,
+  resolveTokenDataState,
+  liveActivityScore,
   tradeQualityScore,
   type FeedDisplayMode,
   type ScannerLane,
@@ -61,17 +63,35 @@ function applyLane(
     return { tokens: list, mode: list.length > 0 ? 'active' : 'watchlist_fallback', tradeableCount }
   }
   const resolved = resolveDisplayFeed(tokens, 80, streamOpts)
-  if (
-    streamConnected &&
-    registryFresh &&
-    resolved.mode === 'watchlist_fallback' &&
-    tokens.some((t) => hasRealTimeTradeActivity(t))
-  ) {
-    const live = rankLiveStreamFeed(tokens, 80)
-    if (live.length > 0) {
-      return { tokens: live, mode: 'low_confidence', tradeableCount }
+  if (resolved.tokens.length > 0) {
+    if (
+      streamConnected &&
+      registryFresh &&
+      resolved.mode === 'watchlist_fallback' &&
+      tokens.some((t) => hasRealTimeTradeActivity(t))
+    ) {
+      const live = rankLiveStreamFeed(tokens, 80)
+      if (live.length > 0) {
+        return { tokens: live, mode: 'low_confidence', tradeableCount }
+      }
+    }
+    return {
+      tokens: resolved.tokens,
+      mode: resolved.mode,
+      tradeableCount: resolved.tradeableCount,
     }
   }
+
+  if (streamConnected && registryFresh && tokens.length > 0) {
+    const visible = [...tokens]
+      .filter((t) => resolveTokenDataState(t) !== 'invalid')
+      .sort((a, b) => liveActivityScore(b) - liveActivityScore(a))
+      .slice(0, 80)
+    if (visible.length > 0) {
+      return { tokens: visible, mode: 'low_confidence', tradeableCount }
+    }
+  }
+
   return {
     tokens: resolved.tokens,
     mode: resolved.mode,
