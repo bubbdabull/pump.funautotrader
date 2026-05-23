@@ -142,7 +142,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       pendingTradeSubscriptions: this.pendingTradeQueue.length,
       pinnedPriorityMints: this.autoTrader.getPriorityMints().length,
       liveFeedMax: this.liveFeed.getMaxFeed(),
-      liveFeedCount: this.liveFeed.getAll().length,
+      liveFeedCount: this.liveFeed.size(),
+      lastMessageAtMs: this.lastMessageAtMs,
       messagesReceived: this.messageCount,
       tradeMessagesReceived: this.tradeMessageCount,
       droppedMessages: this.droppedMessages,
@@ -529,7 +530,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }
 
     this.feedTradePin.refreshPinsFromFeed()
-    const feed = this.liveFeed.getAll()
+    const feed = this.liveFeed.getAll(Math.min(this.liveFeed.getMaxFeed(), 500))
     const pinned = new Set([
       ...this.autoTrader.getPriorityMints(),
       ...this.feedTradePin.getMandatoryMints(),
@@ -837,12 +838,10 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       payload,
       receivedAt: Date.now(),
     }
-    try {
-      await this.ingestion.processImmediate(event)
-      void this.eventBus.publishRemote(event)
-    } catch (err) {
+    void this.ingestion.processImmediate(event).catch((err) => {
       this.logger.debug(`Ingest publish failed (${type}/${mint.slice(0, 8)}): ${(err as Error).message}`)
-    }
+    })
+    void this.eventBus.publishRemote(event).catch(() => undefined)
   }
 
   private async ingestTrade(

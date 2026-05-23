@@ -34,7 +34,7 @@ export class SignalIntelligenceService {
     }
 
     if (state?.trades?.length) {
-      for (const t of state.trades.slice(-12)) {
+      for (const t of state.trades.slice(-3)) {
         if (!t.wallet) continue
         const won = t.side === 'buy'
         globalWalletTracker.recordTrade(t.wallet, won ? 0.04 : -0.02, won)

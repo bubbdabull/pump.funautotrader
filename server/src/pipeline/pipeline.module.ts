@@ -11,6 +11,7 @@ import { IntelligenceModule } from '../intelligence/intelligence.module'
 import { FeedModule } from '../feed/feed.module'
 import { ChartsModule } from '../charts/charts.module'
 import { PumpPortalModule } from '../pumpportal/pumpportal.module'
+import { RuntimeDiagnosticsService } from './runtime-diagnostics.service'
 
 @Global()
 @Module({
@@ -26,7 +27,7 @@ import { PumpPortalModule } from '../pumpportal/pumpportal.module'
     TradeDataModule,
     forwardRef(() => PumpPortalModule),
   ],
-  providers: [TokenRegistryService, RawEventProcessorService],
+  providers: [TokenRegistryService, RawEventProcessorService, RuntimeDiagnosticsService],
   exports: [TokenRegistryService, RawEventProcessorService],
 })
 export class PipelineModule {}

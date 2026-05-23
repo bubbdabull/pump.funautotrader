@@ -74,9 +74,8 @@ export class EventsGateway implements OnGatewayConnection {
   @SubscribeMessage('subscribe:feed')
   async handleFeedSubscribe(client: Socket) {
     client.join('feed')
-    const epochRaw = await this.redis.get(REDIS_KEYS.streamEpoch)
-    const streamEpoch = Number(epochRaw) || Date.now()
-    const pumpportal = await this.resolvePumpPortalMeta()
+    const streamEpoch = Number(this.pumpportal.getHealth().streamEpoch) || Date.now()
+    const pumpportal = this.pumpportal.getHealth()
     client.emit('stream:meta', {
       epoch: streamEpoch,
       leaderId: this.ingestionLeader.getLeaderId(),
@@ -85,12 +84,18 @@ export class EventsGateway implements OnGatewayConnection {
       pumpportal,
     })
     const bootstrap = this.tokens.getRegistryBootstrap(120)
-    for (const token of bootstrap) {
-      client.emit('registry:patch', token)
+    const emitBootstrap = (offset = 0) => {
+      const chunk = bootstrap.slice(offset, offset + 20)
+      for (const token of chunk) {
+        client.emit('registry:patch', token)
+      }
+      if (offset + 20 < bootstrap.length) {
+        setImmediate(() => emitBootstrap(offset + 20))
+      } else if (bootstrap.length > 0) {
+        this.logger.debug(`subscribe:feed sent ${bootstrap.length} registry patches`)
+      }
     }
-    if (bootstrap.length > 0) {
-      this.logger.debug(`subscribe:feed sent ${bootstrap.length} registry patches`)
-    }
+    emitBootstrap()
   }
 
   @SubscribeMessage('subscribe:token')
@@ -184,7 +189,6 @@ export class EventsGateway implements OnGatewayConnection {
   /** Normalized registry patch — primary UI update path (stream-first). */
   emitRegistryPatch(token: unknown) {
     this.server.to('feed').emit('registry:patch', token)
-    this.server.to('feed').emit('feed:patch', token)
     const mint = (token as { mint?: string })?.mint
     if (mint) {
       this.server.to(`token:${mint}`).emit('token:update', token)

@@ -6,6 +6,7 @@ import { TradingBridgeService } from '../trading/trading-bridge.service'
 import { EventSequencerService } from '../intelligence/event-sequencer.service'
 import { IngestionHealthService } from './ingestion-health.service'
 import { INGESTION_HOT_QUEUE_MAX } from '@phronis/trading'
+import { PostUpdateQueueService } from './post-update-queue.service'
 
 @Injectable()
 export class IngestionOrchestratorService implements OnModuleInit {
@@ -16,14 +17,12 @@ export class IngestionOrchestratorService implements OnModuleInit {
   private handleErrors = 0
   private readonly hotQueue: IngestionEvent[] = []
   private hotDraining = false
-  private readonly postUpdateHandlers: Array<(mint: string, event: IngestionEvent) => void | Promise<void>> =
-    []
-
   constructor(
     private bus: EventBusService,
     private dedup: DedupService,
     private trading: TradingBridgeService,
     private sequencer: EventSequencerService,
+    private postUpdateQueue: PostUpdateQueueService,
     @Optional() private ingestionHealth?: IngestionHealthService,
   ) {}
 
@@ -33,7 +32,7 @@ export class IngestionOrchestratorService implements OnModuleInit {
   }
 
   onPostUpdate(handler: (mint: string, event: IngestionEvent) => void | Promise<void>) {
-    this.postUpdateHandlers.push(handler)
+    this.postUpdateQueue.register(handler)
   }
 
   /** Hot path: bounded queue + microtask drain (PumpPortal gateway). */
@@ -49,16 +48,17 @@ export class IngestionOrchestratorService implements OnModuleInit {
     if (!this.hotDraining) void this.drainHotQueue()
   }
 
-  private async drainHotQueue() {
+  private drainHotQueue() {
     this.hotDraining = true
-    while (this.hotQueue.length > 0) {
-      const batch = this.hotQueue.splice(0, 32)
-      for (const ev of batch) {
-        await this.safeHandle(ev, 'hot')
-      }
-      await new Promise<void>((r) => setImmediate(r))
+    const batch = this.hotQueue.splice(0, 48)
+    for (const ev of batch) {
+      void this.safeHandle(ev, 'hot')
     }
-    this.hotDraining = false
+    if (this.hotQueue.length > 0) {
+      setImmediate(() => this.drainHotQueue())
+    } else {
+      this.hotDraining = false
+    }
   }
 
   /** Secondary sources + fan-out: queue + optional Redis. */
@@ -153,19 +153,7 @@ export class IngestionOrchestratorService implements OnModuleInit {
         break
     }
 
-    const handlers = this.postUpdateHandlers
-    if (handlers.length === 0) return
-    setImmediate(() => {
-      void (async () => {
-        for (const h of handlers) {
-          try {
-            await h(event.mint, event)
-          } catch (err) {
-            this.ingestionHealth?.recordProcessError(err)
-          }
-        }
-      })()
-    })
+    this.postUpdateQueue.schedule(event.mint, event)
   }
 
   getStats() {
@@ -176,6 +164,7 @@ export class IngestionOrchestratorService implements OnModuleInit {
       handleErrors: this.handleErrors,
       hotQueueDepth: this.hotQueue.length,
       hotDraining: this.hotDraining,
+      postUpdate: this.postUpdateQueue.getStats(),
       bus: this.bus.getStats(),
     }
   }

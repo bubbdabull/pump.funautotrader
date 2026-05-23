@@ -73,12 +73,11 @@ async function bootstrapApi() {
   const expressApp = express()
   let nestReady = false
   const healthJson = () => ({
+    status: 'ok',
     ok: true,
-    service: 'phronis-api',
+    uptime: process.uptime(),
+    timestamp: Date.now(),
     booting: !nestReady,
-    bootRole: resolveBootRole(),
-    flyProcessGroup: process.env.FLY_PROCESS_GROUP,
-    at: new Date().toISOString(),
   })
 
   /** Fly probe must answer even when Nest/PumpPortal block the event loop during boot. */
@@ -86,7 +85,15 @@ async function bootstrapApi() {
     const path = req.url?.split('?')[0]
     if (path !== '/health' && path !== '/api/health') return false
     res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' })
-    res.end(JSON.stringify({ ok: true, probe: true, booting: !nestReady }))
+    res.end(
+      JSON.stringify({
+        status: 'ok',
+        ok: true,
+        uptime: process.uptime(),
+        timestamp: Date.now(),
+        booting: !nestReady,
+      }),
+    )
     return true
   }
 

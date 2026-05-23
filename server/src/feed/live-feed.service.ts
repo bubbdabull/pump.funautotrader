@@ -31,6 +31,10 @@ export class LiveFeedService {
     return this.maxFeed
   }
 
+  size(): number {
+    return this.tokens.size
+  }
+
   /** Store live stream rows immediately; alpha bar for REST/bootstrap only. */
   shouldStore(token: FeedToken): boolean {
     if (!passesIngestGate(token)) return false

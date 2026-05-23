@@ -2,6 +2,7 @@ import { Global, Module, forwardRef } from '@nestjs/common'
 import { DedupService } from './dedup.service'
 import { EventBusService } from './event-bus.service'
 import { IngestionOrchestratorService } from './ingestion-orchestrator.service'
+import { PostUpdateQueueService } from './post-update-queue.service'
 import { IngestionHealthService } from './ingestion-health.service'
 import { IngestionLeaderService } from './ingestion-leader.service'
 import { IngestionRelayService } from './ingestion-relay.service'
@@ -22,6 +23,7 @@ import { HeliusModule } from '../helius/helius.module'
     IngestionHealthService,
     IngestionLeaderService,
     IngestionRelayService,
+    PostUpdateQueueService,
     IngestionOrchestratorService,
     PumpStreamSource,
     HeliusIngestSource,
@@ -29,6 +31,7 @@ import { HeliusModule } from '../helius/helius.module'
   exports: [
     DedupService,
     EventBusService,
+    PostUpdateQueueService,
     IngestionOrchestratorService,
     IngestionHealthService,
     IngestionLeaderService,

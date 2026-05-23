@@ -1,24 +1,18 @@
-import { Controller, Get, Optional } from '@nestjs/common'
-import { resolveBootRole } from './process-role'
-import { IngestionLeaderService } from './ingestion/ingestion-leader.service'
+import { Controller, Get } from '@nestjs/common'
 
 /**
- * Fly liveness probe — must stay sub-10ms and never block on PumpPortal/Redis/scoring.
- * Use GET /api/pumpportal/ingestion-health for pipeline diagnostics.
+ * Fly liveness probe — pure in-memory, never awaits Redis/PumpPortal/registry.
+ * Pipeline diagnostics: GET /api/pumpportal/ingestion-health
  */
 @Controller()
 export class HealthController {
-  constructor(@Optional() private ingestionLeader?: IngestionLeaderService) {}
-
   @Get('health')
   health() {
     return {
+      status: 'ok',
       ok: true,
-      service: 'phronis-api',
-      at: new Date().toISOString(),
-      processRole: resolveBootRole(),
-      flyProcessGroup: process.env.FLY_PROCESS_GROUP,
-      leader: this.ingestionLeader?.isIngestionLeader() ?? null,
+      uptime: process.uptime(),
+      timestamp: Date.now(),
     }
   }
 }

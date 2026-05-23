@@ -21,7 +21,7 @@ export class TokenRegistryService {
   ) {}
 
   get size(): number {
-    return this.liveFeed.getAll(10_000).length
+    return this.liveFeed.size()
   }
 
   get(mint: string): NormalizedToken | undefined {

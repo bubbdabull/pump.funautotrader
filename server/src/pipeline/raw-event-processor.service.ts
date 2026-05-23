@@ -100,8 +100,14 @@ export class RawEventProcessorService implements OnModuleInit {
 
     if (intel.analytics) {
       this.applyDynamicsScores(mint, intel.analytics)
-      this.terminal.onDynamics(mint, intel.analytics, saved)
-      this.redisHooks.onTradeProcessed(mint, intel.analytics, saved)
+      setImmediate(() => {
+        try {
+          this.terminal.onDynamics(mint, intel.analytics!, saved)
+          this.redisHooks.onTradeProcessed(mint, intel.analytics!, saved)
+        } catch {
+          /* non-fatal */
+        }
+      })
     }
 
     const row = this.liveFeed.get(mint) ?? saved
@@ -112,10 +118,24 @@ export class RawEventProcessorService implements OnModuleInit {
     this.batcher.scheduleRegistryPatch(normalized, urgentPatch)
 
     const alerts = this.signalIntel.evaluateAlerts(mint, enriched, 'pro')
-    for (const alert of alerts) {
-      this.events.emitIntelligenceAlert(alert)
+    if (alerts.length > 0) {
+      setImmediate(() => {
+        for (const alert of alerts) {
+          try {
+            this.events.emitIntelligenceAlert(alert)
+          } catch {
+            /* non-fatal */
+          }
+        }
+      })
     }
-    this.tokens.publishStreamEvents(mint, row)
+    setImmediate(() => {
+      try {
+        this.tokens.publishStreamEvents(mint, saved)
+      } catch {
+        /* non-fatal */
+      }
+    })
 
     if (event.type === 'token.trade') {
       const progressionPoint =
@@ -146,15 +166,27 @@ export class RawEventProcessorService implements OnModuleInit {
         priceVelocity: intel.analytics?.velocity.marketCapVelocity,
       })
       if (chartPayload && this.chartAgg.markEmittedIfDue(mint)) {
-        const enriched = {
+        const chartEmit = {
           ...chartPayload,
           tradeStreamSubscribed: this.pumpportal.isTradeSubscribed(mint),
           pumpportalKeyConfigured: this.pumpportal.getHealth().apiKeyConfigured,
         }
-        this.events.emitChartDelta(enriched)
+        setImmediate(() => {
+          try {
+            this.events.emitChartDelta(chartEmit)
+          } catch {
+            /* non-fatal */
+          }
+        })
       }
       this.hotMints.recordTrade(mint, normalized.lastTradeAt)
-      this.autoTrader.onTradeTick(mint)
+      setImmediate(() => {
+        try {
+          this.autoTrader.onTradeTick(mint)
+        } catch {
+          /* non-fatal */
+        }
+      })
     }
 
     if (event.type === 'token.launch') {
