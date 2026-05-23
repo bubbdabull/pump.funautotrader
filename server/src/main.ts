@@ -1,5 +1,8 @@
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
+import { ExpressAdapter } from '@nestjs/platform-express'
+import express from 'express'
+import { createServer } from 'http'
 import type { Response } from 'express'
 import { AppModule } from './app.module'
 import { PersistWorkerModule } from './persist-worker.module'
@@ -19,6 +22,7 @@ function logBootConfig() {
     processRole: getProcessRole(),
     USE_SUPABASE_REST_DB: process.env.USE_SUPABASE_REST_DB,
     REDIS_DISABLED: process.env.REDIS_DISABLED,
+    BULL_DISABLED: process.env.BULL_DISABLED,
     hasRedisUrl: Boolean(process.env.REDIS_URL?.trim()),
     hasSupabaseUrl: Boolean(process.env.SUPABASE_URL?.trim()),
     hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
@@ -30,18 +34,58 @@ function logBootConfig() {
   console.log('[boot]', JSON.stringify(flags))
 }
 
+function listenHttp(server: ReturnType<typeof createServer>, host: string, port: number) {
+  return new Promise<void>((resolve, reject) => {
+    server.listen(port, host, () => resolve())
+    server.once('error', reject)
+  })
+}
+
 async function bootstrapPersistWorker() {
   logBootConfig()
-  const ctx = await NestFactory.createApplicationContext(PersistWorkerModule, {
+  await NestFactory.createApplicationContext(PersistWorkerModule, {
     logger: ['error', 'warn', 'log'],
+    abortOnError: false,
   })
   console.log('[ready] Phronis persist worker — async Supabase drain active')
-  return ctx
 }
 
 async function bootstrapApi() {
   logBootConfig()
-  const app = await NestFactory.create(AppModule, {
+  const host = process.env.HOST || '0.0.0.0'
+  const port = resolveListenPort()
+
+  if (process.env.FLY_APP_NAME && String(process.env.PORT) !== String(port)) {
+    console.warn(
+      `[boot] Fly: ignoring PORT=${process.env.PORT} — proxy expects ${port}. Remove PORT from fly secrets.`,
+    )
+  }
+
+  const expressApp = express()
+  expressApp.get(['/api/health', '/health'], (_req, res: Response) => {
+    res.status(200).json({
+      ok: true,
+      service: 'phronis-api',
+      booting: true,
+      processRole: getProcessRole(),
+      at: new Date().toISOString(),
+    })
+  })
+  expressApp.get('/', (_req, res: Response) => {
+    res.status(200).json({
+      service: 'phronis-api',
+      ok: true,
+      health: '/api/health',
+      booting: true,
+      processRole: getProcessRole(),
+    })
+  })
+
+  const httpServer = createServer(expressApp)
+  await listenHttp(httpServer, host, port)
+  console.log(`[boot] HTTP bound on http://${host}:${port} (Fly health can pass while Nest loads)`)
+
+  const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
     logger: ['error', 'warn', 'log'],
     abortOnError: false,
   })
@@ -49,8 +93,7 @@ async function bootstrapApi() {
   app.enableCors({ origin: true, credentials: true })
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
 
-  const express = app.getHttpAdapter().getInstance()
-  express.get('/', (_req: unknown, res: Response) => {
+  expressApp.get('/', (_req: unknown, res: Response) => {
     res.json({
       service: 'phronis-api',
       ok: true,
@@ -61,15 +104,8 @@ async function bootstrapApi() {
     })
   })
 
-  const host = process.env.HOST || '0.0.0.0'
-  const port = resolveListenPort()
-  if (process.env.FLY_APP_NAME && String(process.env.PORT) !== String(port)) {
-    console.warn(
-      `[boot] Fly: ignoring PORT=${process.env.PORT} — proxy expects ${port}. Remove PORT from fly secrets.`,
-    )
-  }
-  await app.listen(port, host)
-  console.log(`[ready] Phronis API listening on http://${host}:${port} (role=${getProcessRole()})`)
+  await app.init()
+  console.log(`[ready] Phronis API initialized on http://${host}:${port} (role=${getProcessRole()})`)
 }
 
 async function bootstrap() {
