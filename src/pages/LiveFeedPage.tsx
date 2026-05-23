@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { useWsConnection, useWsReconnecting } from '@/hooks/useWsConnection'
 import { API_BASE, backendLabel } from '@/lib/apiConfig'
 import { isVercelSecurityCheckpoint, VERCEL_CHECKPOINT_HINT } from '@/lib/vercelCheckpoint'
+import { shouldShowWatchlistFallback } from '@/lib/streamDisplay'
 
 const TABS: { id: ScannerLane; label: string; icon: typeof Sparkles; desc: string }[] = [
   {
@@ -201,7 +202,14 @@ export function LiveFeedPage() {
         </div>
       )}
 
-      {lane === 'tradeable' && displayMode === 'watchlist_fallback' && (
+      {lane === 'tradeable' &&
+        shouldShowWatchlistFallback({
+          displayMode,
+          wsConnected: wsConnected || wsLive || backend.socketConnected,
+          reconnecting: wsReconnecting || isFetching,
+          registryUpdatedAt: dataUpdatedAt,
+          registrySize: tokens.length,
+        }) && (
         <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>

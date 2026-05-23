@@ -13,6 +13,8 @@ import {
   passesTradeableFilter,
   isGraduatingSoon,
   resolveDisplayFeed,
+  rankLiveStreamFeed,
+  hasRealTimeTradeActivity,
   tradeQualityScore,
   type FeedDisplayMode,
   type ScannerLane,
@@ -25,35 +27,51 @@ export type RegistryLanePayload = {
   tradeableCount: number
 }
 
-function applyLane(tokens: PumpToken[], lane: ScannerLane): RegistryLanePayload {
-  if (lane === 'all' || lane === 'active') {
-    const tradeableCount = tokens.filter(passesTradeableFilter).length
-    const list =
-      lane === 'active' ? tokens.filter(passesActiveScannerFilter) : tokens
+function applyLane(
+  tokens: PumpToken[],
+  lane: ScannerLane,
+  streamConnected: boolean,
+  registryFresh: boolean,
+): RegistryLanePayload {
+  const tradeableCount = tokens.filter(passesTradeableFilter).length
+  const streamOpts = { streamConnected: streamConnected && registryFresh }
+
+  if (lane === 'all') {
+    const list = tokens.filter(
+      (t) => passesAlphaFilter(t) || hasRealTimeTradeActivity(t),
+    )
+    return { tokens: list, mode: 'active', tradeableCount }
+  }
+  if (lane === 'active') {
+    const live = rankLiveStreamFeed(tokens, 80)
+    const list = live.length > 0 ? live : tokens.filter(passesActiveScannerFilter)
     return { tokens: list, mode: 'active', tradeableCount }
   }
   if (lane === 'graduating') {
     const list = tokens
       .filter(isGraduatingSoon)
       .sort((a, b) => b.bondingCurvePercent - a.bondingCurvePercent)
-    return {
-      tokens: list,
-      mode: 'watchlist_fallback',
-      tradeableCount: tokens.filter(passesTradeableFilter).length,
-    }
+    return { tokens: list, mode: 'active', tradeableCount }
   }
   if (lane === 'alpha') {
     const list = [...tokens]
       .filter(passesAlphaFilter)
       .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
       .slice(0, 60)
-    return {
-      tokens: list,
-      mode: 'watchlist_fallback',
-      tradeableCount: tokens.filter(passesTradeableFilter).length,
+    return { tokens: list, mode: list.length > 0 ? 'active' : 'watchlist_fallback', tradeableCount }
+  }
+  const resolved = resolveDisplayFeed(tokens, 80, streamOpts)
+  if (
+    streamConnected &&
+    registryFresh &&
+    resolved.mode === 'watchlist_fallback' &&
+    tokens.some((t) => hasRealTimeTradeActivity(t))
+  ) {
+    const live = rankLiveStreamFeed(tokens, 80)
+    if (live.length > 0) {
+      return { tokens: live, mode: 'low_confidence', tradeableCount }
     }
   }
-  const resolved = resolveDisplayFeed(tokens, 80)
   return {
     tokens: resolved.tokens,
     mode: resolved.mode,
@@ -80,13 +98,16 @@ export function useRegistryLane(lane: ScannerLane = 'all') {
   )
 
   const reconnecting = useRealtimeStore((s) => s.reconnecting)
-
   const quantByMint = useQuantStore(useShallow((s) => s.byMint))
+
+  const registryFresh =
+    updatedAt > 0 && Date.now() - updatedAt < 45_000
+  const streamConnected = wsConnected && !reconnecting
 
   const payload = useMemo(() => {
     const all = Object.values(byMint)
-    return applyLane(all, lane)
-  }, [byMint, version, lane])
+    return applyLane(all, lane, streamConnected, registryFresh)
+  }, [byMint, version, lane, streamConnected, registryFresh])
 
   const tokens = useMemo(
     () => mergeQuantHolders(payload.tokens),

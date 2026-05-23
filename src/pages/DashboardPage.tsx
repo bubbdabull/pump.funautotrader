@@ -19,6 +19,8 @@ import { Link } from 'react-router-dom'
 import type { PumpToken } from '@/types'
 import { tokenVolumeSol } from '@/lib/utils'
 import { ensureArray } from '@/lib/ensureArray'
+import { shouldShowWatchlistFallback, displayModeLabel } from '@/lib/streamDisplay'
+import { useRealtimeStore } from '@/stores/realtimeStore'
 
 function formatVolumeDisplay(sol: number): { value: number; suffix: string } {
   if (sol >= 1000) return { value: Number((sol / 1000).toFixed(1)), suffix: 'K SOL' }
@@ -40,7 +42,16 @@ export function DashboardPage() {
   const graduating = ensureArray<PumpToken>(graduatingData)
   useMomentumRankingsState()
 
-  const usingFallback = displayMode === 'watchlist_fallback'
+  const backend = useBackendStatus()
+  const wsReconnecting = useWsReconnecting()
+  const streamDebug = useRealtimeStore((s) => s.streamDebug)
+  const usingFallback = shouldShowWatchlistFallback({
+    displayMode,
+    wsConnected: wsConnected || backend.socketConnected,
+    reconnecting: wsReconnecting || isFetching,
+    registryUpdatedAt: dataUpdatedAt,
+    registrySize: tokens.length,
+  })
   const holdersVerifiedCount = tokens.filter((t) => t.holdersVerified).length
   const top = [...tokens].sort((a, b) => b.momentumScore - a.momentumScore).slice(0, 3)
   const feedByMint = Object.fromEntries(tokens.map((t) => [t.mint, t]))
@@ -54,8 +65,6 @@ export function DashboardPage() {
   ).length
   const newHour = tokens.filter((t) => new Date(t.launchedAt).getTime() > hourAgo).length
   const liveActive = tokens.filter((t) => t.isActive).length
-  const backend = useBackendStatus()
-  const wsReconnecting = useWsReconnecting()
 
   return (
     <PageTransition>
@@ -65,7 +74,7 @@ export function DashboardPage() {
           Live Pump.fun ·{' '}
           {isLoading
             ? 'loading…'
-            : `${tradeableCount} tradeable · ${tokens.length} shown${usingFallback ? ' (watchlist)' : ''}`}
+            : `${tradeableCount} tradeable · ${tokens.length} shown (${displayModeLabel(displayMode)})`}
           {dataUpdatedAt > 0 && (
             <span className="text-zinc-600">
               {' '}
@@ -97,6 +106,21 @@ export function DashboardPage() {
               : `No tokens pass the full tradeable bar yet — Helius is enriching holder counts in the background (${tokens.length} on watchlist).`}
           </p>
         </div>
+      )}
+
+      {displayMode === 'low_confidence' && !usingFallback && (
+        <div className="mb-4 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-2 text-xs text-violet-200/90">
+          Live stream active — early tokens shown with low confidence scores until holder depth and volume build.
+        </div>
+      )}
+
+      {import.meta.env.DEV && (
+        <p className="mb-2 font-mono text-[10px] text-zinc-600">
+          stream={streamDebug.streamHealth} lag={streamDebug.ingestionLagMs}ms registry=
+          {streamDebug.registryUpdatedAt > 0
+            ? `${Math.round((Date.now() - streamDebug.registryUpdatedAt) / 1000)}s ago`
+            : '—'}
+        </p>
       )}
 
       <motion.div

@@ -1,53 +1,24 @@
 import { Controller, Get, Optional } from '@nestjs/common'
-import { ConfigService } from '@nestjs/config'
-import { SupabaseDbService } from './supabase/supabase-db.service'
-import { RedisService } from './redis/redis.service'
-import { RedisWriteQueueService } from './redis/redis-write-queue.service'
-import { PersistenceQueueService } from './persistence/persistence-queue.service'
-import { SolanaRpcService } from './rpc/solana-rpc.service'
 import { resolveBootRole } from './process-role'
 import { IngestionLeaderService } from './ingestion/ingestion-leader.service'
 
+/**
+ * Fly liveness probe — must stay sub-10ms and never block on PumpPortal/Redis/scoring.
+ * Use GET /api/pumpportal/ingestion-health for pipeline diagnostics.
+ */
 @Controller()
 export class HealthController {
-  constructor(
-    private config: ConfigService,
-    private supabase: SupabaseDbService,
-    @Optional() private ingestionLeader?: IngestionLeaderService,
-    @Optional() private redis?: RedisService,
-    @Optional() private redisQueue?: RedisWriteQueueService,
-    @Optional() private persistQueue?: PersistenceQueueService,
-    @Optional() private solanaRpc?: SolanaRpcService,
-  ) {}
+  constructor(@Optional() private ingestionLeader?: IngestionLeaderService) {}
 
   @Get('health')
   health() {
-    const keyConfigured = Boolean(
-      this.config.get('SUPABASE_URL')?.trim() &&
-        this.config.get('SUPABASE_SERVICE_ROLE_KEY')?.trim(),
-    )
-    const redisReachable = this.redis?.enabled ? this.redis.isConnected : true
     return {
       ok: true,
       service: 'phronis-api',
       at: new Date().toISOString(),
       processRole: resolveBootRole(),
       flyProcessGroup: process.env.FLY_PROCESS_GROUP,
-      supabase: this.supabase.enabled,
-      supabaseKeyConfigured: keyConfigured,
-      pumpportalKey: Boolean(this.config.get('PUMPPORTAL_API_KEY')?.trim()),
-      heliusKey: Boolean(this.config.get('HELIUS_API_KEY')?.trim()),
-      rpcProvider: this.solanaRpc?.provider ?? 'unknown',
-      rpcDedicated: this.solanaRpc?.isDedicated ?? false,
-      redis: this.redis?.enabled ?? false,
-      redisConnected: redisReachable,
-      redisWriteQueue: this.redisQueue?.getStats(),
-      persistQueue: this.persistQueue?.getStats(),
-      holderEnrichIntervalMs: Number(this.config.get('HOLDER_ENRICH_INTERVAL_MS') ?? 90_000),
-      supabaseRest: process.env.USE_SUPABASE_REST_DB === 'true',
-      redisDisabled: process.env.REDIS_DISABLED === 'true',
-      bullDisabled: process.env.BULL_DISABLED !== 'false' && process.env.BULL_ENABLED !== 'true',
-      ingestion: this.ingestionLeader?.getDiagnostics() ?? null,
+      leader: this.ingestionLeader?.isIngestionLeader() ?? null,
     }
   }
 }

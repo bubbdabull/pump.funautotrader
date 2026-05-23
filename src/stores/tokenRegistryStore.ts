@@ -17,8 +17,8 @@ import { normalizePumpToken, normalizePumpTokens } from '@/lib/normalizeToken'
 import { registryDebug } from '@/lib/registryDebug'
 import { useRealtimeStore } from '@/stores/realtimeStore'
 
-const PATCH_BATCH_MS = 100
-const CHART_BATCH_MS = 48
+const PATCH_BATCH_MS = 50
+const CHART_BATCH_MS = 80
 const MAX_TRADES_PER_MINT = 80
 const CHART_TICK_INTERVALS = [1_000, 5_000] as const
 
@@ -161,11 +161,13 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
         lastPatchAt = next.lastPatchAt
       }
     }
+    const now = Date.now()
+    useRealtimeStore.getState().patchStreamDebug({ registryUpdatedAt: now })
     set({
       byMint,
       lastPatchAt,
       version: s.version + 1,
-      updatedAt: Date.now(),
+      updatedAt: now,
       _pendingPatches: {},
       _patchTimer: null,
     })
@@ -208,13 +210,18 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
       if (next) charts[key] = { ...next, chartSeq: (charts[key]?.chartSeq ?? 0) + 1 }
     }
 
+    const now = Date.now()
+    useRealtimeStore.getState().patchStreamDebug({
+      registryUpdatedAt: now,
+      lastTradeTickAt: now,
+    })
     set({
       ...patched,
       charts,
       trades: { ...s.trades, [tick.mint]: trades },
       tradeSigs: { ...s.tradeSigs, [tick.mint]: nextSigs },
       version: s.version + 1,
-      updatedAt: Date.now(),
+      updatedAt: now,
     })
   },
 

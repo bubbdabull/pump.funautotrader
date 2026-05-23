@@ -153,13 +153,19 @@ export class IngestionOrchestratorService implements OnModuleInit {
         break
     }
 
-    for (const h of this.postUpdateHandlers) {
-      try {
-        await h(event.mint, event)
-      } catch (err) {
-        this.ingestionHealth?.recordProcessError(err)
-      }
-    }
+    const handlers = this.postUpdateHandlers
+    if (handlers.length === 0) return
+    setImmediate(() => {
+      void (async () => {
+        for (const h of handlers) {
+          try {
+            await h(event.mint, event)
+          } catch (err) {
+            this.ingestionHealth?.recordProcessError(err)
+          }
+        }
+      })()
+    })
   }
 
   getStats() {

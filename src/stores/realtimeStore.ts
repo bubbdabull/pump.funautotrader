@@ -40,6 +40,14 @@ export type StreamHealthSnapshot = {
   updatedAt: number
 }
 
+export type StreamDebugSnapshot = {
+  streamHealth: 'connected' | 'disconnected' | 'degraded'
+  ingestionLagMs: number
+  registryUpdatedAt: number
+  lastPatchAt: number
+  lastTradeTickAt: number
+}
+
 interface RealtimeState {
   connected: boolean
   reconnecting: boolean
@@ -47,10 +55,12 @@ interface RealtimeState {
   ingestionDegraded: boolean
   diagnostics: RealtimeDiagnostics
   streamHealth: StreamHealthSnapshot
+  streamDebug: StreamDebugSnapshot
   setConnected: (v: boolean) => void
   setReconnecting: (v: boolean) => void
   setIngestionDegraded: (v: boolean) => void
   setStreamHealth: (patch: Partial<StreamHealthSnapshot>) => void
+  patchStreamDebug: (patch: Partial<StreamDebugSnapshot>) => void
   patchDiagnostics: (patch: Partial<RealtimeDiagnostics>) => void
   recordReconnect: () => void
   resetDiagnostics: () => void
@@ -66,12 +76,19 @@ const emptyStreamHealth = (): StreamHealthSnapshot => ({
   updatedAt: 0,
 })
 
-export const useRealtimeStore = create<RealtimeState>((set, get) => ({
+export const useRealtimeStore = create<RealtimeState>((set) => ({
   connected: false,
   reconnecting: false,
   ingestionDegraded: false,
   diagnostics: emptyDiagnostics(),
   streamHealth: emptyStreamHealth(),
+  streamDebug: {
+    streamHealth: 'disconnected',
+    ingestionLagMs: 0,
+    registryUpdatedAt: 0,
+    lastPatchAt: 0,
+    lastTradeTickAt: 0,
+  },
 
   setIngestionDegraded: (v) => set({ ingestionDegraded: v }),
 
@@ -84,10 +101,31 @@ export const useRealtimeStore = create<RealtimeState>((set, get) => ({
       },
     })),
 
-  setConnected: (v) => set({ connected: v, reconnecting: v ? false : get().reconnecting }),
+  setConnected: (v) =>
+    set((s) => ({
+      connected: v,
+      reconnecting: v ? false : s.reconnecting,
+      streamDebug: {
+        ...s.streamDebug,
+        streamHealth: v ? (s.ingestionDegraded ? 'degraded' : 'connected') : 'disconnected',
+      },
+    })),
   setReconnecting: (v) => set({ reconnecting: v }),
+  patchStreamDebug: (patch) =>
+    set((s) => ({ streamDebug: { ...s.streamDebug, ...patch } })),
   patchDiagnostics: (patch) =>
-    set((s) => ({ diagnostics: { ...s.diagnostics, ...patch } })),
+    set((s) => ({
+      diagnostics: { ...s.diagnostics, ...patch },
+      streamDebug: {
+        ...s.streamDebug,
+        lastPatchAt: patch.lastPatchAt ?? s.streamDebug.lastPatchAt,
+        lastTradeTickAt:
+          patch.eventsReceived != null && patch.lastEventAt
+            ? patch.lastEventAt
+            : s.streamDebug.lastTradeTickAt,
+        ingestionLagMs: patch.avgEventLatencyMs ?? s.streamDebug.ingestionLagMs,
+      },
+    })),
   recordReconnect: () =>
     set((s) => ({
       reconnecting: true,

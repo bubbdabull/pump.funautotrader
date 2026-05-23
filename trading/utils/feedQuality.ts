@@ -1,7 +1,9 @@
 import {
   isRecentlyActive,
+  hasRealTimeTradeActivity,
   isDeadFeedToken,
   liveActivityScore,
+  passesTradingActivity,
   rankByLiveActivity,
   rankScannerQuality,
 } from './liveActivity'
@@ -39,6 +41,13 @@ export interface FeedQualityFields {
   momentumScore?: number
   /** Set when on-chain holder snapshot exists */
   holdersVerified?: boolean
+  lastTradeAt?: number
+  isActive?: boolean
+  trades1m?: number
+  volume5mSol?: number
+}
+
+export type FeedQualityWithActivity = FeedQualityFields & {
   lastTradeAt?: number
   isActive?: boolean
   trades1m?: number
@@ -102,7 +111,7 @@ export function passesAlphaFilter(token: FeedQualityFields): boolean {
  * Prefer on-chain holder verification; high mcap + volume + holder depth.
  */
 export function passesTradeableFilter(token: FeedQualityFields): boolean {
-  if (!passesAlphaFilter(token)) return false
+  if (!passesIngestGate(token)) return false
 
   const signal = entrySignal(token)
   const vol = activitySol(token)
@@ -112,16 +121,17 @@ export function passesTradeableFilter(token: FeedQualityFields): boolean {
   const hasPumpPortalTicks =
     token.isActive === true || (token.trades1m ?? 0) > 0 || (token.volume5mSol ?? 0) > 0.01
 
-  /** Live PumpPortal ticks — still require multi-wallet activity. */
+  /** Live PumpPortal ticks — progressive bar (early tokens stay visible, not hard-rejected). */
   if (hasPumpPortalTicks) {
-    if (token.marketCap < 4_000) return false
-    if (signal > 68) return false
-    if (vol < 0.12) return false
-    if (mom < 12) return false
+    if (token.marketCap < 1_500) return false
+    if (signal > 78) return false
     if (!passesMinHolderDepth(token)) return false
-    if ((token.trades1m ?? 0) < 2 && effectiveHolderCount(token) < 4) return false
+    if (vol < 0.04 && (token.trades1m ?? 0) < 1) return false
+    if (mom < 5 && vol < 0.15 && effectiveHolderCount(token) < 4) return false
     return true
   }
+
+  if (!passesAlphaFilter(token)) return false
 
   if (token.marketCap < TRADEABLE_MIN_MARKET_CAP_USD) return false
   if (signal > TRADEABLE_MAX_SIGNAL) return false
@@ -149,22 +159,114 @@ export function passesTradeableFilter(token: FeedQualityFields): boolean {
   return true
 }
 
-export type FeedDisplayMode = 'active' | 'tradeable' | 'watchlist_fallback'
+export type FeedStreamState = 'live' | 'low_confidence' | 'invalid'
 
-/** Best tokens to show — live ticks first, then tradeable, else watchlist. */
-export function resolveDisplayFeed<T extends FeedQualityFields>(
+export type FeedDisplayMode = 'active' | 'tradeable' | 'low_confidence' | 'watchlist_fallback'
+
+export type ResolveDisplayFeedOptions = {
+  /** When true, never return watchlist_fallback if any live stream rows exist. */
+  streamConnected?: boolean
+}
+
+/** 0–100 progressive confidence (not a hard pass/fail gate). */
+export function feedConfidenceScore(token: FeedQualityFields, now = Date.now()): number {
+  const state = classifyFeedStreamState(token, now)
+  if (state === 'invalid') return 0
+  let score = state === 'live' ? 72 : 38
+  if (passesTradeableFilter(token)) score = Math.max(score, 85)
+  if (token.isActive) score += 8
+  if ((token.trades1m ?? 0) >= 2) score += 6
+  score += Math.min(12, tradeQualityScore(token) * 0.12)
+  if (token.holdersVerified) score += 5
+  return Math.min(100, Math.round(score))
+}
+
+export function classifyFeedStreamState(
+  token: FeedQualityWithActivity,
+  now = Date.now(),
+): FeedStreamState {
+  if (!passesIngestGate(token) || isDeadFeedToken(token, now)) return 'invalid'
+  if (passesTradeableFilter(token)) return 'live'
+  if (hasRealTimeTradeActivity(token, now) || token.isActive) return 'low_confidence'
+  if (passesAlphaFilter(token) && passesTradingActivity(token)) return 'low_confidence'
+  return 'invalid'
+}
+
+export function tradeableRejectionReasons(token: FeedQualityFields): string[] {
+  const reasons: string[] = []
+  if (!passesIngestGate(token)) reasons.push('ingest_gate')
+  if (passesTradeableFilter(token)) return reasons
+  const signal = entrySignal(token)
+  const vol = activitySol(token)
+  if (token.marketCap < TRADEABLE_MIN_MARKET_CAP_USD) reasons.push('low_mcap')
+  if (signal > TRADEABLE_MAX_SIGNAL) reasons.push('high_risk_signal')
+  if (vol < TRADEABLE_MIN_VOL_SOL) reasons.push('low_volume')
+  if ((token.momentumScore ?? 0) < TRADEABLE_MIN_MOMENTUM) reasons.push('low_momentum')
+  if (!passesMinHolderDepth(token)) reasons.push('thin_holders')
+  if (!token.holdersVerified && (token.holders ?? 0) < TRADEABLE_MIN_HOLDERS_UNVERIFIED) {
+    reasons.push('holders_unverified')
+  }
+  if (reasons.length === 0) reasons.push('strict_bar')
+  return reasons
+}
+
+/** Live stream rows — WS ticks without full alpha/tradeable bar. */
+export function rankLiveStreamFeed<T extends FeedQualityWithActivity>(
   tokens: T[],
   limit = 80,
+): T[] {
+  const now = Date.now()
+  return [...tokens]
+    .filter((t) => passesIngestGate(t) && !isDeadFeedToken(t, now))
+    .filter((t) => hasRealTimeTradeActivity(t, now) || passesTradingActivity(t))
+    .sort((a, b) => liveActivityScore(b, now) - liveActivityScore(a, now))
+    .slice(0, limit)
+}
+
+/** Best tokens to show — live ticks first, then tradeable, else watchlist. */
+export function resolveDisplayFeed<T extends FeedQualityFields & FeedQualityWithActivity>(
+  tokens: T[],
+  limit = 80,
+  options?: ResolveDisplayFeedOptions,
 ): { tokens: T[]; mode: FeedDisplayMode; tradeableCount: number } {
   const tradeableCount = tokens.filter(passesTradeableFilter).length
-  const active = rankByLiveActivity(tokens, limit)
-  if (active.length >= 3) {
-    return { tokens: active, mode: 'active', tradeableCount }
+  const now = Date.now()
+
+  const strictActive = rankByLiveActivity(tokens, limit)
+  if (strictActive.length >= 1) {
+    return { tokens: strictActive, mode: 'active', tradeableCount }
   }
+
+  const liveStream = rankLiveStreamFeed(tokens, limit)
+  if (liveStream.length >= 1) {
+    const mode: FeedDisplayMode =
+      tradeableCount > 0 ? 'active' : 'low_confidence'
+    return { tokens: liveStream, mode, tradeableCount }
+  }
+
   const tradeable = rankTradeable(tokens, limit)
   if (tradeable.length > 0) {
     return { tokens: tradeable, mode: 'tradeable', tradeableCount }
   }
+
+  const lowConfidence = [...tokens]
+    .filter((t) => classifyFeedStreamState(t, now) === 'low_confidence')
+    .sort((a, b) => feedConfidenceScore(b, now) - feedConfidenceScore(a, now))
+    .slice(0, limit)
+  if (lowConfidence.length > 0) {
+    return { tokens: lowConfidence, mode: 'low_confidence', tradeableCount }
+  }
+
+  if (options?.streamConnected) {
+    const anyLive = [...tokens]
+      .filter((t) => passesIngestGate(t) && !isDeadFeedToken(t, now))
+      .sort((a, b) => liveActivityScore(b, now) - liveActivityScore(a, now))
+      .slice(0, limit)
+    if (anyLive.length > 0) {
+      return { tokens: anyLive, mode: 'low_confidence', tradeableCount }
+    }
+  }
+
   const fallback = [...tokens]
     .filter(passesAlphaFilter)
     .sort((a, b) => tradeQualityScore(b) - tradeQualityScore(a))
@@ -226,13 +328,6 @@ export function rankAllLiveFeed<T extends FeedQualityFields & FeedQualityWithAct
     .filter((t) => passesMinHolderDepth(t) || activitySol(t) >= 0.22)
     .sort((a, b) => liveActivityScore(b, now) - liveActivityScore(a, now))
     .slice(0, limit)
-}
-
-type FeedQualityWithActivity = FeedQualityFields & {
-  lastTradeAt?: number
-  isActive?: boolean
-  trades1m?: number
-  volume5mSol?: number
 }
 
 export function filterForLane<T extends FeedQualityFields>(
