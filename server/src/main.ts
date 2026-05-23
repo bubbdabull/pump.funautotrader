@@ -41,7 +41,10 @@ async function bootstrapPersistWorker() {
 
 async function bootstrapApi() {
   logBootConfig()
-  const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] })
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log'],
+    abortOnError: false,
+  })
   app.setGlobalPrefix('api')
   app.enableCors({ origin: true, credentials: true })
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))

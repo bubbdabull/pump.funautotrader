@@ -33,7 +33,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       )
       return
     }
-    await this.connect()
+    void this.connect()
   }
 
   async onModuleDestroy() {
@@ -53,10 +53,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
           maxRetriesPerRequest: 2,
           lazyConnect: true,
           enableReadyCheck: true,
+          connectTimeout: 8_000,
+          commandTimeout: 5_000,
           tls: url.startsWith('rediss://') ? {} : undefined,
         }
         this.client = new IORedis(url, opts)
-        await this.client.connect()
+        await Promise.race([
+          this.client.connect(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Redis connect timeout (8s)')), 8_000),
+          ),
+        ])
         this.connected = true
         this.logger.log('Redis connected (Upstash/ioredis)')
         return

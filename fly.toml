@@ -20,6 +20,8 @@ primary_region = 'dfw'
   PUMPPORTAL_WS_URL = 'wss://pumpportal.fun/api/data'
   PUMPPORTAL_TRADE_URL = 'https://pumpportal.fun/api/trade-local'
   PUMPPORTAL_TRADE_SUB_ROTATE_MS = '20000'
+  # BullMQ blocks HTTP bind if Redis is slow — realtime uses PumpPortal WS + PersistenceQueue
+  BULL_DISABLED = 'true'
   # Set REDIS_URL (Upstash) via fly secrets — enables snapshots + optional persist worker fan-out
   # REDIS_DISABLED = 'false' when REDIS_URL is set
 
@@ -36,11 +38,11 @@ primary_region = 'dfw'
   processes = ['app']
 
   [[http_service.checks]]
-    grace_period = '90s'
-    interval = '15s'
+    grace_period = '60s'
+    interval = '20s'
     method = 'GET'
     path = '/api/health'
-    timeout = '10s'
+    timeout = '15s'
 
 [[vm]]
   memory = '1gb'

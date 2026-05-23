@@ -39,10 +39,21 @@ function redisEnabled(): boolean {
   return Boolean(url)
 }
 
-const bullImports: (Type | DynamicModule)[] = redisEnabled()
+/** Bull blocks Nest bootstrap on Redis connect — off by default on Fly API. */
+function bullEnabled(): boolean {
+  if (process.env.BULL_DISABLED === 'true') return false
+  if (!isApiProcess()) return false
+  return redisEnabled() && process.env.BULL_ENABLED === 'true'
+}
+
+const bullImports: (Type | DynamicModule)[] = bullEnabled()
   ? [
       BullModule.forRoot({
-        connection: { url: process.env.REDIS_URL! },
+        connection: {
+          url: process.env.REDIS_URL!,
+          connectTimeout: 8_000,
+          maxRetriesPerRequest: 2,
+        },
       }),
       BullModule.registerQueue({ name: 'feed' }, { name: 'trades' }),
     ]
@@ -85,6 +96,6 @@ const apiImports: (Type | DynamicModule)[] = isApiProcess()
     ...apiImports,
   ],
   controllers: isApiProcess() ? [HealthController, DataHealthController] : [],
-  providers: redisEnabled() && isApiProcess() ? [FeedProcessor] : [],
+  providers: bullEnabled() ? [FeedProcessor] : [],
 })
 export class AppModule {}

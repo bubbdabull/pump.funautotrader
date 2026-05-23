@@ -19,7 +19,7 @@ export class HealthController {
   ) {}
 
   @Get('health')
-  async health() {
+  health() {
     const keyConfigured = Boolean(
       this.config.get('SUPABASE_URL')?.trim() &&
         this.config.get('SUPABASE_SERVICE_ROLE_KEY')?.trim(),
@@ -37,12 +37,12 @@ export class HealthController {
       rpcDedicated: this.solanaRpc?.isDedicated ?? false,
       redis: this.redis?.enabled ?? false,
       redisConnected: this.redis?.isConnected ?? false,
-      redisPing: this.redis?.enabled ? await this.redis.ping() : false,
       redisWriteQueue: this.redisQueue?.getStats(),
       persistQueue: this.persistQueue?.getStats(),
       holderEnrichIntervalMs: Number(this.config.get('HOLDER_ENRICH_INTERVAL_MS') ?? 90_000),
       supabaseRest: process.env.USE_SUPABASE_REST_DB === 'true',
       redisDisabled: process.env.REDIS_DISABLED === 'true',
+      bullDisabled: process.env.BULL_DISABLED !== 'false' && process.env.BULL_ENABLED !== 'true',
     }
   }
 }
