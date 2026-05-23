@@ -541,6 +541,9 @@ export class TokensService {
           website: coin.website,
         })
       }
+      if (i > 0 && i % 64 === 0) {
+        await new Promise<void>((r) => setImmediate(r))
+      }
     }
     this.discovery.ingest(mappedAll)
     void this.kickMetaEnrichBatch(mappedAll)

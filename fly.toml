@@ -21,6 +21,7 @@ primary_region = 'dfw'
   PUMPPORTAL_TRADE_URL = 'https://pumpportal.fun/api/trade-local'
   PUMPPORTAL_TRADE_SUB_ROTATE_MS = '20000'
   PUMPPORTAL_CONNECT_DEFER_MS = '12000'
+  PUMP_FEED_SYNC_DEFER_MS = '90000'
   BULL_DISABLED = 'true'
 
 [processes]

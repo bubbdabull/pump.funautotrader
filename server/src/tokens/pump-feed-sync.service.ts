@@ -21,10 +21,15 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
+    const deferMs = Number(
+      process.env.PUMP_FEED_SYNC_DEFER_MS ??
+        (process.env.FLY_APP_NAME ? 90_000 : 15_000),
+    )
     this.timer = setInterval(() => void this.runSync(), PUMP_REST_DISCOVERY_INTERVAL_MS)
-    setTimeout(() => void this.runSync(), 15_000)
+    setTimeout(() => void this.runSync(), deferMs)
     this.logger.log(
-      `pump.fun REST discovery every ${Math.round(PUMP_REST_DISCOVERY_INTERVAL_MS / 1000)}s (WS is live tape)`,
+      `pump.fun REST discovery every ${Math.round(PUMP_REST_DISCOVERY_INTERVAL_MS / 1000)}s` +
+        ` (first run in ${Math.round(deferMs / 1000)}s; WS is live tape)`,
     )
   }
 
@@ -45,8 +50,10 @@ export class PumpFeedSyncService implements OnModuleInit, OnModuleDestroy {
       const count = await this.tokens.syncFromPump()
       this.lastSyncCount = count
       this.lastSyncAt = new Date().toISOString()
-      const priority = this.tokens.getAutotradePriorityMints()
+      if (!this.pumpportal.getHealth().connected) return
+      const priority = this.tokens.getAutotradePriorityMints().slice(0, 12)
       for (const mint of priority) {
+        if (this.pumpportal.isTradeSubscribed(mint)) continue
         this.pumpportal.ensureTradeSubscription(mint)
       }
       if (count > 0) {

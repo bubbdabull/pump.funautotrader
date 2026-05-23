@@ -66,6 +66,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   private lastMessageAtMs = 0
   private heartbeatTimer?: NodeJS.Timeout
   private lastRotationAt?: string
+  private lastSubLogAt = 0
   private connected = false
   private readonly apiKey: string | undefined
 
@@ -280,7 +281,13 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       this.connected = true
       this.connectedAtMs = Date.now()
       this.lastPongAtMs = Date.now()
+      this.reconnectAttempts = 0
+      if (this.reconnectWatchdog) {
+        clearTimeout(this.reconnectWatchdog)
+        this.reconnectWatchdog = undefined
+      }
       this.subscribedMints.clear()
+      this.trimDesiredTradeSubs()
       for (const mint of this.desiredTradeSubs) {
         if (!this.pendingTradeQueue.includes(mint)) {
           this.pendingTradeQueue.push(mint)
@@ -451,10 +458,33 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Prevent unbounded desired set from reconnect churn. */
+  private trimDesiredTradeSubs() {
+    const maxDesired = Math.max(this.maxTradeSubscriptions + 80, 320)
+    if (this.desiredTradeSubs.size <= maxDesired) return
+    const keep = new Set([
+      ...this.autoTrader.getPriorityMints(),
+      ...this.feedTradePin.getMandatoryMints(),
+      ...this.hotMints.getHotMints(100, 300_000),
+      ...this.subscribedMints,
+    ])
+    for (const mint of this.desiredTradeSubs) {
+      if (this.desiredTradeSubs.size <= maxDesired) break
+      if (!keep.has(mint)) this.desiredTradeSubs.delete(mint)
+    }
+  }
+
   private queueTradeSubscription(mint: string, front = false) {
     if (!this.apiKey) return
     this.desiredTradeSubs.add(mint)
     if (this.subscribedMints.has(mint)) return
+    if (
+      this.subscribedMints.size >= this.maxTradeSubscriptions &&
+      !this.subscribedMints.has(mint) &&
+      this.pendingTradeQueue.length > 200
+    ) {
+      return
+    }
 
     const idx = this.pendingTradeQueue.indexOf(mint)
     if (idx >= 0) this.pendingTradeQueue.splice(idx, 1)
@@ -490,7 +520,14 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     this.ws.send(JSON.stringify({ method: 'subscribeTokenTrade', keys: batch }))
     const total = this.subscribedMints.size
     const msg = `Trade subscriptions: +${batch.length} (${total}/${this.maxTradeSubscriptions})`
-    if (total === this.maxTradeSubscriptions || total <= 5 || total % 50 === 0) {
+    const atCap = total >= this.maxTradeSubscriptions
+    const now = Date.now()
+    const shouldLog =
+      (!atCap && (total <= 5 || total % 50 === 0)) ||
+      (atCap && batch.length >= 20) ||
+      (atCap && now - this.lastSubLogAt > 60_000)
+    if (shouldLog) {
+      this.lastSubLogAt = now
       this.logger.log(msg)
     } else {
       this.logger.debug(msg)
