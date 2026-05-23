@@ -55,13 +55,16 @@ export class IngestionOrchestratorService implements OnModuleInit {
           traderPublicKey: p.traderPublicKey as string | undefined,
         })
         break
-      case 'token.trade':
+      case 'token.trade': {
+        const ts = Number(p.timestamp ?? p.timestampMs ?? 0)
         this.trading.ingestTrade({
           mint: event.mint,
           signature: p.signature as string | undefined,
           txType: (p.txType as 'buy' | 'sell') ?? undefined,
           solAmount: Number(p.solAmount ?? p.sol_amount ?? 0),
-          tokenAmount: Number(p.tokenAmount ?? p.token_amount ?? p.newTokenBalance ?? 0),
+          tokenAmount: Number(p.tokenAmount ?? p.token_amount ?? 0),
+          newTokenBalance:
+            p.newTokenBalance != null ? Number(p.newTokenBalance) : undefined,
           traderPublicKey: (p.traderPublicKey ??
             p.trader ??
             p.user ??
@@ -72,8 +75,10 @@ export class IngestionOrchestratorService implements OnModuleInit {
             ) || undefined,
           marketCapSol: Number(p.marketCapSol ?? p.market_cap_sol ?? 0) || undefined,
           slot: p.slot as number | undefined,
+          timestamp: ts > 0 ? (ts < 1e12 ? ts * 1000 : ts) : undefined,
         })
         break
+      }
       case 'token.migration':
         this.trading.ingestTrade({
           mint: event.mint,

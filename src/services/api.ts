@@ -18,6 +18,7 @@ export interface FeedTrade {
   solAmount: number
   tokenAmount: number
   timestamp: string
+  timestampMs: number
 }
 
 export interface FeedStats {

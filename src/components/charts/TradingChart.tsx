@@ -72,7 +72,7 @@ function formatMetricValue(metric: ChartMetric, value: number): string {
 }
 
 export function TradingChart({ mint }: TradingChartProps) {
-  const [intervalMs, setIntervalMs] = useState(5_000)
+  const [intervalMs, setIntervalMs] = useState(1_000)
   const [metric, setMetric] = useState<ChartMetric>('mcap')
   const { data, isLoading } = useTokenChart(mint, intervalMs)
   const tick = useLiveTick()

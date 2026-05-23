@@ -9,7 +9,7 @@ import {
 import { EventsGateway } from '../events/events.gateway'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
 import { QuantPersistService } from './quant-persist.service'
-import { resolveHolderCount } from '@phronis/trading'
+import { resolveHolderCount, HOLDER_ON_TRADE_REFRESH_MS } from '@phronis/trading'
 import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 
 @Injectable()
@@ -17,6 +17,7 @@ export class QuantEngineService implements OnModuleInit {
   private readonly logger = new Logger(QuantEngineService.name)
   private readonly rankings = new Map<string, number>()
   private readonly holderCounts = new Map<string, number>()
+  private readonly holderRefreshAt = new Map<string, number>()
 
   constructor(
     @Inject(forwardRef(() => EventsGateway))
@@ -50,7 +51,11 @@ export class QuantEngineService implements OnModuleInit {
       trades: state.trades,
       onChainHolders: state.onChainHolders,
     })
-    void this.holderEnrichment.enrichMint(mint)
+    const lastRefresh = this.holderRefreshAt.get(mint) ?? 0
+    if (Date.now() - lastRefresh >= HOLDER_ON_TRADE_REFRESH_MS) {
+      this.holderRefreshAt.set(mint, Date.now())
+      void this.holderEnrichment.enrichMint(mint)
+    }
     this.rankings.set(mint, scores.tradeConfidenceScore)
     this.holderCounts.set(mint, holders)
 

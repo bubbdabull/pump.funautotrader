@@ -134,13 +134,18 @@ export class MarketStateManager {
     const tokens = Number(event.tokenAmount ?? 0)
     const wallet = event.traderPublicKey ?? 'unknown'
 
+    if (event.signature) {
+      const dup = state.trades.some((t) => t.signature === event.signature)
+      if (dup) return state
+    }
+
     if (sol > 0 || tokens > 0) {
       const mcapUsd =
         event.marketCapSol != null
           ? marketCapUsdFromSol(Number(event.marketCapSol))
           : state.marketCapUsd
       state.trades.push({
-        signature: event.signature ?? `${now}-${state.trades.length}`,
+        signature: event.signature ?? `${now}-${wallet}-${state.trades.length}`,
         wallet,
         side,
         solAmount: sol,
@@ -151,11 +156,19 @@ export class MarketStateManager {
       })
       if (state.trades.length > 500) state.trades.shift()
 
-      const bal = state.walletBalances.get(wallet) ?? 0
-      const delta = side === 'buy' ? tokens : -tokens
-      state.walletBalances.set(wallet, Math.max(0, bal + delta))
+      if (
+        event.newTokenBalance != null &&
+        Number.isFinite(event.newTokenBalance) &&
+        wallet !== 'unknown'
+      ) {
+        state.walletBalances.set(wallet, Math.max(0, event.newTokenBalance))
+      } else if (tokens > 0 && wallet !== 'unknown') {
+        const bal = state.walletBalances.get(wallet) ?? 0
+        const delta = side === 'buy' ? tokens : -tokens
+        state.walletBalances.set(wallet, Math.max(0, bal + delta))
+      }
 
-      if (side === 'buy' && sol > 0) {
+      if (side === 'buy' && sol > 0 && wallet !== 'unknown') {
         state.walletBuySol.set(wallet, (state.walletBuySol.get(wallet) ?? 0) + sol)
       }
     }

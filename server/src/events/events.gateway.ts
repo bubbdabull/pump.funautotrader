@@ -9,6 +9,23 @@ import { Inject, Logger, forwardRef } from '@nestjs/common'
 import { TokensService } from '../tokens/tokens.service'
 import { AutoTraderService } from '../autotrader/autotrader.service'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
+import { CHART_STREAM_EMIT_MS } from '@phronis/trading'
+
+export interface TradeTickPayload {
+  mint: string
+  signature: string
+  wallet: string
+  side: 'buy' | 'sell'
+  solAmount: number
+  tokenAmount: number
+  /** Ms since epoch (PumpPortal block time × 1000). */
+  timestampMs: number
+  slot?: number
+  marketCapUsd?: number
+  bondingCurvePercent?: number
+  holders?: number
+  holdersVerified?: boolean
+}
 
 @WebSocketGateway({ cors: { origin: '*' }, path: '/socket.io' })
 export class EventsGateway implements OnGatewayConnection {
@@ -17,6 +34,7 @@ export class EventsGateway implements OnGatewayConnection {
 
   private readonly logger = new Logger(EventsGateway.name)
   private feedInterval?: NodeJS.Timeout
+  private readonly chartLastEmit = new Map<string, number>()
 
   constructor(
     @Inject(forwardRef(() => TokensService))
@@ -62,7 +80,16 @@ export class EventsGateway implements OnGatewayConnection {
     this.server.to(`token:${mint}`).emit('token:update', token)
   }
 
-  emitChartUpdate(mint: string, intervalMs = 5_000) {
+  emitTradeTick(payload: TradeTickPayload) {
+    this.server.to(`token:${payload.mint}`).emit('trade:tick', payload)
+    this.server.to('feed').emit('trade:tick', payload)
+  }
+
+  emitChartUpdate(mint: string, intervalMs = 1_000) {
+    const now = Date.now()
+    const last = this.chartLastEmit.get(mint) ?? 0
+    if (now - last < CHART_STREAM_EMIT_MS) return
+    this.chartLastEmit.set(mint, now)
     const series = this.tokens.getChartSeries(mint, intervalMs)
     this.server.to(`token:${mint}`).emit('chart:update', series)
   }

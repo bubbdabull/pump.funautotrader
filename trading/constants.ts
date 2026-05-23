@@ -60,3 +60,8 @@ export const AUTOTRADE_PRIME_LIMIT = 200
 export const META_ENRICH_BATCH_SIZE = 100
 export const META_ENRICH_WAVES = 3
 export const MAP_COIN_BATCH_SIZE = 50
+
+/** Min gap between chart WS pushes per mint (trade ticks are not throttled). */
+export const CHART_STREAM_EMIT_MS = 500
+/** Min gap between Helius holder refreshes triggered by live trades. */
+export const HOLDER_ON_TRADE_REFRESH_MS = 120_000

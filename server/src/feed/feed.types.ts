@@ -40,7 +40,9 @@ export interface FeedTrade {
   side: 'buy' | 'sell'
   solAmount: number
   tokenAmount: number
+  /** ISO-8601 with millisecond precision */
   timestamp: string
+  timestampMs: number
 }
 
 export interface FeedStats {

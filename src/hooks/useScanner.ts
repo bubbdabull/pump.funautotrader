@@ -17,6 +17,7 @@ import {
 import type { ScannerLane } from '@/lib/feedQuality'
 import { mergeQuantHolders } from '@/hooks/useQuantScanner'
 import type { TokenChartSeries } from '@/lib/chartTypes'
+import type { TradeTickPayload } from '@/lib/tradeTypes'
 import { isUsableTokenImageUrl } from '@trading'
 
 function preferImage(next?: string, prev?: string): string {
@@ -26,7 +27,10 @@ function preferImage(next?: string, prev?: string): string {
 }
 
 function mergeScannerToken(prev: PumpToken, token: PumpToken): PumpToken {
-  const holders = Math.max(prev.holders ?? 0, token.holders ?? 0)
+  const streamLive = Boolean(token.lastTradeAt && token.lastTradeAt >= Date.now() - 120_000)
+  const holders = streamLive
+    ? Math.max(1, token.holders ?? prev.holders ?? 0)
+    : Math.max(prev.holders ?? 0, token.holders ?? 0)
   const verified =
     (prev.holdersVerified && holders >= 2) || (token.holdersVerified && holders >= 2)
   return {
@@ -42,6 +46,21 @@ function mergeScannerToken(prev: PumpToken, token: PumpToken): PumpToken {
     isActive: token.isActive ?? prev.isActive,
     buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
     mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
+  }
+}
+
+function applyTickToScannerToken(prev: PumpToken, tick: TradeTickPayload): PumpToken {
+  return {
+    ...prev,
+    holders: tick.holders != null && tick.holders > 0 ? tick.holders : prev.holders,
+    holdersVerified:
+      tick.holdersVerified != null
+        ? tick.holdersVerified && (tick.holders ?? prev.holders) >= 2
+        : prev.holdersVerified,
+    lastTradeAt: tick.timestampMs,
+    marketCap: tick.marketCapUsd ?? prev.marketCap,
+    bondingCurvePercent: tick.bondingCurvePercent ?? prev.bondingCurvePercent,
+    isActive: true,
   }
 }
 
@@ -243,6 +262,17 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
         return { ...prev, tokens: next }
       })
     }
+    const unsubTick = wsService.onTradeTick((tick) => {
+      if (!tick.mint) return
+      queryClient.setQueryData<ScannerPayload>(key, (prev) => {
+        const list = ensureArray<PumpToken>(prev?.tokens ?? [])
+        const idx = list.findIndex((t) => t.mint === tick.mint)
+        if (idx < 0 || !prev) return prev
+        const next = [...list]
+        next[idx] = applyTickToScannerToken(next[idx], tick)
+        return { ...prev, tokens: next }
+      })
+    })
     const unsub = wsService.onQuantHolders(applyHolderPatch)
     const unsubLegacy = wsService.onQuantUpdate((u) => {
       if (u.scores) return
@@ -251,6 +281,7 @@ export function useScannerFeed(lane: ScannerLane = 'all') {
     return () => {
       unsub()
       unsubLegacy()
+      unsubTick()
     }
   }, [queryClient, lane])
 
@@ -274,8 +305,8 @@ export function useTokenChart(mint: string, intervalMs = 5_000) {
     queryKey: key,
     queryFn: () => tokenApi.chart(mint, intervalMs),
     enabled: !!mint,
-    refetchInterval: 3_000,
-    staleTime: 1_000,
+    refetchInterval: 8_000,
+    staleTime: 500,
   })
 
   useEffect(() => {
@@ -283,6 +314,10 @@ export function useTokenChart(mint: string, intervalMs = 5_000) {
     wsService.connect()
     wsService.subscribeToken(mint)
     void tokenApi.watchTrades(mint).catch(() => undefined)
+    const unsubTick = wsService.onTradeTick((tick) => {
+      if (tick.mint !== mint) return
+      queryClient.invalidateQueries({ queryKey: ['tokens', mint, 'chart'] })
+    })
     const unsub = wsService.onChartUpdate((series) => {
       if (series.mint !== mint) return
       queryClient.setQueryData(key, (prev) => ({
@@ -293,6 +328,7 @@ export function useTokenChart(mint: string, intervalMs = 5_000) {
     })
     return () => {
       unsub()
+      unsubTick()
     }
   }, [mint, intervalMs, queryClient])
 

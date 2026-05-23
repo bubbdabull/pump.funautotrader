@@ -67,6 +67,13 @@ export {
 } from './utils/candles'
 export { computeFeedActivity, type FeedActivityFields } from './utils/feedActivity'
 export {
+  normalizePumpPortalTrade,
+  parsePumpPortalTradeTimestampMs,
+  parsePumpPortalTradeSide,
+  type NormalizedPumpTrade,
+  type PumpPortalTradeSide,
+} from './utils/pumpPortalTrade'
+export {
   holderEntropyFromAmounts,
   distributionFromAmounts,
 } from './utils/holderDistribution'

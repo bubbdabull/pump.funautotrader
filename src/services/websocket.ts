@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client'
 import type { PumpToken, AutoTradeSignal } from '@/types'
 import type { TokenChartSeries } from '@/lib/chartTypes'
+import type { TradeTickPayload } from '@/lib/tradeTypes'
 import type { QuantHolderPatch, QuantUpdate, StrategySignal } from '@/lib/quantTypes'
 
 import { WS_URL } from '@/lib/apiConfig'
@@ -12,6 +13,7 @@ type QuantUpdateHandler = (payload: QuantUpdate) => void
 type QuantHoldersHandler = (payload: QuantHolderPatch) => void
 type QuantStrategyHandler = (payload: { mint: string; signal: StrategySignal }) => void
 type ChartUpdateHandler = (series: TokenChartSeries) => void
+type TradeTickHandler = (tick: TradeTickPayload) => void
 
 class WebSocketService {
   private socket: Socket | null = null
@@ -27,6 +29,7 @@ class WebSocketService {
   private quantStrategyHandlers = new Set<QuantStrategyHandler>()
   private rugWarningHandlers = new Set<(payload: { mint: string; rug: QuantUpdate['rug'] }) => void>()
   private chartHandlers = new Set<ChartUpdateHandler>()
+  private tradeTickHandlers = new Set<TradeTickHandler>()
 
   connect() {
     if (this.socket?.connected) return this.socket
@@ -50,6 +53,10 @@ class WebSocketService {
 
     this.socket.on('chart:update', (series: TokenChartSeries) => {
       this.chartHandlers.forEach((h) => h(series))
+    })
+
+    this.socket.on('trade:tick', (tick: TradeTickPayload) => {
+      this.tradeTickHandlers.forEach((h) => h(tick))
     })
 
     this.socket.on('feed:update', (tokens: PumpToken[]) => {
@@ -170,6 +177,11 @@ class WebSocketService {
   onChartUpdate(handler: ChartUpdateHandler) {
     this.chartHandlers.add(handler)
     return () => this.chartHandlers.delete(handler)
+  }
+
+  onTradeTick(handler: TradeTickHandler) {
+    this.tradeTickHandlers.add(handler)
+    return () => this.tradeTickHandlers.delete(handler)
   }
 }
 

@@ -110,6 +110,8 @@ export interface TradeStreamEvent {
   slot?: number
   vSolInBondingCurve?: number
   marketCapSol?: number
+  /** Post-trade wallet balance from PumpPortal when available */
+  newTokenBalance?: number
   /** Ms since epoch — used when replaying from DB */
   timestamp?: number
 }

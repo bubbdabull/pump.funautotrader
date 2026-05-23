@@ -17,6 +17,8 @@ import {
   pickTokenName,
   pickTokenSymbol,
   isValidTicker,
+  normalizePumpPortalTrade,
+  FEED_TRADE_PIN_MAX,
 } from '@phronis/trading'
 import { PumpService } from '../pump/pump.service'
 import type { PumpPortalNewTokenEvent } from './pumpportal.types'
@@ -67,8 +69,9 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     private hotMints: HotMintsService,
   ) {
     this.apiKey = this.config.get<string>('PUMPPORTAL_API_KEY')?.trim() || undefined
-    const max = Number(this.config.get('PUMPPORTAL_MAX_TRADE_SUBS') ?? 250)
-    this.maxTradeSubscriptions = Number.isFinite(max) && max >= 10 ? Math.min(max, 2000) : 250
+    const max = Number(this.config.get('PUMPPORTAL_MAX_TRADE_SUBS') ?? FEED_TRADE_PIN_MAX)
+    this.maxTradeSubscriptions =
+      Number.isFinite(max) && max >= 10 ? Math.min(max, 2000) : FEED_TRADE_PIN_MAX
     const batch = Number(this.config.get('PUMPPORTAL_TRADE_SUB_BATCH') ?? 80)
     this.tradeSubBatchSize = Number.isFinite(batch) && batch >= 1 ? Math.min(batch, 500) : 80
     this.maxPendingTradeQueue = Math.max(this.maxTradeSubscriptions * 2, 400)
@@ -333,23 +336,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   private parseTradeSide(data: Record<string, unknown>): 'buy' | 'sell' | null {
-    const raw = String(
-      data.txType ?? data.type ?? data.side ?? data.tradeType ?? data.event ?? '',
-    ).toLowerCase()
-    if (raw === 'buy' || raw === 'sell' || raw === 'purchase' || raw === 'sale') {
-      return raw === 'sell' || raw === 'sale' ? 'sell' : 'buy'
-    }
-    if (data.isBuy === true) return 'buy'
-    if (data.isBuy === false) return 'sell'
-    const sol = this.extractSolAmount(data)
-    const trader = data.traderPublicKey ?? data.trader ?? data.user ?? data.owner
-    const hasTradeFields =
-      Boolean(data.signature) ||
-      Boolean(data.tokenAmount ?? data.token_amount ?? data.newTokenBalance)
-    if (sol > 0 && trader && hasTradeFields) {
-      return 'buy'
-    }
-    return null
+    const normalized = normalizePumpPortalTrade(data)
+    return normalized?.side ?? null
   }
 
   private isLaunchMessage(data: Record<string, unknown>, txType: string): boolean {
@@ -389,9 +377,10 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
     if (tradeSide) {
       this.tradeMessageCount++
-      const sol = this.extractSolAmount(data) || 0.005
-      this.hotMints.recordTrade(mint)
-      void this.ingestTrade(mint, data, tradeSide, sol).then(() =>
+      const normalized = normalizePumpPortalTrade(data)
+      const sol = normalized?.solAmount ?? (this.extractSolAmount(data) || 0.005)
+      this.hotMints.recordTrade(mint, normalized?.timestampMs)
+      void this.ingestTrade(mint, data, tradeSide, normalized).then(() =>
         this.publishTokenUpdate(mint, sol),
       )
       return
@@ -403,7 +392,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       if (initialSol >= 0.08) {
         this.tradeMessageCount++
         this.hotMints.recordTrade(mint)
-        void this.ingestTrade(mint, data, 'buy', initialSol)
+        void this.ingestTrade(mint, data, 'buy', normalizePumpPortalTrade({ ...data, txType: 'buy' }) ?? undefined)
       }
       return
     }
@@ -449,9 +438,10 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     mint: string,
     data: Record<string, unknown>,
     side: 'buy' | 'sell',
-    solOverride?: number,
+    normalized?: ReturnType<typeof normalizePumpPortalTrade>,
   ) {
-    const sol = solOverride ?? this.extractSolAmount(data)
+    const norm = normalized ?? normalizePumpPortalTrade({ ...data, txType: side })
+    const sol = norm?.solAmount ?? this.extractSolAmount(data)
     await this.publishIngest(
       'token.trade',
       mint,
@@ -459,14 +449,16 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         ...data,
         txType: side,
         solAmount: sol,
-        tokenAmount: Number(
-          data.tokenAmount ?? data.token_amount ?? data.newTokenBalance ?? 0,
-        ),
-        traderPublicKey:
-          data.traderPublicKey ?? data.trader ?? data.user ?? data.owner,
-        signature: data.signature,
+        tokenAmount: norm?.tokenAmount ?? Number(data.tokenAmount ?? data.token_amount ?? 0),
+        traderPublicKey: norm?.traderPublicKey,
+        signature: norm?.signature ?? data.signature,
+        timestamp: norm?.timestampMs,
+        slot: norm?.slot,
+        newTokenBalance: norm?.newTokenBalance,
+        vSolInBondingCurve: norm?.vSolInBondingCurve,
+        marketCapSol: norm?.marketCapSol,
       },
-      (data.signature as string) ?? undefined,
+      (norm?.signature as string) ?? undefined,
     )
   }
 

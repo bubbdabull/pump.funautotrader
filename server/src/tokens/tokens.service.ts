@@ -277,6 +277,7 @@ export class TokensService {
           side: t.side,
           solAmount: t.solAmount,
           tokenAmount: t.tokenAmount,
+          timestampMs: t.timestamp,
           timestamp: new Date(t.timestamp).toISOString(),
         }))
     }
@@ -285,14 +286,18 @@ export class TokensService {
       const rows = await this.supabase.loadRecentWalletActivity(mint, limit)
       return rows
         .reverse()
-        .map((a) => ({
-          signature: (a.signature as string) ?? undefined,
-          wallet: a.wallet as string,
-          side: (a.side as string) === 'sell' ? 'sell' : 'buy',
-          solAmount: Number(a.solAmount ?? 0),
-          tokenAmount: 0,
-          timestamp: new Date(a.actedAt as string).toISOString(),
-        }))
+        .map((a) => {
+          const ms = new Date(a.actedAt as string).getTime()
+          return {
+            signature: (a.signature as string) ?? undefined,
+            wallet: a.wallet as string,
+            side: (a.side as string) === 'sell' ? 'sell' : 'buy',
+            solAmount: Number(a.solAmount ?? 0),
+            tokenAmount: 0,
+            timestampMs: ms,
+            timestamp: new Date(ms).toISOString(),
+          }
+        })
     }
     return []
   }
@@ -425,7 +430,8 @@ export class TokensService {
     if (!saved) return null
     this.events.server?.emit('token:update', saved)
     this.events.server?.to('feed').emit('feed:patch', saved)
-    this.events.emitChartUpdate(mint)
+    this.emitLastTradeTick(mint, saved)
+    this.events.emitChartUpdate(mint, 1_000)
     this.persistFeedToken(saved)
     if (!saved.holdersVerified) void this.holderEnrichment.enrichMint(mint)
     if (whaleSol && whaleSol >= 5) {
@@ -886,6 +892,11 @@ export class TokensService {
       return { holders: Math.max(chain.holders, computed, prev), holdersVerified: true }
     }
 
+    const recentStream = state?.trades.some((t) => t.timestamp >= Date.now() - 300_000)
+    if (recentStream && state && state.trades.length >= 1) {
+      return { holders: Math.max(1, computed), holdersVerified: false }
+    }
+
     const verified = Boolean(
       (token.holdersVerified && prev >= 2) ||
         (chain?.verified && (chain.holders ?? 0) >= 2),
@@ -898,6 +909,26 @@ export class TokensService {
       holders: Math.max(prev, computed),
       holdersVerified: false,
     }
+  }
+
+  private emitLastTradeTick(mint: string, token: FeedToken) {
+    const state = this.trading.getState(mint)
+    const last = state?.trades[state.trades.length - 1]
+    if (!last) return
+    this.events.emitTradeTick({
+      mint,
+      signature: last.signature,
+      wallet: last.wallet,
+      side: last.side,
+      solAmount: last.solAmount,
+      tokenAmount: last.tokenAmount,
+      timestampMs: last.timestamp,
+      slot: last.slot,
+      marketCapUsd: last.marketCapUsd ?? state?.marketCapUsd,
+      bondingCurvePercent: token.bondingCurvePercent,
+      holders: token.holders,
+      holdersVerified: token.holdersVerified,
+    })
   }
 
   private attachActivity(token: FeedToken, mint: string): FeedToken {
