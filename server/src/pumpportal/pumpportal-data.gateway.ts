@@ -30,6 +30,10 @@ import type { PumpPortalNewTokenEvent } from './pumpportal.types'
 import type { FeedToken } from '../feed/feed.types'
 import { pickMintsForTradeSubscription } from './trade-subscription.util'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
+import { IngestionLeaderService } from '../ingestion/ingestion-leader.service'
+import { EventBusService } from '../ingestion/event-bus.service'
+import { RedisService } from '../redis/redis.service'
+import { REDIS_KEYS } from '../redis/redis-keys'
 import { QuantEngineService } from '../quant/quant-engine.service'
 import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 import { FeedTradePinService } from '../trade-data/feed-trade-pin.service'
@@ -68,6 +72,11 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   private lastRotationAt?: string
   private lastSubLogAt = 0
   private connected = false
+  private ingestionPaused = true
+  private reconnectLocked = false
+  private resyncScheduled = false
+  private reconnectCooldownUntil = 0
+  private streamEpoch = 0
   private readonly apiKey: string | undefined
 
   constructor(
@@ -82,6 +91,9 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     private metadata: TokenMetadataService,
     private pump: PumpService,
     private ingestion: IngestionOrchestratorService,
+    private ingestionLeader: IngestionLeaderService,
+    private eventBus: EventBusService,
+    private redis: RedisService,
     @Inject(forwardRef(() => QuantEngineService))
     private quant: QuantEngineService,
     @Inject(forwardRef(() => HolderEnrichmentService))
@@ -142,6 +154,9 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       healthScore: Math.min(100, healthScore),
       staleThresholdMs: PUMPPORTAL_WS_STALE_MS,
       lastTradeSubRotationAt: this.lastRotationAt,
+      ingestionLeader: this.ingestionLeader.isIngestionLeader(),
+      leaderId: this.ingestionLeader.getLeaderId(),
+      streamEpoch: this.streamEpoch,
     }
   }
 
@@ -155,9 +170,25 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         'PUMPPORTAL_API_KEY not set — only free streams (newToken, migration). Set key on Fly for trade ticks.',
       )
     }
-    const deferMs = Number(process.env.PUMPPORTAL_CONNECT_DEFER_MS ?? 0) ||
+    this.ingestionLeader.onLeaderChange((leader) => {
+      if (leader) this.beginIngestion()
+      else this.standDownIngestion()
+    })
+  }
+
+  private beginIngestion() {
+    this.ingestionPaused = false
+    const deferMs =
+      Number(process.env.PUMPPORTAL_CONNECT_DEFER_MS ?? 0) ||
       (process.env.FLY_APP_NAME ? 12_000 : 0)
     const recoverySyncMs = Number(process.env.PUMPPORTAL_RECOVERY_SYNC_MS ?? 18_000)
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
+    this.heartbeatTimer = setInterval(() => this.heartbeatCheck(), PUMPPORTAL_WS_HEARTBEAT_MS)
+    const rotateMs = Number(this.config.get('PUMPPORTAL_TRADE_SUB_ROTATE_MS') ?? 20_000)
+    if (this.rotationTimer) clearInterval(this.rotationTimer)
+    if (this.apiKey && Number.isFinite(rotateMs) && rotateMs >= 15_000) {
+      this.rotationTimer = setInterval(() => void this.rotateTradeSubscriptions(), rotateMs)
+    }
     if (deferMs > 0) {
       this.logger.log(`PumpPortal WS connect deferred ${deferMs}ms (Fly health window)`)
       setTimeout(() => this.connect(), deferMs)
@@ -166,18 +197,36 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       this.connect()
       setTimeout(() => this.resyncAfterRecovery(), recoverySyncMs)
     }
-    this.heartbeatTimer = setInterval(() => this.heartbeatCheck(), PUMPPORTAL_WS_HEARTBEAT_MS)
-    const rotateMs = Number(this.config.get('PUMPPORTAL_TRADE_SUB_ROTATE_MS') ?? 20_000)
-    if (this.apiKey && Number.isFinite(rotateMs) && rotateMs >= 15_000) {
-      this.rotationTimer = setInterval(() => void this.rotateTradeSubscriptions(), rotateMs)
+  }
+
+  private standDownIngestion() {
+    this.ingestionPaused = true
+    this.clearReconnectTimers()
+    this.teardownSocket()
+    if (this.rotationTimer) {
+      clearInterval(this.rotationTimer)
+      this.rotationTimer = undefined
+    }
+  }
+
+  private clearReconnectTimers() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = undefined
+    }
+    if (this.reconnectWatchdog) {
+      clearTimeout(this.reconnectWatchdog)
+      this.reconnectWatchdog = undefined
+    }
+    if (this.tradeSubFlushTimer) {
+      clearTimeout(this.tradeSubFlushTimer)
+      this.tradeSubFlushTimer = undefined
     }
   }
 
   onModuleDestroy() {
     this.intentionalClose = true
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
-    if (this.reconnectWatchdog) clearTimeout(this.reconnectWatchdog)
-    if (this.tradeSubFlushTimer) clearTimeout(this.tradeSubFlushTimer)
+    this.clearReconnectTimers()
     if (this.rotationTimer) clearInterval(this.rotationTimer)
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
     if (this.pingTimer) clearInterval(this.pingTimer)
@@ -218,7 +267,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   private scheduleReconnect(reason: string) {
-    if (this.intentionalClose || this.reconnectTimer) return
+    if (this.ingestionPaused || this.intentionalClose || this.reconnectTimer) return
+    if (Date.now() < this.reconnectCooldownUntil) return
     const exp = Math.min(
       PUMPPORTAL_WS_RECONNECT_MAX_MS,
       PUMPPORTAL_WS_RECONNECT_BASE_MS * 2 ** Math.min(this.reconnectAttempts, 6),
@@ -226,6 +276,10 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     const jitter = Math.floor(Math.random() * 800)
     const delay = exp + jitter
     this.reconnectAttempts++
+    if (this.reconnectAttempts >= 8) {
+      this.reconnectCooldownUntil = Date.now() + 30_000
+      this.logger.warn('PumpPortal reconnect cooldown 30s after repeated failures')
+    }
     this.logger.warn(
       `PumpPortal WS reconnect in ${delay}ms (${reason}, attempt ${this.reconnectAttempts})`,
     )
@@ -235,12 +289,17 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }, delay)
     if (this.reconnectWatchdog) clearTimeout(this.reconnectWatchdog)
     this.reconnectWatchdog = setTimeout(() => {
-      if (!this.connected && !this.intentionalClose) {
+      if (
+        !this.connected &&
+        !this.intentionalClose &&
+        !this.ingestionPaused &&
+        !this.reconnectLocked
+      ) {
         this.logger.warn('PumpPortal reconnect watchdog — retry connect')
         this.connecting = false
         this.connect()
       }
-    }, delay + 15_000)
+    }, delay + 30_000)
   }
 
   private teardownSocket() {
@@ -260,8 +319,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   private connect() {
-    if (this.intentionalClose) return
-    if (this.connecting) return
+    if (this.ingestionPaused || this.intentionalClose) return
+    if (this.connecting || this.reconnectLocked) return
     if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) {
       return
     }
@@ -270,6 +329,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       this.reconnectTimer = undefined
     }
 
+    this.reconnectLocked = true
     this.connecting = true
     this.teardownSocket()
     const url = this.wsUrl()
@@ -278,24 +338,24 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
     socket.on('open', () => {
       this.connecting = false
+      this.reconnectLocked = false
       this.connected = true
       this.connectedAtMs = Date.now()
       this.lastPongAtMs = Date.now()
       this.reconnectAttempts = 0
+      this.reconnectCooldownUntil = 0
       if (this.reconnectWatchdog) {
         clearTimeout(this.reconnectWatchdog)
         this.reconnectWatchdog = undefined
       }
       this.subscribedMints.clear()
+      this.pendingTradeQueue.length = 0
       this.trimDesiredTradeSubs()
-      for (const mint of this.desiredTradeSubs) {
-        if (!this.pendingTradeQueue.includes(mint)) {
-          this.pendingTradeQueue.push(mint)
-        }
-      }
+      this.streamEpoch = Date.now()
+      void this.redis.set(REDIS_KEYS.streamEpoch, String(this.streamEpoch))
       this.logger.log(
         `PumpPortal WS connected (${this.apiKey ? 'authenticated' : 'public'})` +
-          (this.reconnectAttempts > 0 ? ` after ${this.reconnectAttempts} reconnect(s)` : ''),
+          ` epoch=${this.streamEpoch}`,
       )
       socket.send(JSON.stringify({ method: 'subscribeNewToken' }))
       socket.send(JSON.stringify({ method: 'subscribeMigration' }))
@@ -303,13 +363,11 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
         if (socket.readyState !== WebSocket.OPEN) return
         try {
           socket.ping()
-          this.lastPongAtMs = Date.now()
         } catch {
           this.forceReconnect('ping_failed')
         }
       }, PUMPPORTAL_WS_PING_MS)
-      void this.rotateTradeSubscriptions()
-      this.flushTradeSubscriptions()
+      void this.schedulePostReconnectResync()
     })
 
     socket.on('pong', () => {
@@ -331,6 +389,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
     socket.on('close', () => {
       this.connecting = false
+      this.reconnectLocked = false
       this.connected = false
       this.teardownSocket()
       if (!this.intentionalClose) {
@@ -341,6 +400,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
     socket.on('error', (err) => {
       this.connecting = false
+      this.reconnectLocked = false
       this.logger.error(`PumpPortal WS error: ${err.message}`)
       if (!this.intentionalClose) this.scheduleReconnect('error')
     })
@@ -375,8 +435,23 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** One rotation + one flush after reconnect — avoids subscription storms. */
+  private async schedulePostReconnectResync() {
+    if (this.resyncScheduled) return
+    this.resyncScheduled = true
+    try {
+      await this.rotateTradeSubscriptions()
+    } finally {
+      setTimeout(() => {
+        this.resyncScheduled = false
+        this.flushTradeSubscriptions()
+      }, 600)
+    }
+  }
+
   /** Called after Redis snapshot recovery so trade subs align with restored feed. */
   resyncAfterRecovery() {
+    if (this.ingestionPaused) return
     if (!this.apiKey) return
     void this.rotateTradeSubscriptions()
     if (this.ws?.readyState === WebSocket.OPEN) {
@@ -386,7 +461,9 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
   /** Subscribe trade streams — feed tradeable mints first, then rotate extras. */
   private async rotateTradeSubscriptions() {
-    if (!this.apiKey || !this.ws || this.ws.readyState !== WebSocket.OPEN) return
+    if (this.ingestionPaused || !this.apiKey || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return
+    }
 
     this.feedTradePin.refreshPinsFromFeed()
     const feed = this.liveFeed.getAll()
@@ -546,7 +623,9 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
 
   /** Force PumpPortal trade stream for a mint (token page / chart). */
   ensureTradeSubscription(mint: string): { queued: boolean; subscribed: boolean } {
-    if (!this.apiKey) return { queued: false, subscribed: false }
+    if (this.ingestionPaused || !this.apiKey) {
+      return { queued: false, subscribed: false }
+    }
     this.autoTrader.pinTradeStream(mint)
     const pinned = new Set([
       mint,
@@ -686,15 +765,17 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     payload: Record<string, unknown>,
     id?: string,
   ) {
+    const event = {
+      id: id ?? `${mint}-${Date.now()}`,
+      source: 'pumpportal' as const,
+      type,
+      mint,
+      payload,
+      receivedAt: Date.now(),
+    }
     try {
-      await this.ingestion.processImmediate({
-        id: id ?? `${mint}-${Date.now()}`,
-        source: 'pumpportal',
-        type,
-        mint,
-        payload,
-        receivedAt: Date.now(),
-      })
+      await this.ingestion.processImmediate(event)
+      void this.eventBus.publishRemote(event)
     } catch (err) {
       this.logger.debug(`Ingest publish failed (${type}/${mint.slice(0, 8)}): ${(err as Error).message}`)
     }

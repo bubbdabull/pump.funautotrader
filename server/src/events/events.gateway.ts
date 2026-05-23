@@ -10,6 +10,9 @@ import { TokensService } from '../tokens/tokens.service'
 import { AutoTraderService } from '../autotrader/autotrader.service'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 import { ChartAggregationService } from '../charts/chart-aggregation.service'
+import { IngestionLeaderService } from '../ingestion/ingestion-leader.service'
+import { RedisService } from '../redis/redis.service'
+import { REDIS_KEYS } from '../redis/redis-keys'
 import type { ChartUpdatePayload } from '../charts/chart-update.types'
 import type {
   BubbleMapUpdatePayload,
@@ -50,10 +53,13 @@ export class EventsGateway implements OnGatewayConnection {
     @Inject(forwardRef(() => PumpPortalDataGateway))
     private pumpportal: PumpPortalDataGateway,
     private chartAgg: ChartAggregationService,
+    private ingestionLeader: IngestionLeaderService,
+    private redis: RedisService,
   ) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`)
+    if (process.env.FLY_APP_NAME) return
     if (!this.feedInterval) {
       this.feedInterval = setInterval(() => this.broadcastFeed(), 60_000)
     }
@@ -62,8 +68,22 @@ export class EventsGateway implements OnGatewayConnection {
   @SubscribeMessage('subscribe:feed')
   async handleFeedSubscribe(client: Socket) {
     client.join('feed')
+    const epochRaw = await this.redis.get(REDIS_KEYS.streamEpoch)
+    const streamEpoch = Number(epochRaw) || Date.now()
+    client.emit('stream:meta', {
+      epoch: streamEpoch,
+      leaderId: this.ingestionLeader.getLeaderId(),
+      instanceId: this.ingestionLeader.getInstanceId(),
+      isLeader: this.ingestionLeader.isIngestionLeader(),
+    })
     const feed = await this.tokens.getFeed('all')
-    client.emit('feed:update', feed)
+    const slice = feed.slice(0, 120)
+    for (const token of slice) {
+      client.emit('registry:patch', token)
+    }
+    if (slice.length < feed.length) {
+      this.logger.debug(`subscribe:feed sent ${slice.length}/${feed.length} registry patches`)
+    }
   }
 
   @SubscribeMessage('subscribe:token')

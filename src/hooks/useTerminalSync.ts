@@ -68,11 +68,15 @@ export function useTerminalSync() {
   const applyStateChange = useTokenRegistryStore((s) => s.applyStateChange)
   const setWalletGraph = useTokenRegistryStore((s) => s.setWalletGraph)
   const setWsConnected = useTokenRegistryStore((s) => s.setWsConnected)
+  const setStreamEpoch = useTokenRegistryStore((s) => s.setStreamEpoch)
   const quantPatch = useQuantStore((s) => s.patch)
 
   useEffect(() => {
     const unsubs = [
-      realtimeGateway.onReconnectSnapshot((tokens) => hydrateFeed(tokens)),
+      realtimeGateway.onStreamMeta((meta) => setStreamEpoch(meta.epoch)),
+      realtimeGateway.onReconnectSnapshot((tokens) => {
+        if (tokens.length > 0) hydrateFeed(tokens)
+      }),
       realtimeGateway.onRegistryPatch((t) => schedulePatch(t)),
       realtimeGateway.onTradeTick((tick) => applyTradeTick(tick)),
       realtimeGateway.onChartUpdate((payload) => {
@@ -123,6 +127,7 @@ export function useTerminalSync() {
     applyStateChange,
     setWalletGraph,
     setWsConnected,
+    setStreamEpoch,
     quantPatch,
   ])
 

@@ -9,7 +9,7 @@ import type {
   TokenStateChangePayload,
   WalletUpdatePayload,
 } from '@/lib/terminalTypes'
-import { REALTIME_EVENTS, type RealtimeEventName } from '@/lib/realtimeEvents'
+import { REALTIME_EVENTS, type RealtimeEventName, type StreamMetaPayload } from '@/lib/realtimeEvents'
 import { registryDebug } from '@/lib/registryDebug'
 import { useRealtimeStore } from '@/stores/realtimeStore'
 import { WS_URL } from '@/lib/apiConfig'
@@ -45,7 +45,7 @@ class RealtimeGateway {
   private socket: Socket | null = null
   private listenersAttached = false
   private started = false
-  private awaitingReconnectSnapshot = false
+  private streamEpoch = 0
 
   private readonly patchHandlers = new Set<Handler<PumpToken>>()
   private readonly reconnectSnapshotHandlers = new Set<Handler<PumpToken[]>>()
@@ -59,6 +59,7 @@ class RealtimeGateway {
   private readonly bubblemapHandlers = new Set<Handler<BubbleMapUpdatePayload>>()
   private readonly connectHandlers = new Set<Handler<void>>()
   private readonly disconnectHandlers = new Set<Handler<void>>()
+  private readonly streamMetaHandlers = new Set<Handler<StreamMetaPayload>>()
 
   private readonly patchBuffer: PumpToken[] = []
   private readonly tokenRefCounts = new Map<string, number>()
@@ -120,15 +121,22 @@ class RealtimeGateway {
       })
     }
 
-    socket.on('feed:update', (payload: unknown) => {
-      if (!this.awaitingReconnectSnapshot) {
-        warnLegacyEvent('feed:update')
-        return
+    socket.on('stream:meta', (payload: unknown) => {
+      const meta = payload as StreamMetaPayload
+      const epoch = Number(meta?.epoch) || 0
+      if (epoch > 0 && epoch >= this.streamEpoch) {
+        this.streamEpoch = epoch
+        registryDebug.event('stream:meta', meta)
+        this.streamMetaHandlers.forEach((h) => h(meta))
       }
-      this.awaitingReconnectSnapshot = false
+    })
+
+    socket.on('feed:update', (payload: unknown) => {
+      warnLegacyEvent('feed:update')
       const tokens = parseFeedSnapshot(payload)
-      registryDebug.event('reconnect:snapshot', { count: tokens.length })
-      this.reconnectSnapshotHandlers.forEach((h) => h(tokens))
+      if (tokens.length > 0) {
+        this.reconnectSnapshotHandlers.forEach((h) => h(tokens))
+      }
     })
 
     socket.on('feed:patch', () => warnLegacyEvent('feed:patch'))
@@ -152,7 +160,6 @@ class RealtimeGateway {
     useRealtimeStore.getState().setConnected(true)
     useRealtimeStore.getState().setReconnecting(false)
     registryDebug.event('connect')
-    this.awaitingReconnectSnapshot = true
     this.emitFeedSubscribe()
     this.resubscribeAll()
     this.flushPatchBuffer()
@@ -313,6 +320,15 @@ class RealtimeGateway {
   onReconnectSnapshot(handler: Handler<PumpToken[]>) {
     this.reconnectSnapshotHandlers.add(handler)
     return () => this.reconnectSnapshotHandlers.delete(handler)
+  }
+
+  onStreamMeta(handler: Handler<StreamMetaPayload>) {
+    this.streamMetaHandlers.add(handler)
+    return () => this.streamMetaHandlers.delete(handler)
+  }
+
+  getStreamEpoch() {
+    return this.streamEpoch
   }
 
   onTradeTick(handler: Handler<TradeTickPayload>) {

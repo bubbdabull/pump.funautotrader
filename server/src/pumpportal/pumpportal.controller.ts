@@ -5,6 +5,7 @@ import { PumpPortalDataGateway } from './pumpportal-data.gateway'
 import { PumpFeedSyncService } from '../tokens/pump-feed-sync.service'
 import { IngestionHealthService } from '../ingestion/ingestion-health.service'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
+import { IngestionLeaderService } from '../ingestion/ingestion-leader.service'
 import type { PumpPortalTradeRequest } from './pumpportal.types'
 
 @Controller('pumpportal')
@@ -15,6 +16,7 @@ export class PumpPortalController {
     private pumpSync: PumpFeedSyncService,
     private ingestionHealth: IngestionHealthService,
     private ingestionOrchestrator: IngestionOrchestratorService,
+    private ingestionLeader: IngestionLeaderService,
   ) {}
 
   @Get('status')
@@ -22,6 +24,11 @@ export class PumpPortalController {
     return {
       ...this.dataGateway.getStatus(),
       pumpFunSync: this.pumpSync.getStatus(),
+      leader: {
+        isLeader: this.ingestionLeader.isIngestionLeader(),
+        leaderId: this.ingestionLeader.getLeaderId(),
+        instanceId: this.ingestionLeader.getInstanceId(),
+      },
     }
   }
 

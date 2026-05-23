@@ -65,13 +65,16 @@ export class EventBusService implements OnModuleDestroy {
     }
     this.queue.push(event)
     if (!this.draining) void this.drain()
+    await this.publishRemote(event)
+  }
 
-    if (this.redisPublisher) {
-      try {
-        await this.redisPublisher.publish(this.channel, JSON.stringify(event))
-      } catch {
-        /* in-process fallback */
-      }
+  /** Redis fan-out only — used by ingestion leader after local hot-path handling. */
+  async publishRemote(event: IngestionEvent) {
+    if (!this.redisPublisher) return
+    try {
+      await this.redisPublisher.publish(this.channel, JSON.stringify(event))
+    } catch {
+      /* non-fatal */
     }
   }
 

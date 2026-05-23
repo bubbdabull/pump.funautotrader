@@ -12,3 +12,10 @@ export const REALTIME_EVENTS = [
 ] as const
 
 export type RealtimeEventName = (typeof REALTIME_EVENTS)[number]
+
+export type StreamMetaPayload = {
+  epoch: number
+  leaderId?: string | null
+  instanceId?: string
+  isLeader?: boolean
+}

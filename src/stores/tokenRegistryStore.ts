@@ -38,6 +38,7 @@ interface TokenRegistryState {
   /** Wall-clock ms of last registry mutation (for UI “updated ago”). */
   updatedAt: number
   wsConnected: boolean
+  streamEpoch: number
 
   _pendingPatches: Record<string, PumpToken>
   _patchTimer: ReturnType<typeof setTimeout> | null
@@ -45,6 +46,7 @@ interface TokenRegistryState {
   _chartTimer: ReturnType<typeof setTimeout> | null
 
   setWsConnected: (v: boolean) => void
+  setStreamEpoch: (epoch: number) => void
   /** Full feed snapshot from subscribe:feed / periodic broadcast — bypasses stale guard. */
   hydrateFeed: (tokens: PumpToken[]) => void
   schedulePatch: (token: PumpToken) => void
@@ -97,12 +99,15 @@ export const useTokenRegistryStore = create<TokenRegistryState>((set, get) => ({
   version: 0,
   updatedAt: 0,
   wsConnected: false,
+  streamEpoch: 0,
   _pendingPatches: {},
   _patchTimer: null,
   _pendingCharts: {},
   _chartTimer: null,
 
   setWsConnected: (v) => set({ wsConnected: v }),
+
+  setStreamEpoch: (epoch) => set({ streamEpoch: epoch }),
 
   hydrateFeed: (tokens) => {
     const list = normalizePumpTokens(tokens)

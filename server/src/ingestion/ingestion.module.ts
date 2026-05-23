@@ -3,6 +3,8 @@ import { DedupService } from './dedup.service'
 import { EventBusService } from './event-bus.service'
 import { IngestionOrchestratorService } from './ingestion-orchestrator.service'
 import { IngestionHealthService } from './ingestion-health.service'
+import { IngestionLeaderService } from './ingestion-leader.service'
+import { IngestionRelayService } from './ingestion-relay.service'
 import { PumpStreamSource } from './sources/pumpstream.source'
 import { HeliusIngestSource } from './sources/helius-ingest.source'
 import { HeliusWebhookController } from './helius-webhook.controller'
@@ -18,6 +20,8 @@ import { HeliusModule } from '../helius/helius.module'
     DedupService,
     EventBusService,
     IngestionHealthService,
+    IngestionLeaderService,
+    IngestionRelayService,
     IngestionOrchestratorService,
     PumpStreamSource,
     HeliusIngestSource,
@@ -27,6 +31,7 @@ import { HeliusModule } from '../helius/helius.module'
     EventBusService,
     IngestionOrchestratorService,
     IngestionHealthService,
+    IngestionLeaderService,
     PumpStreamSource,
     HeliusIngestSource,
   ],

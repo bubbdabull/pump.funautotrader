@@ -161,6 +161,53 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** SET key value NX EX ttl — returns true if lock acquired. */
+  async setNx(key: string, value: string, ttlSec: number): Promise<boolean> {
+    if (!this.client || ttlSec <= 0) return false
+    try {
+      const result = await this.client.set(key, value, 'EX', ttlSec, 'NX')
+      return result === 'OK'
+    } catch (err) {
+      this.logger.debug(`Redis setNx ${key}: ${(err as Error).message}`)
+      return false
+    }
+  }
+
+  /** Renew TTL only if current value matches owner (leader heartbeat). */
+  async renewLock(key: string, owner: string, ttlSec: number): Promise<boolean> {
+    if (!this.client || ttlSec <= 0) return false
+    try {
+      const script = `
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("set", KEYS[1], ARGV[1], "EX", ARGV[2])
+        else
+          return 0
+        end
+      `
+      const result = await this.client.eval(script, 1, key, owner, String(ttlSec))
+      return result === 'OK'
+    } catch (err) {
+      this.logger.debug(`Redis renewLock ${key}: ${(err as Error).message}`)
+      return false
+    }
+  }
+
+  async deleteIfValue(key: string, value: string): Promise<void> {
+    if (!this.client) return
+    try {
+      const script = `
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("del", KEYS[1])
+        else
+          return 0
+        end
+      `
+      await this.client.eval(script, 1, key, value)
+    } catch (err) {
+      this.logger.debug(`Redis deleteIfValue ${key}: ${(err as Error).message}`)
+    }
+  }
+
   async zrevrangeWithScores(key: string, limit: number): Promise<RedisZMember[]> {
     if (!this.client || limit <= 0) return []
     try {

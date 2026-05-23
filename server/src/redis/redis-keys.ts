@@ -19,6 +19,8 @@ export const REDIS_KEYS = {
     rankingCache: 'phronis:cache:rankings:v1',
   },
   ingestionChannel: 'phronis:ingestion',
+  ingestionLeader: 'phronis:ingestion:leader',
+  streamEpoch: 'phronis:stream:epoch',
   persistChannel: 'phronis:persist:jobs',
   hotToken: (mint: string) => `token:hot:${mint}`,
   tokenWindow: (mint: string, suffix: 'volume:5s' | 'volume:15s' | 'wallets:15s' | 'trades:5s') =>
