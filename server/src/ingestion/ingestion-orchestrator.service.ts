@@ -5,7 +5,6 @@ import type { IngestionEvent } from './ingestion.types'
 import { TradingBridgeService } from '../trading/trading-bridge.service'
 import { EventSequencerService } from '../intelligence/event-sequencer.service'
 import { IngestionHealthService } from './ingestion-health.service'
-import { INGESTION_HOT_QUEUE_MAX } from '@phronis/trading'
 import { PostUpdateQueueService } from './post-update-queue.service'
 
 @Injectable()
@@ -13,10 +12,8 @@ export class IngestionOrchestratorService implements OnModuleInit {
   private readonly logger = new Logger(IngestionOrchestratorService.name)
   private processed = 0
   private rejected = 0
-  private queueOverflow = 0
   private handleErrors = 0
-  private readonly hotQueue: IngestionEvent[] = []
-  private hotDraining = false
+
   constructor(
     private bus: EventBusService,
     private dedup: DedupService,
@@ -26,61 +23,35 @@ export class IngestionOrchestratorService implements OnModuleInit {
     @Optional() private ingestionHealth?: IngestionHealthService,
   ) {}
 
-  onModuleInit() {
-    this.bus.subscribe((ev) => void this.safeHandle(ev, 'bus'))
-    this.logger.log('Ingestion orchestrator ready')
-  }
-
   onPostUpdate(handler: (mint: string, event: IngestionEvent) => void | Promise<void>) {
     this.postUpdateQueue.register(handler)
   }
 
-  /** Hot path: bounded queue + microtask drain (PumpPortal gateway). */
+  notifyPostUpdate(mint: string, event: IngestionEvent) {
+    this.postUpdateQueue.schedule(mint, event)
+  }
+
+  onModuleInit() {
+    this.logger.log('Ingestion orchestrator ready (trading state via ProcessingWorker)')
+  }
+
+  /** @deprecated Use IngestionWorkerService.emit */
   async processImmediate(event: IngestionEvent) {
     const key = `${event.source}:${event.type}:${event.id}`
     if (this.dedup.isDuplicate(key)) return
-
-    if (this.hotQueue.length >= INGESTION_HOT_QUEUE_MAX) {
-      this.hotQueue.shift()
-      this.queueOverflow++
-    }
-    this.hotQueue.push(event)
-    if (!this.hotDraining) void this.drainHotQueue()
+    this.bus.publishIngestion(event)
   }
 
-  private drainHotQueue() {
-    this.hotDraining = true
-    const batch = this.hotQueue.splice(0, 48)
-    for (const ev of batch) {
-      void this.safeHandle(ev, 'hot')
-    }
-    if (this.hotQueue.length > 0) {
-      setImmediate(() => this.drainHotQueue())
-    } else {
-      this.hotDraining = false
-    }
-  }
-
-  /** Secondary sources + fan-out: queue + optional Redis. */
-  async ingest(event: IngestionEvent) {
+  /** Secondary sources — Helius, pumpstream relay. */
+  ingest(event: IngestionEvent) {
     const key = `${event.source}:${event.type}:${event.id}`
     if (this.dedup.isDuplicate(key)) return
-    await this.bus.publish(event)
+    this.bus.publishIngestion(event)
+    void this.bus.publishRemote(event).catch(() => undefined)
   }
 
-  private async safeHandle(event: IngestionEvent, lane: 'hot' | 'bus') {
-    try {
-      await this.handle(event)
-    } catch (err) {
-      this.handleErrors++
-      this.ingestionHealth?.recordProcessError(err)
-      this.logger.debug(
-        `Ingestion handle error (${lane}/${event.type}/${event.mint?.slice(0, 8) ?? '?'}): ${(err as Error).message}`,
-      )
-    }
-  }
-
-  private async handle(event: IngestionEvent) {
+  /** Trading-bridge state only — called from ProcessingWorker before scoring. */
+  applyTradingState(event: IngestionEvent) {
     this.processed++
     const p = event.payload
 
@@ -152,18 +123,13 @@ export class IngestionOrchestratorService implements OnModuleInit {
       default:
         break
     }
-
-    this.postUpdateQueue.schedule(event.mint, event)
   }
 
   getStats() {
     return {
       processed: this.processed,
       rejected: this.rejected,
-      queueOverflow: this.queueOverflow,
       handleErrors: this.handleErrors,
-      hotQueueDepth: this.hotQueue.length,
-      hotDraining: this.hotDraining,
       postUpdate: this.postUpdateQueue.getStats(),
       bus: this.bus.getStats(),
     }

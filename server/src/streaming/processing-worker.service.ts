@@ -1,38 +1,37 @@
 import { Injectable, Inject, Logger, OnModuleInit, Optional, forwardRef } from '@nestjs/common'
+import { EventBusService } from '../ingestion/event-bus.service'
 import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
 import { IngestionHealthService } from '../ingestion/ingestion-health.service'
 import type { IngestionEvent } from '../ingestion/ingestion.types'
-import { TokenRegistryService } from './token-registry.service'
+import { TokenRegistryService } from '../pipeline/token-registry.service'
 import { TokensService } from '../tokens/tokens.service'
 import { AutoTraderService } from '../autotrader/autotrader.service'
 import { HotMintsService } from '../trade-data/hot-mints.service'
 import { StreamIntelligenceService } from '../intelligence/stream-intelligence.service'
-import { AnalyticsBatcherService } from '../intelligence/analytics-batcher.service'
 import { TerminalEmitterService } from '../intelligence/terminal-emitter.service'
-import { LiveFeedService } from '../feed/live-feed.service'
 import { RedisCacheHooksService } from '../redis/redis-cache-hooks.service'
 import { ChartAggregationService } from '../charts/chart-aggregation.service'
-import { EventsGateway } from '../events/events.gateway'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 import type { DynamicsAnalytics } from '@phronis/trading'
 import { SignalIntelligenceService } from '../intelligence/signal-intelligence.service'
-
+import { SnapshotService } from './snapshot.service'
+import { WebSocketBroadcasterService } from './websocket-broadcaster.service'
 /**
- * PumpPortal WS → normalize → registry → scoring → UI.
- * REST never drives live ticks; only enriches discovery in the background.
+ * Processing layer — registry, scoring, snapshot updates, broadcast scheduling.
+ * Never runs inside PumpPortal WS handlers.
  */
 @Injectable()
-export class RawEventProcessorService implements OnModuleInit {
-  private readonly logger = new Logger(RawEventProcessorService.name)
+export class ProcessingWorkerService implements OnModuleInit {
+  private readonly logger = new Logger(ProcessingWorkerService.name)
   private processed = 0
   private rejected = 0
 
   constructor(
-    private ingestion: IngestionOrchestratorService,
+    private bus: EventBusService,
+    private orchestrator: IngestionOrchestratorService,
     private registry: TokenRegistryService,
+    private snapshot: SnapshotService,
     private intelligence: StreamIntelligenceService,
-    private batcher: AnalyticsBatcherService,
-    private liveFeed: LiveFeedService,
     @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
     private autoTrader: AutoTraderService,
@@ -40,16 +39,16 @@ export class RawEventProcessorService implements OnModuleInit {
     private terminal: TerminalEmitterService,
     private redisHooks: RedisCacheHooksService,
     private chartAgg: ChartAggregationService,
-    @Inject(forwardRef(() => EventsGateway))
-    private events: EventsGateway,
     @Inject(forwardRef(() => PumpPortalDataGateway))
     private pumpportal: PumpPortalDataGateway,
     private signalIntel: SignalIntelligenceService,
+    private broadcaster: WebSocketBroadcasterService,
     @Optional() private ingestionHealth?: IngestionHealthService,
   ) {}
 
   onModuleInit() {
-    this.logger.log('Raw event processor superseded by ProcessingWorkerService (streaming pipeline)')
+    this.bus.subscribeProcessing((batch) => void this.handleBatch(batch))
+    this.logger.log('Processing worker subscribed to ingestion bus')
   }
 
   getStats() {
@@ -60,18 +59,21 @@ export class RawEventProcessorService implements OnModuleInit {
     }
   }
 
-  private async process(mint: string, event: IngestionEvent) {
-    try {
-      await this.processSafe(mint, event)
-    } catch (err) {
-      this.ingestionHealth?.recordProcessError(err)
-      this.logger.debug(
-        `Raw processor error (${event.type}/${mint.slice(0, 8)}): ${(err as Error).message}`,
-      )
+  private async handleBatch(batch: IngestionEvent[]) {
+    for (const event of batch) {
+      try {
+        this.orchestrator.applyTradingState(event)
+        await this.processStream(event.mint, event)
+      } catch (err) {
+        this.ingestionHealth?.recordProcessError(err)
+        this.logger.debug(
+          `Processing error (${event.type}/${event.mint?.slice(0, 8)}): ${(err as Error).message}`,
+        )
+      }
     }
   }
 
-  private async processSafe(mint: string, event: IngestionEvent) {
+  private async processStream(mint: string, event: IngestionEvent) {
     this.processed++
     if (
       event.type !== 'token.trade' &&
@@ -79,6 +81,15 @@ export class RawEventProcessorService implements OnModuleInit {
       event.type !== 'token.migration'
     ) {
       return
+    }
+
+    if (event.type === 'token.migration') {
+      const live = this.snapshot.get(mint)
+      if (live) {
+        this.tokens.upsertLiveToken({ ...live, bondingCurvePercent: 100 })
+      }
+      this.autoTrader.pinTradeStream(mint)
+      this.pumpportal.ensureTradeSubscription(mint)
     }
 
     const intel = this.intelligence.processEvent(mint, event)
@@ -109,25 +120,17 @@ export class RawEventProcessorService implements OnModuleInit {
       })
     }
 
-    const row = this.liveFeed.get(mint) ?? saved
+    const row = this.snapshot.get(mint) ?? saved
     const enriched = this.signalIntel.enrichFeedToken(row, intel.analytics ?? undefined)
-    this.liveFeed.patch(enriched)
+    this.snapshot.patch(enriched)
     const normalized = this.registry.normalize(enriched, 'stream', intel.analytics)
-    const urgentPatch = event.type === 'token.trade'
-    this.batcher.scheduleRegistryPatch(normalized, urgentPatch)
+    this.broadcaster.scheduleRegistryPatch(normalized, event.type === 'token.trade')
 
     const alerts = this.signalIntel.evaluateAlerts(mint, enriched, 'pro')
-    if (alerts.length > 0) {
-      setImmediate(() => {
-        for (const alert of alerts) {
-          try {
-            this.events.emitIntelligenceAlert(alert)
-          } catch {
-            /* non-fatal */
-          }
-        }
-      })
+    for (const alert of alerts) {
+      this.broadcaster.emitIntelligenceAlert(alert)
     }
+
     setImmediate(() => {
       try {
         this.tokens.publishStreamEvents(mint, saved)
@@ -165,17 +168,10 @@ export class RawEventProcessorService implements OnModuleInit {
         priceVelocity: intel.analytics?.velocity.marketCapVelocity,
       })
       if (chartPayload && this.chartAgg.markEmittedIfDue(mint)) {
-        const chartEmit = {
+        this.broadcaster.emitChartDelta({
           ...chartPayload,
           tradeStreamSubscribed: this.pumpportal.isTradeSubscribed(mint),
           pumpportalKeyConfigured: this.pumpportal.getHealth().apiKeyConfigured,
-        }
-        setImmediate(() => {
-          try {
-            this.events.emitChartDelta(chartEmit)
-          } catch {
-            /* non-fatal */
-          }
         })
       }
       this.hotMints.recordTrade(mint, normalized.lastTradeAt)
@@ -191,12 +187,14 @@ export class RawEventProcessorService implements OnModuleInit {
     if (event.type === 'token.launch') {
       this.autoTrader.pinTradeStream(mint)
     }
+
+    this.orchestrator.notifyPostUpdate(mint, event)
   }
 
   private applyDynamicsScores(mint: string, analytics: DynamicsAnalytics) {
-    const row = this.liveFeed.get(mint)
+    const row = this.snapshot.get(mint)
     if (!row) return
-    this.liveFeed.patch({
+    this.snapshot.patch({
       ...row,
       signalScore: Math.round(analytics.tradeConfidenceScore * 100),
       momentumScore: Math.round(analytics.decayedMomentumScore * 100),

@@ -6,6 +6,7 @@ import { PumpService, type PumpCoin } from '../pump/pump.service'
 import { PumpPortalService } from '../pumpportal/pumpportal.service'
 import { TradingBridgeService } from '../trading/trading-bridge.service'
 import { LiveFeedService } from '../feed/live-feed.service'
+import { SnapshotService } from '../streaming/snapshot.service'
 import type { FeedToken, FeedTrade } from '../feed/feed.types'
 import {
   evScoreToSignalScore,
@@ -70,6 +71,7 @@ export class TokensService {
     private pumpportal: PumpPortalService,
     private trading: TradingBridgeService,
     private liveFeed: LiveFeedService,
+    private snapshot: SnapshotService,
     private metadata: TokenMetadataService,
     private supabase: SupabaseDbService,
     private supabasePersist: SupabasePersistenceService,
@@ -120,7 +122,7 @@ export class TokensService {
 
   /** Unfiltered in-memory rows for WS subscribe bootstrap (includes raw/enriching). */
   getRegistryBootstrap(limit = 120) {
-    return this.liveFeed.getAll(limit).map((t) => this.registry.normalize(t))
+    return this.snapshot.list(limit).map((t) => this.registry.normalize(t))
   }
 
   async getFeed(lane: ScannerLane = 'tradeable'): Promise<FeedToken[]> {

@@ -45,7 +45,7 @@ export class IngestionHealthService {
 
     return {
       ok: pumpOk && feedOk,
-      ingestionOk: pumpOk && orchestrator.hotQueueDepth < 4_000,
+      ingestionOk: pumpOk && (orchestrator.bus?.processingDepth ?? 0) < 4_000,
       pumpportal: pumpportal ?? null,
       leader,
       orchestrator,

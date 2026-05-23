@@ -12,10 +12,16 @@ import { HeliusWebhookController } from './helius-webhook.controller'
 import { TradingModule } from '../trading/trading.module'
 import { IntelligenceModule } from '../intelligence/intelligence.module'
 import { HeliusModule } from '../helius/helius.module'
+import { StreamingModule } from '../streaming/streaming.module'
 
 @Global()
 @Module({
-  imports: [TradingModule, HeliusModule, forwardRef(() => IntelligenceModule)],
+  imports: [
+    TradingModule,
+    HeliusModule,
+    forwardRef(() => IntelligenceModule),
+    forwardRef(() => StreamingModule),
+  ],
   controllers: [HeliusWebhookController],
   providers: [
     DedupService,

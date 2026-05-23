@@ -1,8 +1,8 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Inject, Logger, OnModuleInit, forwardRef } from '@nestjs/common'
 import { RedisService } from '../redis/redis.service'
 import { REDIS_KEYS } from '../redis/redis-keys'
 import { IngestionLeaderService } from './ingestion-leader.service'
-import { IngestionOrchestratorService } from './ingestion-orchestrator.service'
+import { IngestionWorkerService } from '../streaming/ingestion-worker.service'
 import type { IngestionEvent } from './ingestion.types'
 import { isApiProcess } from '../process-role'
 
@@ -14,7 +14,8 @@ export class IngestionRelayService implements OnModuleInit {
   constructor(
     private redis: RedisService,
     private leader: IngestionLeaderService,
-    private orchestrator: IngestionOrchestratorService,
+    @Inject(forwardRef(() => IngestionWorkerService))
+    private ingestionWorker: IngestionWorkerService,
   ) {}
 
   onModuleInit() {
@@ -23,7 +24,7 @@ export class IngestionRelayService implements OnModuleInit {
       if (this.leader.isIngestionLeader()) return
       try {
         const event = JSON.parse(raw) as IngestionEvent
-        void this.orchestrator.processImmediate(event)
+        this.ingestionWorker.emit(event)
       } catch (err) {
         this.logger.debug(`Relay parse error: ${(err as Error).message}`)
       }

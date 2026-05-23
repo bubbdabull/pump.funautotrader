@@ -29,7 +29,7 @@ import { PumpService } from '../pump/pump.service'
 import type { PumpPortalNewTokenEvent } from './pumpportal.types'
 import type { FeedToken } from '../feed/feed.types'
 import { pickMintsForTradeSubscription } from './trade-subscription.util'
-import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrator.service'
+import { IngestionWorkerService } from '../streaming/ingestion-worker.service'
 import { IngestionLeaderService } from '../ingestion/ingestion-leader.service'
 import { EventBusService } from '../ingestion/event-bus.service'
 import { RedisService } from '../redis/redis.service'
@@ -92,7 +92,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     private liveFeed: LiveFeedService,
     private metadata: TokenMetadataService,
     private pump: PumpService,
-    private ingestion: IngestionOrchestratorService,
+    private ingestionWorker: IngestionWorkerService,
     private ingestionLeader: IngestionLeaderService,
     private eventBus: EventBusService,
     private redis: RedisService,
@@ -805,17 +805,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     }
 
     if (txType === 'migrate' || txType === 'migration') {
-      const live = this.liveFeed.get(mint)
-      if (live) {
-        const saved = this.tokens.upsertLiveToken({ ...live, bondingCurvePercent: 100 })
-        if (saved) {
-          this.events.server?.emit('token:graduating', saved)
-          this.events.server?.to('feed').emit('feed:patch', saved)
-        }
-      }
-      this.autoTrader.pinTradeStream(mint)
       this.queueTradeSubscription(mint, true)
-      void this.publishIngest('token.migration', mint, data, `migrate-${mint}`)
+      this.publishIngest('token.migration', mint, data, `migrate-${mint}`)
     }
   }
 
@@ -824,24 +815,20 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     return typeof m === 'string' && m.length > 30 ? m : null
   }
 
-  private async publishIngest(
+  private publishIngest(
     type: 'token.launch' | 'token.trade' | 'token.migration',
     mint: string,
     payload: Record<string, unknown>,
     id?: string,
   ) {
-    const event = {
+    this.ingestionWorker.emit({
       id: id ?? `${mint}-${Date.now()}`,
-      source: 'pumpportal' as const,
+      source: 'pumpportal',
       type,
       mint,
       payload,
       receivedAt: Date.now(),
-    }
-    void this.ingestion.processImmediate(event).catch((err) => {
-      this.logger.debug(`Ingest publish failed (${type}/${mint.slice(0, 8)}): ${(err as Error).message}`)
     })
-    void this.eventBus.publishRemote(event).catch(() => undefined)
   }
 
   private async ingestTrade(
@@ -852,7 +839,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   ) {
     const norm = normalized ?? normalizePumpPortalTrade({ ...data, txType: side })
     const sol = norm?.solAmount ?? this.extractSolAmount(data)
-    await this.publishIngest(
+    this.publishIngest(
       'token.trade',
       mint,
       {
@@ -901,7 +888,13 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     this.autoTrader.pinTradeStream(mint)
     this.queueTradeSubscription(mint, true)
 
-    await this.publishIngest('token.launch', mint, { ...event, mint, ...data }, mint)
+    const feedToken = saved ?? token
+    this.publishIngest(
+      'token.launch',
+      mint,
+      { ...event, mint, ...data, _feedToken: feedToken },
+      mint,
+    )
 
     void this.autoTrader.evaluateNewToken({ ...event, mint })
   }

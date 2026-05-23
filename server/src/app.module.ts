@@ -26,6 +26,7 @@ import { RiskModule } from './risk/risk.module'
 import { BacktestModule } from './backtest/backtest.module'
 import { HoldersModule } from './holders/holders.module'
 import { PipelineModule } from './pipeline/pipeline.module'
+import { StreamingModule } from './streaming/streaming.module'
 import { IntelligenceModule } from './intelligence/intelligence.module'
 import { RedisModule } from './redis/redis.module'
 import { PersistenceModule } from './persistence/persistence.module'
@@ -64,6 +65,7 @@ const apiImports: (Type | DynamicModule)[] = isApiProcess()
       PumpModule,
       FeedModule,
       PipelineModule,
+      StreamingModule,
       IntelligenceModule,
       TradingModule,
       PumpPortalModule,
