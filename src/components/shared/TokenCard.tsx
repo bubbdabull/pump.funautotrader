@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { TrendingUp, Users, Activity } from 'lucide-react'
+import { TrendingUp, Users, Activity, Zap } from 'lucide-react'
 import { GlassCard } from './GlassCard'
 import { Badge } from '@/components/ui/badge'
 import { formatUsd, formatSol, formatHolders, tokenVolumeSol, riskBg, riskColor } from '@/lib/utils'
@@ -8,6 +8,8 @@ import { TokenImage } from '@/components/shared/TokenImage'
 import { tokenMediaProps } from '@/lib/tokenMediaProps'
 import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { ActivityPulse } from '@/components/shared/TokenActivityBadges'
+import { LifecycleBadge } from '@/components/terminal/LifecycleBadge'
+import { MetricBar } from '@/components/terminal/MetricBar'
 import type { PumpToken } from '@/types'
 
 interface TokenCardProps {
@@ -16,6 +18,7 @@ interface TokenCardProps {
 }
 
 export function TokenCard({ token, index = 0 }: TokenCardProps) {
+  const score = token.signalScore ?? token.aiRiskScore ?? 50
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -29,28 +32,26 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
               <TokenImage {...tokenMediaProps(token)} size="md" />
             </div>
             <div className="min-w-0 flex-1 overflow-hidden">
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <ActivityPulse active={token.isActive} />
                 <span className="truncate font-semibold text-white">
                   {displayTokenSymbol(token)}
                 </span>
+                <LifecycleBadge state={token.lifecycle} compact />
                 <Badge
                   variant={(token.mcapChange5m ?? token.priceChange24h) >= 0 ? 'success' : 'danger'}
                   className="shrink-0"
                 >
                   {(token.mcapChange5m ?? token.priceChange24h) >= 0 ? '+' : ''}
                   {(token.mcapChange5m ?? token.priceChange24h).toFixed(1)}%
-                  <span className="ml-0.5 font-normal opacity-70">5m</span>
                 </Badge>
               </div>
               <p className="truncate text-xs text-zinc-500">{displayTokenName(token)}</p>
             </div>
             <div
-              className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-mono font-bold ${riskBg(token.signalScore ?? token.aiRiskScore ?? 50)}`}
+              className={`shrink-0 rounded-lg border px-2 py-1 text-xs font-mono font-bold ${riskBg(score)}`}
             >
-              <span className={riskColor(token.signalScore ?? token.aiRiskScore ?? 50)}>
-                {token.signalScore ?? token.aiRiskScore}
-              </span>
+              <span className={riskColor(score)}>{score}</span>
             </div>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -67,6 +68,16 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
               <p className="font-mono text-emerald-400/90">{token.buyPressure1m ?? 50}%</p>
             </div>
           </div>
+          {(token.migrationProbability != null || token.burstIgnition != null) && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {token.migrationProbability != null && (
+                <MetricBar label="Migration" value={token.migrationProbability} tone="purple" />
+              )}
+              {token.burstIgnition != null && (
+                <MetricBar label="Burst" value={token.burstIgnition} tone="amber" />
+              )}
+            </div>
+          )}
           <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
             <span className="flex items-center gap-1">
               <Users className="h-3 w-3" /> {formatHolders(token.holders)}
@@ -74,6 +85,11 @@ export function TokenCard({ token, index = 0 }: TokenCardProps) {
             <span className="flex items-center gap-1">
               <Activity className="h-3 w-3" /> {formatSol(tokenVolumeSol(token))}
             </span>
+            {token.burstIgnition != null && token.burstIgnition > 55 && (
+              <span className="flex items-center gap-1 text-amber-400/90">
+                <Zap className="h-3 w-3" /> burst
+              </span>
+            )}
             <span className="flex items-center gap-1">
               <TrendingUp className="h-3 w-3" /> {token.whaleActivity}
             </span>

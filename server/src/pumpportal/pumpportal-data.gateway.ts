@@ -19,6 +19,8 @@ import {
   isValidTicker,
   normalizePumpPortalTrade,
   FEED_TRADE_PIN_MAX,
+  PUMPPORTAL_WS_HEARTBEAT_MS,
+  PUMPPORTAL_WS_STALE_MS,
 } from '@phronis/trading'
 import { PumpService } from '../pump/pump.service'
 import type { PumpPortalNewTokenEvent } from './pumpportal.types'
@@ -45,6 +47,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
   private messageCount = 0
   private tradeMessageCount = 0
   private lastMessageAt?: string
+  private lastMessageAtMs = 0
+  private heartbeatTimer?: NodeJS.Timeout
   private lastRotationAt?: string
   private connected = false
   private readonly apiKey: string | undefined
@@ -91,6 +95,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       messagesReceived: this.messageCount,
       tradeMessagesReceived: this.tradeMessageCount,
       lastMessageAt: this.lastMessageAt,
+      lastMessageAgeMs: this.lastMessageAtMs ? Date.now() - this.lastMessageAtMs : null,
+      staleThresholdMs: PUMPPORTAL_WS_STALE_MS,
       lastTradeSubRotationAt: this.lastRotationAt,
       streams: ['subscribeNewToken', 'subscribeMigration', this.apiKey ? 'subscribeTokenTrade' : null].filter(
         Boolean,
@@ -109,6 +115,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       )
     }
     this.connect()
+    this.heartbeatTimer = setInterval(() => this.heartbeatCheck(), PUMPPORTAL_WS_HEARTBEAT_MS)
     const rotateMs = Number(this.config.get('PUMPPORTAL_TRADE_SUB_ROTATE_MS') ?? 20_000)
     if (this.apiKey && Number.isFinite(rotateMs) && rotateMs >= 15_000) {
       this.rotationTimer = setInterval(() => void this.rotateTradeSubscriptions(), rotateMs)
@@ -119,6 +126,7 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
     if (this.tradeSubFlushTimer) clearTimeout(this.tradeSubFlushTimer)
     if (this.rotationTimer) clearInterval(this.rotationTimer)
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
     this.ws?.close()
   }
 
@@ -127,6 +135,15 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
     if (!this.apiKey) return base
     const sep = base.includes('?') ? '&' : '?'
     return `${base}${sep}api-key=${encodeURIComponent(this.apiKey)}`
+  }
+
+  private heartbeatCheck() {
+    if (!this.connected || !this.ws) return
+    const age = this.lastMessageAtMs ? Date.now() - this.lastMessageAtMs : Infinity
+    if (age > PUMPPORTAL_WS_STALE_MS) {
+      this.logger.warn(`PumpPortal WS stale (${Math.round(age / 1000)}s) — forcing reconnect`)
+      this.ws.terminate()
+    }
   }
 
   private connect() {
@@ -147,7 +164,8 @@ export class PumpPortalDataGateway implements OnModuleInit, OnModuleDestroy {
       try {
         const data = JSON.parse(raw.toString()) as Record<string, unknown>
         this.messageCount++
-        this.lastMessageAt = new Date().toISOString()
+        this.lastMessageAtMs = Date.now()
+        this.lastMessageAt = new Date(this.lastMessageAtMs).toISOString()
         this.dispatchMessage(data)
       } catch (err) {
         this.logger.warn(`Invalid WS message: ${(err as Error).message}`)

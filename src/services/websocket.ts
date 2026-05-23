@@ -3,6 +3,14 @@ import type { PumpToken, AutoTradeSignal } from '@/types'
 import type { TokenChartSeries } from '@/lib/chartTypes'
 import type { TradeTickPayload } from '@/lib/tradeTypes'
 import type { QuantHolderPatch, QuantUpdate, StrategySignal } from '@/lib/quantTypes'
+import type {
+  BubbleMapUpdatePayload,
+  HolderUpdatePayload,
+  MigrationUpdatePayload,
+  SignalUpdatePayload,
+  TokenStateChangePayload,
+  WalletUpdatePayload,
+} from '@/lib/terminalTypes'
 
 import { WS_URL } from '@/lib/apiConfig'
 
@@ -22,6 +30,7 @@ class WebSocketService {
   private graduatingFeedHandlers = new Set<FeedHandler>()
   private feedPrependHandlers = new Set<TokenUpdateHandler>()
   private feedPatchHandlers = new Set<TokenUpdateHandler>()
+  private registryPatchHandlers = new Set<TokenUpdateHandler>()
   private pumpPortalHandlers = new Set<TokenUpdateHandler>()
   private graduatingHandlers = new Set<TokenUpdateHandler>()
   private signalHandlers = new Set<SignalHandler>()
@@ -31,6 +40,12 @@ class WebSocketService {
   private rugWarningHandlers = new Set<(payload: { mint: string; rug: QuantUpdate['rug'] }) => void>()
   private chartHandlers = new Set<ChartUpdateHandler>()
   private tradeTickHandlers = new Set<TradeTickHandler>()
+  private stateChangeHandlers = new Set<(p: TokenStateChangePayload) => void>()
+  private signalUpdateHandlers = new Set<(p: SignalUpdatePayload) => void>()
+  private migrationHandlers = new Set<(p: MigrationUpdatePayload) => void>()
+  private holderHandlers = new Set<(p: HolderUpdatePayload) => void>()
+  private walletHandlers = new Set<(p: WalletUpdatePayload) => void>()
+  private bubbleMapHandlers = new Set<(p: BubbleMapUpdatePayload) => void>()
 
   connect() {
     if (this.socket?.connected) return this.socket
@@ -47,10 +62,15 @@ class WebSocketService {
       timeout: 20_000,
     })
 
-    this.socket.on('token:update', (token: PumpToken) => {
+    const patch = (token: PumpToken) => {
       this.tokenHandlers.forEach((h) => h(token))
       this.feedPatchHandlers.forEach((h) => h(token))
-    })
+      this.registryPatchHandlers.forEach((h) => h(token))
+    }
+
+    this.socket.on('token:update', patch)
+    this.socket.on('feed:patch', (t) => this.feedPatchHandlers.forEach((h) => h(t)))
+    this.socket.on('registry:patch', (t) => this.registryPatchHandlers.forEach((h) => h(t)))
 
     this.socket.on('chart:update', (series: TokenChartSeries) => {
       this.chartHandlers.forEach((h) => h(series))
@@ -70,14 +90,6 @@ class WebSocketService {
 
     this.socket.on('feed:prepend', (token: PumpToken) => {
       this.feedPrependHandlers.forEach((h) => h(token))
-    })
-
-    this.socket.on('feed:patch', (token: PumpToken) => {
-      this.feedPatchHandlers.forEach((h) => h(token))
-    })
-
-    this.socket.on('registry:patch', (token: PumpToken) => {
-      this.feedPatchHandlers.forEach((h) => h(token))
     })
 
     this.socket.on('pumpportal:newToken', (token: PumpToken) => {
@@ -106,6 +118,30 @@ class WebSocketService {
 
     this.socket.on('quant:rug_warning', (payload: { mint: string; rug: QuantUpdate['rug'] }) => {
       this.rugWarningHandlers.forEach((h) => h(payload))
+    })
+
+    this.socket.on('token:state-change', (p: TokenStateChangePayload) => {
+      this.stateChangeHandlers.forEach((h) => h(p))
+    })
+
+    this.socket.on('signal:update', (p: SignalUpdatePayload) => {
+      this.signalUpdateHandlers.forEach((h) => h(p))
+    })
+
+    this.socket.on('migration:update', (p: MigrationUpdatePayload) => {
+      this.migrationHandlers.forEach((h) => h(p))
+    })
+
+    this.socket.on('holder:update', (p: HolderUpdatePayload) => {
+      this.holderHandlers.forEach((h) => h(p))
+    })
+
+    this.socket.on('wallet:update', (p: WalletUpdatePayload) => {
+      this.walletHandlers.forEach((h) => h(p))
+    })
+
+    this.socket.on('bubblemap:update', (p: BubbleMapUpdatePayload) => {
+      this.bubbleMapHandlers.forEach((h) => h(p))
     })
 
     this.socket.on('connect', () => {
@@ -140,9 +176,7 @@ class WebSocketService {
 
   onFeedGraduating(handler: FeedHandler) {
     this.graduatingFeedHandlers.add(handler)
-    return () => {
-      this.graduatingFeedHandlers.delete(handler)
-    }
+    return () => this.graduatingFeedHandlers.delete(handler)
   }
 
   onFeedPrepend(handler: TokenUpdateHandler) {
@@ -153,6 +187,11 @@ class WebSocketService {
   onFeedPatch(handler: TokenUpdateHandler) {
     this.feedPatchHandlers.add(handler)
     return () => this.feedPatchHandlers.delete(handler)
+  }
+
+  onRegistryPatch(handler: TokenUpdateHandler) {
+    this.registryPatchHandlers.add(handler)
+    return () => this.registryPatchHandlers.delete(handler)
   }
 
   onPumpPortalToken(handler: TokenUpdateHandler) {
@@ -198,6 +237,36 @@ class WebSocketService {
   onTradeTick(handler: TradeTickHandler) {
     this.tradeTickHandlers.add(handler)
     return () => this.tradeTickHandlers.delete(handler)
+  }
+
+  onTokenStateChange(handler: (p: TokenStateChangePayload) => void) {
+    this.stateChangeHandlers.add(handler)
+    return () => this.stateChangeHandlers.delete(handler)
+  }
+
+  onSignalUpdate(handler: (p: SignalUpdatePayload) => void) {
+    this.signalUpdateHandlers.add(handler)
+    return () => this.signalUpdateHandlers.delete(handler)
+  }
+
+  onMigrationUpdate(handler: (p: MigrationUpdatePayload) => void) {
+    this.migrationHandlers.add(handler)
+    return () => this.migrationHandlers.delete(handler)
+  }
+
+  onHolderUpdate(handler: (p: HolderUpdatePayload) => void) {
+    this.holderHandlers.add(handler)
+    return () => this.holderHandlers.delete(handler)
+  }
+
+  onWalletUpdate(handler: (p: WalletUpdatePayload) => void) {
+    this.walletHandlers.add(handler)
+    return () => this.walletHandlers.delete(handler)
+  }
+
+  onBubbleMapUpdate(handler: (p: BubbleMapUpdatePayload) => void) {
+    this.bubbleMapHandlers.add(handler)
+    return () => this.bubbleMapHandlers.delete(handler)
   }
 }
 

@@ -3,9 +3,14 @@ import { IngestionOrchestratorService } from '../ingestion/ingestion-orchestrato
 import type { IngestionEvent } from '../ingestion/ingestion.types'
 import { TokenRegistryService } from './token-registry.service'
 import { TokensService } from '../tokens/tokens.service'
-import { EventsGateway } from '../events/events.gateway'
 import { AutoTraderService } from '../autotrader/autotrader.service'
 import { HotMintsService } from '../trade-data/hot-mints.service'
+import { StreamIntelligenceService } from '../intelligence/stream-intelligence.service'
+import { AnalyticsBatcherService } from '../intelligence/analytics-batcher.service'
+import { TerminalEmitterService } from '../intelligence/terminal-emitter.service'
+import { LiveFeedService } from '../feed/live-feed.service'
+import { RedisCacheHooksService } from '../redis/redis-cache-hooks.service'
+import type { DynamicsAnalytics } from '@phronis/trading'
 
 /**
  * PumpPortal WS → normalize → registry → scoring → UI.
@@ -15,25 +20,33 @@ import { HotMintsService } from '../trade-data/hot-mints.service'
 export class RawEventProcessorService implements OnModuleInit {
   private readonly logger = new Logger(RawEventProcessorService.name)
   private processed = 0
+  private rejected = 0
 
   constructor(
     private ingestion: IngestionOrchestratorService,
     private registry: TokenRegistryService,
+    private intelligence: StreamIntelligenceService,
+    private batcher: AnalyticsBatcherService,
+    private liveFeed: LiveFeedService,
     @Inject(forwardRef(() => TokensService))
     private tokens: TokensService,
-    @Inject(forwardRef(() => EventsGateway))
-    private events: EventsGateway,
     private autoTrader: AutoTraderService,
     private hotMints: HotMintsService,
+    private terminal: TerminalEmitterService,
+    private redisHooks: RedisCacheHooksService,
   ) {}
 
   onModuleInit() {
     this.ingestion.onPostUpdate((mint, event) => void this.process(mint, event))
-    this.logger.log('Raw event processor active (stream-first registry)')
+    this.logger.log('Raw event processor active (stream-first + market dynamics)')
   }
 
   getStats() {
-    return { processed: this.processed, registrySize: this.registry.size }
+    return {
+      processed: this.processed,
+      rejected: this.rejected,
+      registrySize: this.registry.size,
+    }
   }
 
   private async process(mint: string, event: IngestionEvent) {
@@ -43,6 +56,12 @@ export class RawEventProcessorService implements OnModuleInit {
       event.type !== 'token.launch' &&
       event.type !== 'token.migration'
     ) {
+      return
+    }
+
+    const intel = this.intelligence.processEvent(mint, event)
+    if (!intel.accepted) {
+      this.rejected++
       return
     }
 
@@ -56,9 +75,16 @@ export class RawEventProcessorService implements OnModuleInit {
 
     if (!saved) return
 
-    const normalized = this.registry.normalize(saved, 'stream')
-    this.events.emitRegistryPatch(normalized)
-    this.tokens.publishStreamEvents(mint, saved)
+    if (intel.analytics) {
+      this.applyDynamicsScores(mint, intel.analytics)
+      this.terminal.onDynamics(mint, intel.analytics, saved)
+      this.redisHooks.onTradeProcessed(mint, intel.analytics, saved)
+    }
+
+    const normalized = this.registry.normalize(saved, 'stream', intel.analytics)
+    this.batcher.scheduleRegistryPatch(normalized)
+    this.tokens.publishStreamEvents(mint, saved, { skipChartEmit: true })
+    this.batcher.scheduleChart(mint)
 
     if (event.type === 'token.trade') {
       this.hotMints.recordTrade(mint, normalized.lastTradeAt)
@@ -67,7 +93,18 @@ export class RawEventProcessorService implements OnModuleInit {
 
     if (event.type === 'token.launch') {
       this.autoTrader.pinTradeStream(mint)
-      this.events.emitFeedPrepend(normalized)
     }
+  }
+
+  private applyDynamicsScores(mint: string, analytics: DynamicsAnalytics) {
+    const row = this.liveFeed.get(mint)
+    if (!row) return
+    this.liveFeed.patch({
+      ...row,
+      signalScore: Math.round(analytics.tradeConfidenceScore * 100),
+      momentumScore: Math.round(analytics.decayedMomentumScore * 100),
+      buyPressure1m: Math.round(analytics.buyPressure1m * 100),
+      holders: Math.max(row.holders, analytics.holderEstimate),
+    })
   }
 }

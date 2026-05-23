@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Shield, Users, MessageCircle, AlertTriangle } from 'lucide-react'
+import { Shield, Users, MessageCircle, AlertTriangle, Globe, ExternalLink } from 'lucide-react'
 import { PageTransition } from '@/components/shared/PageTransition'
 import { GlassCard } from '@/components/shared/GlassCard'
 import { TradingChart } from '@/components/charts/TradingChart'
@@ -11,11 +11,21 @@ import { formatUsd, formatHolders, riskBg, riskColor, shortenAddress } from '@/l
 import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { TokenImage } from '@/components/shared/TokenImage'
 import { TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
+import { LifecycleBadge } from '@/components/terminal/LifecycleBadge'
+import { MetricBar } from '@/components/terminal/MetricBar'
+import { BubbleMapViz } from '@/components/terminal/BubbleMapViz'
+import { ProgressionChart } from '@/components/terminal/ProgressionChart'
+import { useTokenRegistryStore } from '@/stores/tokenRegistryStore'
+import { useTokenChart } from '@/hooks/useScanner'
+import { useQuantStore } from '@/stores/quantStore'
 
 export function TokenDetailPage() {
   const { mint = '' } = useParams()
   const { data: token, isLoading } = useToken(mint)
   const { data: trades = [] } = useTokenTrades(mint)
+  const { data: chart } = useTokenChart(mint)
+  const walletGraph = useTokenRegistryStore((s) => s.getGraph(mint))
+  const quant = useQuantStore((s) => s.byMint[mint])
 
   if (isLoading || !token) {
     return (
@@ -46,6 +56,7 @@ export function TokenDetailPage() {
               {token.priceChange24h >= 0 ? '+' : ''}
               {token.priceChange24h.toFixed(1)}%
             </Badge>
+            <LifecycleBadge state={token.lifecycle} />
             <span
               className={`shrink-0 rounded-lg border px-2 py-0.5 font-mono text-sm font-bold ${riskBg(token.signalScore ?? token.aiRiskScore ?? 50)} ${riskColor(token.signalScore ?? token.aiRiskScore ?? 50)}`}
             >
@@ -64,6 +75,24 @@ export function TokenDetailPage() {
       <motion.div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
           <TradingChart mint={mint} />
+          <GlassCard>
+            <h3 className="mb-2 text-sm font-semibold text-white">Score progression</h3>
+            <ProgressionChart points={chart?.progression} metric="score" />
+          </GlassCard>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricBar label="Migration prob." value={token.migrationProbability ?? 0} tone="purple" />
+            <MetricBar label="Burst" value={token.burstIgnition ?? 0} tone="amber" />
+            <MetricBar
+              label="Buy pressure"
+              value={token.buyPressure1m ?? 50}
+              tone="emerald"
+            />
+            <MetricBar
+              label="Rug risk"
+              value={quant?.rug?.rugScore ?? token.aiRiskScore ?? 50}
+              tone="red"
+            />
+          </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <GlassCard>
               <Users className="mb-2 h-5 w-5 text-purple-400" />
@@ -98,6 +127,47 @@ export function TokenDetailPage() {
                 : `${displayTokenSymbol(token)} elevated risk. Whale activity: ${token.whaleActivity}.`}
             </p>
           </GlassCard>
+          <GlassCard>
+            <h3 className="mb-3 font-semibold text-white">Wallet bubble map</h3>
+            <BubbleMapViz graph={walletGraph} />
+          </GlassCard>
+          {(token.twitter || token.telegram || token.website) && (
+            <GlassCard>
+              <h3 className="mb-2 text-sm font-semibold text-white">Socials</h3>
+              <div className="flex flex-wrap gap-3 text-sm">
+                {token.twitter && (
+                  <a
+                    href={token.twitter.startsWith('http') ? token.twitter : `https://twitter.com/${token.twitter}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-sky-400 hover:underline"
+                  >
+                    <ExternalLink className="h-4 w-4" /> X
+                  </a>
+                )}
+                {token.telegram && (
+                  <a
+                    href={token.telegram.startsWith('http') ? token.telegram : `https://t.me/${token.telegram}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-400 hover:underline"
+                  >
+                    Telegram
+                  </a>
+                )}
+                {token.website && (
+                  <a
+                    href={token.website.startsWith('http') ? token.website : `https://${token.website}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-teal-400 hover:underline"
+                  >
+                    <Globe className="h-4 w-4" /> Web
+                  </a>
+                )}
+              </div>
+            </GlassCard>
+          )}
           <GlassCard>
             <h3 className="mb-3 font-semibold text-white">Live Trades</h3>
             <div className="max-h-64 space-y-2 overflow-y-auto">

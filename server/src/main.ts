@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
 import type { Response } from 'express'
 import { AppModule } from './app.module'
+import { PersistWorkerModule } from './persist-worker.module'
+import { getProcessRole } from './process-role'
 
 /** Fly http_service.internal_port is 8080; secrets sync often copies local PORT=3001. */
 function resolveListenPort(): number {
@@ -14,24 +16,36 @@ function logBootConfig() {
   const flags = {
     NODE_ENV: process.env.NODE_ENV,
     PORT: process.env.PORT,
+    processRole: getProcessRole(),
     USE_SUPABASE_REST_DB: process.env.USE_SUPABASE_REST_DB,
     REDIS_DISABLED: process.env.REDIS_DISABLED,
+    hasRedisUrl: Boolean(process.env.REDIS_URL?.trim()),
     hasSupabaseUrl: Boolean(process.env.SUPABASE_URL?.trim()),
     hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
     hasPumpPortalKey: Boolean(process.env.PUMPPORTAL_API_KEY?.trim()),
+    hasHeliusKey: Boolean(process.env.HELIUS_API_KEY?.trim()),
+    rpcUrl: Boolean(process.env.SOLANA_RPC_URL?.trim()),
     hasDatabaseUrl: Boolean(process.env.DATABASE_URL?.trim()),
   }
   console.log('[boot]', JSON.stringify(flags))
 }
 
-async function bootstrap() {
+async function bootstrapPersistWorker() {
+  logBootConfig()
+  const ctx = await NestFactory.createApplicationContext(PersistWorkerModule, {
+    logger: ['error', 'warn', 'log'],
+  })
+  console.log('[ready] Phronis persist worker — async Supabase drain active')
+  return ctx
+}
+
+async function bootstrapApi() {
   logBootConfig()
   const app = await NestFactory.create(AppModule, { logger: ['error', 'warn', 'log'] })
   app.setGlobalPrefix('api')
   app.enableCors({ origin: true, credentials: true })
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
 
-  // GET / — not under /api (Nest global prefix exclude is unreliable for root)
   const express = app.getHttpAdapter().getInstance()
   express.get('/', (_req: unknown, res: Response) => {
     res.json({
@@ -39,6 +53,7 @@ async function bootstrap() {
       ok: true,
       health: '/api/health',
       pumpportalStatus: '/api/pumpportal/status',
+      processRole: getProcessRole(),
       note: 'React UI is on Vercel; all API routes live under /api',
     })
   })
@@ -51,7 +66,16 @@ async function bootstrap() {
     )
   }
   await app.listen(port, host)
-  console.log(`[ready] Phronis API listening on http://${host}:${port}`)
+  console.log(`[ready] Phronis API listening on http://${host}:${port} (role=${getProcessRole()})`)
+}
+
+async function bootstrap() {
+  const role = getProcessRole()
+  if (role === 'persist') {
+    await bootstrapPersistWorker()
+    return
+  }
+  await bootstrapApi()
 }
 
 process.on('unhandledRejection', (reason) => {

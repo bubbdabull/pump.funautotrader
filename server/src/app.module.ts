@@ -26,6 +26,11 @@ import { RiskModule } from './risk/risk.module'
 import { BacktestModule } from './backtest/backtest.module'
 import { HoldersModule } from './holders/holders.module'
 import { PipelineModule } from './pipeline/pipeline.module'
+import { IntelligenceModule } from './intelligence/intelligence.module'
+import { RedisModule } from './redis/redis.module'
+import { PersistenceModule } from './persistence/persistence.module'
+import { RpcModule } from './rpc/rpc.module'
+import { isApiProcess } from './process-role'
 
 /** Bull/Redis is optional — live feed uses PumpPortal WS, not the job queue. */
 function redisEnabled(): boolean {
@@ -43,33 +48,43 @@ const bullImports: (Type | DynamicModule)[] = redisEnabled()
     ]
   : []
 
+const apiImports: (Type | DynamicModule)[] = isApiProcess()
+  ? [
+      PumpModule,
+      FeedModule,
+      PipelineModule,
+      IntelligenceModule,
+      TradingModule,
+      PumpPortalModule,
+      AutoTraderModule,
+      TokensModule,
+      WalletsModule,
+      TradeModule,
+      AlertsModule,
+      EventsModule,
+      IngestionModule,
+      QuantModule,
+      ExecutionModule,
+      RiskModule,
+      BacktestModule,
+      HoldersModule,
+      TradeDataModule,
+    ]
+  : []
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ...bullImports,
     PrismaModule,
     SupabaseModule,
-    PumpModule,
-    FeedModule,
-    PipelineModule,
-    TradingModule,
-    PumpPortalModule,
-    AutoTraderModule,
+    RpcModule,
+    RedisModule,
+    PersistenceModule,
     HeliusModule,
-    TokensModule,
-    WalletsModule,
-    TradeModule,
-    AlertsModule,
-    EventsModule,
-    IngestionModule,
-    QuantModule,
-    ExecutionModule,
-    RiskModule,
-    BacktestModule,
-    HoldersModule,
-    TradeDataModule,
+    ...apiImports,
   ],
-  controllers: [HealthController, DataHealthController],
-  providers: redisEnabled() ? [FeedProcessor] : [],
+  controllers: isApiProcess() ? [HealthController, DataHealthController] : [],
+  providers: redisEnabled() && isApiProcess() ? [FeedProcessor] : [],
 })
 export class AppModule {}

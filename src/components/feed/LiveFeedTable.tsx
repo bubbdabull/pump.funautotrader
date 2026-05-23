@@ -17,6 +17,7 @@ import { displayTokenName, displayTokenSymbol } from '@/lib/tokenDisplay'
 import { ActivityPulse, TokenActivityBadges } from '@/components/shared/TokenActivityBadges'
 import { LiveValue } from '@/components/shared/LiveValue'
 import { RugBadge } from '@/components/quant/RugBadge'
+import { LifecycleBadge } from '@/components/terminal/LifecycleBadge'
 import { useQuantStore } from '@/stores/quantStore'
 import { useAppStore } from '@/stores/appStore'
 import { useLiveTick, secondsSince, formatSecondsAgo } from '@/hooks/useLiveTick'
@@ -60,6 +61,7 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
               <th className="px-4 py-3 text-right">Curve</th>
               <th className="px-4 py-3 text-right">Holders</th>
               <th className="px-4 py-3 text-right">Volume</th>
+              <th className="px-4 py-3 text-center">Migr%</th>
               <th className="px-4 py-3 text-center">Signal</th>
               <th className="px-4 py-3 text-right">Mom.</th>
               <th className="px-4 py-3 text-center">Flow</th>
@@ -117,6 +119,7 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                             <span className="truncate font-semibold text-white">
                               {displayTokenSymbol(token)}
                             </span>
+                            <LifecycleBadge state={token.lifecycle} compact />
                             {(highlightGraduating || token.bondingCurvePercent >= 78) && (
                               <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">
                                 grad
@@ -208,6 +211,9 @@ export function LiveFeedTable({ tokens, highlightGraduating }: LiveFeedTableProp
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-zinc-300">
                       <LiveValue value={vol}>{formatSol(vol)}</LiveValue>
+                    </td>
+                    <td className="px-4 py-2.5 text-center font-mono text-[11px] text-purple-300/90">
+                      {token.migrationProbability != null ? `${token.migrationProbability}%` : '—'}
                     </td>
                     <td className="px-4 py-2.5 text-center">
                       <LiveValue value={score}>

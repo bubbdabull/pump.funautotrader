@@ -132,5 +132,7 @@ export type { StrategySignal, StrategyId, DeterministicStrategy } from './strate
 export { GlobalRiskManager, globalRiskManager, type GlobalRiskConfig } from './risk/globalRisk'
 export { replayStrategyBacktest, type ReplayEvent, type ReplayOptions } from './backtest/replay'
 export { computeBacktestMetrics, type BacktestMetrics, type BacktestTrade } from './backtest/metrics'
+export * from './dynamics'
+export * from './walletGraph'
 export { clamp01, clamp, ema, logistic01 } from './utils/math'
 export { sharpeLikeScore } from './quantitative/indicators'

@@ -29,6 +29,16 @@ export class QuantPersistService {
     return true
   }
 
+  /** Called only from PersistenceWorker — not on hot path. */
+  async persistDirect(
+    mint: string,
+    scores: QuantitativeScores,
+    rug: RugScoreBreakdown,
+  ): Promise<void> {
+    if (!this.supabase.enabled) return
+    await this.writeSnapshot(mint, scores, rug)
+  }
+
   async persist(
     mint: string,
     scores: QuantitativeScores,
@@ -36,6 +46,14 @@ export class QuantPersistService {
   ): Promise<void> {
     if (!this.supabase.enabled) return
     if (!this.shouldPersist(mint)) return
+    await this.writeSnapshot(mint, scores, rug)
+  }
+
+  private async writeSnapshot(
+    mint: string,
+    scores: QuantitativeScores,
+    rug: RugScoreBreakdown,
+  ): Promise<void> {
 
     const state = globalMarketState.getState(mint)
     if (!state) return

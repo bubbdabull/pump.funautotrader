@@ -2,53 +2,32 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import axios from 'axios'
 import { distributionFromAmounts, type OnChainHolderSnapshot } from '@phronis/trading'
+import { SolanaRpcService } from '../rpc/solana-rpc.service'
 
 const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
-
-interface ParsedTokenAccount {
-  owner: string
-  amount: number
-}
 
 @Injectable()
 export class HeliusService {
   private readonly logger = new Logger(HeliusService.name)
   private readonly apiKey: string
-  private readonly rpcUrl: string
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private solanaRpc: SolanaRpcService,
+  ) {
     this.apiKey = this.config.get('HELIUS_API_KEY')?.trim() || ''
-    this.rpcUrl =
-      this.config.get('SOLANA_RPC_URL')?.trim() ||
-      (this.apiKey
-        ? `https://mainnet.helius-rpc.com/?api-key=${this.apiKey}`
-        : 'https://api.mainnet-beta.solana.com')
   }
 
   get enabled(): boolean {
-    return Boolean(this.apiKey?.trim())
+    return Boolean(this.apiKey?.trim()) || this.solanaRpc.isDedicated
   }
 
   get rpcConfigured(): boolean {
-    return Boolean(this.rpcUrl)
+    return this.solanaRpc.isDedicated
   }
 
-  private async rpc<T>(method: string, params: unknown[]): Promise<T | null> {
-    try {
-      const { data } = await axios.post<{ result?: T; error?: { message: string } }>(
-        this.rpcUrl,
-        { jsonrpc: '2.0', id: 1, method, params },
-        { timeout: 45_000 },
-      )
-      if (data.error) {
-        this.logger.debug(`RPC ${method}: ${data.error.message}`)
-        return null
-      }
-      return data.result ?? null
-    } catch (err) {
-      this.logger.debug(`RPC ${method} failed: ${(err as Error).message}`)
-      return null
-    }
+  get rpcProvider(): string {
+    return this.solanaRpc.provider
   }
 
   /**
@@ -96,7 +75,7 @@ export class HeliusService {
       }
       if (paginationKey) opts.paginationKey = paginationKey
 
-      const result = await this.rpc<{
+      const result = await this.solanaRpc.rpc<{
         accounts?: unknown[]
         paginationKey?: string
       }>('getProgramAccountsV2', [TOKEN_PROGRAM, opts])

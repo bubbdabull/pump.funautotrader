@@ -10,6 +10,14 @@ import { TokensService } from '../tokens/tokens.service'
 import { AutoTraderService } from '../autotrader/autotrader.service'
 import { PumpPortalDataGateway } from '../pumpportal/pumpportal-data.gateway'
 import { CHART_STREAM_EMIT_MS } from '@phronis/trading'
+import type {
+  BubbleMapUpdatePayload,
+  HolderUpdatePayload,
+  MigrationUpdatePayload,
+  SignalUpdatePayload,
+  TokenStateChangePayload,
+  WalletUpdatePayload,
+} from './terminal-payloads'
 
 export interface TradeTickPayload {
   mint: string
@@ -65,6 +73,7 @@ export class EventsGateway implements OnGatewayConnection {
     const token = await this.tokens.getToken(data.mint)
     if (token) client.emit('token:update', token)
     client.emit('chart:update', this.tokens.getChartSeries(data.mint))
+    void this.tokens.warmTerminalContext(data.mint)
   }
 
   async broadcastFeed() {
@@ -99,12 +108,44 @@ export class EventsGateway implements OnGatewayConnection {
     this.server.to('feed').emit('feed:prepend', token)
   }
 
-  emitChartUpdate(mint: string, intervalMs = 1_000) {
+  emitChartUpdate(
+    mint: string,
+    intervalMs = 1_000,
+    progression?: import('../tokens/chart.types').ProgressionPoint[],
+  ) {
     const now = Date.now()
     const last = this.chartLastEmit.get(mint) ?? 0
     if (now - last < CHART_STREAM_EMIT_MS) return
     this.chartLastEmit.set(mint, now)
-    const series = this.tokens.getChartSeries(mint, intervalMs)
+    const series = this.tokens.getChartSeries(mint, intervalMs, progression)
     this.server.to(`token:${mint}`).emit('chart:update', series)
+  }
+
+  emitTokenStateChange(payload: TokenStateChangePayload) {
+    this.server.to(`token:${payload.mint}`).emit('token:state-change', payload)
+    this.server.to('feed').emit('token:state-change', payload)
+  }
+
+  emitSignalUpdate(payload: SignalUpdatePayload) {
+    this.server.to(`token:${payload.mint}`).emit('signal:update', payload)
+    this.server.to('feed').emit('signal:update', payload)
+  }
+
+  emitMigrationUpdate(payload: MigrationUpdatePayload) {
+    this.server.to(`token:${payload.mint}`).emit('migration:update', payload)
+    this.server.to('feed').emit('migration:update', payload)
+  }
+
+  emitHolderUpdate(payload: HolderUpdatePayload) {
+    this.server.to(`token:${payload.mint}`).emit('holder:update', payload)
+    this.server.to('feed').emit('holder:update', payload)
+  }
+
+  emitWalletUpdate(payload: WalletUpdatePayload) {
+    this.server.to(`token:${payload.mint}`).emit('wallet:update', payload)
+  }
+
+  emitBubbleMapUpdate(payload: BubbleMapUpdatePayload) {
+    this.server.to(`token:${payload.mint}`).emit('bubblemap:update', payload)
   }
 }

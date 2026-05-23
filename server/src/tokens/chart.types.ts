@@ -21,11 +21,27 @@ export interface OhlcvCandle {
   priceUsd?: number
 }
 
+export interface ProgressionPoint {
+  t: number
+  mcap: number
+  curve: number
+  volume: number
+  holders: number
+  score: number
+  momentum: number
+  migrationProbability: number
+  burstIgnition: number
+  buyPressure: number
+  volumeVelocity: number
+  walletVelocity: number
+}
+
 export interface TokenChartSeries {
   mint: string
   intervalMs: number
   candles: OhlcvCandle[]
   points: ChartPoint[]
+  progression?: ProgressionPoint[]
   tradeCount: number
   lastTradeAt?: number
   currentMcap?: number

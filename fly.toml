@@ -11,17 +11,21 @@ primary_region = 'dfw'
   NODE_ENV = 'production'
   PORT = '8080'
   HOST = '0.0.0.0'
-  REDIS_DISABLED = 'true'
+  PHRONIS_PROCESS_ROLE = 'api'
   USE_SUPABASE_REST_DB = 'true'
   DATABASE_OPTIONAL = 'true'
   # Prisma client expects DATABASE_URL even when using Supabase REST only
   DATABASE_URL = 'postgresql://noop:noop@127.0.0.1:5432/noop'
   PUMP_FUN_API_URL = 'https://frontend-api.pump.fun'
-  # Scanner pool sizes: trading/constants.ts (not env)
   PUMPPORTAL_WS_URL = 'wss://pumpportal.fun/api/data'
   PUMPPORTAL_TRADE_URL = 'https://pumpportal.fun/api/trade-local'
-  # Trade sub limits: trading/constants.ts (FEED_TRADE_PIN_MAX). Set secrets on Fly, not here.
   PUMPPORTAL_TRADE_SUB_ROTATE_MS = '20000'
+  # Set REDIS_URL (Upstash) via fly secrets — enables snapshots + optional persist worker fan-out
+  # REDIS_DISABLED = 'false' when REDIS_URL is set
+
+[processes]
+  app = 'node dist/main.js'
+  persist = 'PHRONIS_PROCESS_ROLE=persist node dist/main.js'
 
 [http_service]
   internal_port = 8080
@@ -42,3 +46,6 @@ primary_region = 'dfw'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+
+# Optional second process group for async Supabase drain (scale with: fly scale count persist=1)
+# Requires REDIS_URL — api publishes jobs, persist worker consumes phronis:persist:jobs

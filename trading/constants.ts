@@ -68,3 +68,31 @@ export const MAP_COIN_BATCH_SIZE = 50
 export const CHART_STREAM_EMIT_MS = 500
 /** Min gap between Helius holder refreshes triggered by live trades. */
 export const HOLDER_ON_TRADE_REFRESH_MS = 120_000
+
+/** Batched Socket.IO analytics (avoid per-trade UI flood). */
+export const REGISTRY_PATCH_BATCH_MS = 200
+export const CHART_ANALYTICS_BATCH_MS = 500
+export const SIGNAL_ATTRIBUTION_MAX_PER_MINT = 120
+
+/** Redis registry/dynamics snapshot interval (Upstash failover recovery). */
+export const REDIS_SNAPSHOT_INTERVAL_MS = 20_000
+export const REDIS_SNAPSHOT_MAX_FEED = 600
+export const REDIS_SNAPSHOT_MAX_DYNAMICS = 400
+export const REDIS_SNAPSHOT_MAX_ACTIVE = 400
+export const REDIS_SNAPSHOT_MAX_WALLET_CLUSTERS = 150
+export const REDIS_RANKING_CACHE_TTL_SEC = 30
+/** Batched async Redis writes (off hot path). */
+export const REDIS_WRITE_FLUSH_MS = 500
+export const REDIS_WRITE_BATCH_MAX = 200
+export const REDIS_WRITE_QUEUE_MAX = 5_000
+/** Rolling-window backup TTL (seconds). */
+export const REDIS_WINDOW_TTL_SEC = 120
+export const REDIS_HOT_TOKEN_TTL_SEC = 300
+
+/** PumpPortal WS stale threshold before forced reconnect. */
+export const PUMPPORTAL_WS_STALE_MS = 90_000
+export const PUMPPORTAL_WS_HEARTBEAT_MS = 30_000
+
+/** Async persistence queue (off hot path). */
+export const PERSIST_QUEUE_MAX = 8_000
+export const PERSIST_DRAIN_BATCH = 48

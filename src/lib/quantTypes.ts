@@ -46,6 +46,27 @@ export interface StrategySignal {
   timestamp: number
 }
 
+export interface QuantDynamics {
+  lifecycle: string
+  migrationProbability: number
+  burst: {
+    tradeBurstScore: number
+    walletBurstScore: number
+    volumeBurstScore: number
+    ignitionScore: number
+  }
+  velocity: {
+    volumeVelocity: number
+    walletVelocity: number
+    tradeVelocity: number
+    marketCapVelocity: number
+    volumeAcceleration: number
+    walletAcceleration: number
+    tradeAcceleration: number
+  }
+  coordinationPenalty: number
+}
+
 export interface QuantUpdate {
   mint: string
   scores: QuantitativeScores
@@ -54,6 +75,7 @@ export interface QuantUpdate {
   risk: { allowed: boolean; reason?: string }
   holders?: number
   holdersVerified?: boolean
+  dynamics?: QuantDynamics
   at: string
 }
 

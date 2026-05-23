@@ -55,6 +55,7 @@ import { HolderEnrichmentService } from '../holders/holder-enrichment.service'
 import { EventsGateway } from '../events/events.gateway'
 import { TokenDiscoveryService } from './token-discovery.service'
 import { TokenRegistryService } from '../pipeline/token-registry.service'
+import { PersistenceQueueService } from '../persistence/persistence-queue.service'
 
 @Injectable()
 export class TokensService {
@@ -79,6 +80,7 @@ export class TokensService {
     private events: EventsGateway,
     private discovery: TokenDiscoveryService,
     private registry: TokenRegistryService,
+    private persistQueue: PersistenceQueueService,
   ) {}
 
   getScanStats() {
@@ -202,7 +204,11 @@ export class TokensService {
     return this.liveFeed.getAll()
   }
 
-  getChartSeries(mint: string, intervalMs = 5_000): TokenChartSeries {
+  getChartSeries(
+    mint: string,
+    intervalMs = 5_000,
+    progression?: TokenChartSeries['progression'],
+  ): TokenChartSeries {
     const state = this.trading.getState(mint)
     const token = this.liveFeed.get(mint)
     const fallbackMcap = token?.marketCap ?? state?.marketCapUsd ?? 0
@@ -260,6 +266,7 @@ export class TokensService {
       intervalMs: bucketMs,
       candles: outCandles,
       points: points.slice(-300),
+      progression: progression?.slice(-120),
       tradeCount: state?.trades.length ?? 0,
       lastTradeAt: lastTrade?.timestamp,
       currentMcap,
@@ -269,6 +276,10 @@ export class TokensService {
     }
   }
 
+  /** On token page subscribe — async holder + wallet graph (non-blocking). */
+  warmTerminalContext(mint: string) {
+    void this.holderEnrichment.enrichMint(mint, true)
+  }
 
   async getToken(mint: string): Promise<FeedToken | null> {
     const live = this.liveFeed.get(mint)
@@ -331,9 +342,7 @@ export class TokensService {
   /** Write feed token + activity to Supabase (all lanes, not only strict tradeable). */
   persistFeedToken(token: FeedToken): void {
     if (!this.supabase.enabled) return
-    void this.supabase.upsertFeedToken(token).catch((err) =>
-      this.logger.debug(`persistFeedToken ${token.mint.slice(0, 8)}: ${(err as Error).message}`),
-    )
+    this.persistQueue.enqueue({ type: 'feed_token', token })
   }
 
   /** Push verified holder count into live feed + clients. */
@@ -446,9 +455,15 @@ export class TokensService {
     return saved
   }
 
-  publishStreamEvents(mint: string, saved: FeedToken) {
+  publishStreamEvents(
+    mint: string,
+    saved: FeedToken,
+    options?: { skipChartEmit?: boolean },
+  ) {
     this.emitLastTradeTick(mint, saved)
-    this.events.emitChartUpdate(mint, 1_000)
+    if (!options?.skipChartEmit) {
+      this.events.emitChartUpdate(mint, 1_000)
+    }
     this.persistFeedToken(saved)
   }
 

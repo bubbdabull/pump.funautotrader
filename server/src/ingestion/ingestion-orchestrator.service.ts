@@ -3,11 +3,13 @@ import { DedupService } from './dedup.service'
 import { EventBusService } from './event-bus.service'
 import type { IngestionEvent } from './ingestion.types'
 import { TradingBridgeService } from '../trading/trading-bridge.service'
+import { EventSequencerService } from '../intelligence/event-sequencer.service'
 
 @Injectable()
 export class IngestionOrchestratorService implements OnModuleInit {
   private readonly logger = new Logger(IngestionOrchestratorService.name)
   private processed = 0
+  private rejected = 0
   private readonly postUpdateHandlers: Array<(mint: string, event: IngestionEvent) => void | Promise<void>> =
     []
 
@@ -15,6 +17,7 @@ export class IngestionOrchestratorService implements OnModuleInit {
     private bus: EventBusService,
     private dedup: DedupService,
     private trading: TradingBridgeService,
+    private sequencer: EventSequencerService,
   ) {}
 
   onModuleInit() {
@@ -57,6 +60,18 @@ export class IngestionOrchestratorService implements OnModuleInit {
         break
       case 'token.trade': {
         const ts = Number(p.timestamp ?? p.timestampMs ?? 0)
+        const timestampMs = ts > 0 ? (ts < 1e12 ? ts * 1000 : ts) : Date.now()
+        const seq = this.sequencer.accept(event.mint, {
+          slot: p.slot != null ? Number(p.slot) : undefined,
+          timestampMs,
+          signature: (p.signature as string) ?? undefined,
+          sequenceId: this.sequencer.nextSequenceId(),
+        })
+        if (!seq.accept) {
+          this.rejected++
+          return
+        }
+        p.sequenceId = seq.sequenceId
         this.trading.ingestTrade({
           mint: event.mint,
           signature: p.signature as string | undefined,
@@ -75,7 +90,7 @@ export class IngestionOrchestratorService implements OnModuleInit {
             ) || undefined,
           marketCapSol: Number(p.marketCapSol ?? p.market_cap_sol ?? 0) || undefined,
           slot: p.slot as number | undefined,
-          timestamp: ts > 0 ? (ts < 1e12 ? ts * 1000 : ts) : undefined,
+          timestamp: timestampMs,
         })
         break
       }
@@ -101,6 +116,7 @@ export class IngestionOrchestratorService implements OnModuleInit {
   getStats() {
     return {
       processed: this.processed,
+      rejected: this.rejected,
       bus: this.bus.getStats(),
     }
   }

@@ -47,6 +47,11 @@ function mergeScannerToken(prev: PumpToken, token: PumpToken): PumpToken {
     isActive: token.isActive ?? prev.isActive,
     buyPressure1m: token.buyPressure1m ?? prev.buyPressure1m,
     mcapChange5m: token.mcapChange5m ?? prev.mcapChange5m,
+    lifecycle: token.lifecycle ?? prev.lifecycle,
+    migrationProbability: token.migrationProbability ?? prev.migrationProbability,
+    burstIgnition: token.burstIgnition ?? prev.burstIgnition,
+    coordinationPenalty: token.coordinationPenalty ?? prev.coordinationPenalty,
+    updatedAt: token.updatedAt ?? prev.updatedAt,
   }
 }
 

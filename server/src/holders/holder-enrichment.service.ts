@@ -7,6 +7,8 @@ import { LiveFeedService } from '../feed/live-feed.service'
 import { TokensService } from '../tokens/tokens.service'
 import { EventsGateway } from '../events/events.gateway'
 import { PumpService } from '../pump/pump.service'
+import { TerminalEmitterService } from '../intelligence/terminal-emitter.service'
+import { WalletGraphService } from '../intelligence/wallet-graph.service'
 
 function mergeSnapshots(
   helius: OnChainHolderSnapshot | null,
@@ -45,6 +47,8 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => EventsGateway))
     private events: EventsGateway,
     private pump: PumpService,
+    private terminal: TerminalEmitterService,
+    private walletGraph: WalletGraphService,
   ) {}
 
   onModuleInit() {
@@ -124,11 +128,17 @@ export class HolderEnrichmentService implements OnModuleInit, OnModuleDestroy {
       void this.tokens.promoteIfTradeable(mint, merged.holders)
       void this.tokens.patchHoldersToDb(mint, merged)
 
+      const holders = patched?.holders ?? merged.holders
+      this.terminal.onHolder(mint, merged, holders, verified)
       this.events.server?.emit('quant:holders', {
         mint,
-        holders: patched?.holders ?? merged.holders,
+        holders,
         holdersVerified: verified,
         at: new Date().toISOString(),
+      })
+
+      void this.walletGraph.buildGraph(mint).then((graph) => {
+        if (graph) this.terminal.onWalletGraph(mint, graph)
       })
 
       return merged

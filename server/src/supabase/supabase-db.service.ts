@@ -4,7 +4,12 @@ import { ConfigService } from '@nestjs/config'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import WebSocket from 'ws'
 import type { FeedToken } from '../feed/feed.types'
-import type { FeedActivityFields, RugScoreBreakdown, QuantitativeScores } from '@phronis/trading'
+import type {
+  FeedActivityFields,
+  RugScoreBreakdown,
+  QuantitativeScores,
+  SignalAttributionRecord,
+} from '@phronis/trading'
 import { passesTradeableFilter, tradeQualityScore } from '@phronis/trading'
 
 @Injectable()
@@ -569,6 +574,27 @@ export class SupabaseDbService implements OnModuleInit {
         tradeQualityScore: tokenPatch ? tradeQualityScore(tokenPatch) : undefined,
       }),
     ])
+  }
+
+  async insertSignalAttribution(entry: SignalAttributionRecord) {
+    if (!this.client) return
+    const { error } = await this.client.from('SignalAttribution').insert({
+      id: entry.id,
+      mint: entry.mint,
+      timestampMs: entry.timestampMs,
+      tradeConfidenceScore: entry.tradeConfidenceScore,
+      momentumScore: entry.momentumScore,
+      migrationProbability: entry.migrationProbability,
+      velocity: entry.velocity,
+      burst: entry.burst,
+      coordinationPenalty: entry.coordinationPenalty,
+      walletGrowth: entry.walletGrowth,
+      riskPenalties: entry.riskPenalties,
+      triggerReasons: entry.triggerReasons,
+      lifecycle: entry.lifecycle,
+      outcome: entry.outcome ?? 'pending',
+    })
+    if (error) this.logger.debug(`SignalAttribution insert: ${error.message}`)
   }
 
   async listSmartWallets(limit = 20) {

@@ -6,11 +6,13 @@ import { TokensModule } from '../tokens/tokens.module'
 import { FeedModule } from '../feed/feed.module'
 import { EventsModule } from '../events/events.module'
 import { PumpModule } from '../pump/pump.module'
+import { IntelligenceModule } from '../intelligence/intelligence.module'
 
 @Module({
   imports: [
     HeliusModule,
     FeedModule,
+    forwardRef(() => IntelligenceModule),
     forwardRef(() => EventsModule),
     PumpModule,
     forwardRef(() => TokensModule),

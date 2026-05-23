@@ -1,23 +1,20 @@
 import { Injectable } from '@nestjs/common'
 import {
-  computeFeedActivity,
   filterForLane,
-  evScoreToSignalScore,
-  momentumScoreFromMetrics,
-  evaluateEntry,
   type ScannerLane,
+  type DynamicsAnalytics,
 } from '@phronis/trading'
 import { LiveFeedService } from '../feed/live-feed.service'
-import { TradingBridgeService } from '../trading/trading-bridge.service'
 import type { FeedToken } from '../feed/feed.types'
 import type { NormalizedToken, RegistrySnapshot } from './normalized-token.types'
 
+/**
+ * Lightweight registry: metadata + snapshot fields only.
+ * Rolling velocity, burst, and lifecycle live in MarketDynamicsService.
+ */
 @Injectable()
 export class TokenRegistryService {
-  constructor(
-    private liveFeed: LiveFeedService,
-    private trading: TradingBridgeService,
-  ) {}
+  constructor(private liveFeed: LiveFeedService) {}
 
   get size(): number {
     return this.liveFeed.getAll(10_000).length
@@ -28,38 +25,50 @@ export class TokenRegistryService {
     return row ? this.normalize(row) : undefined
   }
 
-  /** Merge stream-derived fields into registry (single write path). */
   upsert(row: FeedToken, source: NormalizedToken['source'] = 'stream'): NormalizedToken | null {
     const saved = this.liveFeed.patch(row) ?? this.liveFeed.upsert(row)
     if (!saved) return null
     return this.normalize(saved, source)
   }
 
-  normalize(token: FeedToken, source: NormalizedToken['source'] = 'merged'): NormalizedToken {
-    const state = this.trading.getState(token.mint)
-    const activity = state ? computeFeedActivity(state) : {}
-    let signalScore = token.signalScore
-    let momentumScore = token.momentumScore
-    if (state?.trades.length) {
-      const metrics = evaluateEntry(state).metrics
-      signalScore = evScoreToSignalScore(metrics)
-      momentumScore = momentumScoreFromMetrics(metrics)
-    }
+  normalize(
+    token: FeedToken,
+    source: NormalizedToken['source'] = 'merged',
+    dynamics?: DynamicsAnalytics | null,
+  ): NormalizedToken {
+    const activity = dynamics
+      ? {
+          trades1m: dynamics.windows.w60.tradeCount,
+          volume5mSol: dynamics.windows.w30.volumeSol,
+          buyPressure1m: Math.round(dynamics.buyPressure1m * 100),
+          isActive: Date.now() - dynamics.updatedAt < 60_000,
+          lastTradeAt: dynamics.updatedAt,
+        }
+      : {}
+
     return {
       ...token,
       ...activity,
-      signalScore,
-      momentumScore,
-      updatedAt: state?.lastUpdated ?? Date.now(),
-      tradeCount: state?.trades.length ?? 0,
-      source: state?.trades.length ? 'stream' : source,
+      signalScore: dynamics
+        ? Math.round(dynamics.tradeConfidenceScore * 100)
+        : token.signalScore,
+      momentumScore: dynamics
+        ? Math.round(dynamics.decayedMomentumScore * 100)
+        : token.momentumScore,
+      updatedAt: dynamics?.updatedAt ?? Date.now(),
+      tradeCount: dynamics?.windows.w60.tradeCount ?? 0,
+      source: dynamics ? 'stream' : source,
+      lifecycle: dynamics?.lifecycle,
+      migrationProbability: dynamics
+        ? Math.round(dynamics.migration.probability * 100)
+        : undefined,
+      burstIgnition: dynamics ? Math.round(dynamics.burst.ignitionScore * 100) : undefined,
     }
   }
 
   list(lane: ScannerLane = 'all', limit?: number): NormalizedToken[] {
     const raw = this.liveFeed.getAll(limit ?? 2000)
-    const normalized = raw.map((t) => this.normalize(t))
-    return filterForLane(normalized, lane) as NormalizedToken[]
+    return filterForLane(raw.map((t) => this.normalize(t)), lane) as NormalizedToken[]
   }
 
   snapshot(lane: ScannerLane = 'all'): RegistrySnapshot {
@@ -71,7 +80,6 @@ export class TokenRegistryService {
     }
   }
 
-  /** Discovery pool rows from REST — merged without replacing stream state. */
   mergeDiscoveryRows(rows: FeedToken[]) {
     for (const row of rows) {
       const prev = this.liveFeed.get(row.mint)

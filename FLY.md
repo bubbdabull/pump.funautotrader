@@ -51,7 +51,10 @@ fly secrets set \
 Optional — override defaults from `fly.toml`:
 
 ```bash
-fly secrets set USE_SUPABASE_REST_DB=true REDIS_DISABLED=true
+fly secrets set USE_SUPABASE_REST_DB=true
+
+# Optional Upstash Redis (snapshots + persist worker fan-out)
+fly secrets set REDIS_URL='rediss://default:TOKEN@YOUR.upstash.io:6379' REDIS_DISABLED=false
 ```
 
 List secrets:
@@ -185,7 +188,9 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
    | Secret | Safe value |
    |--------|------------|
    | `USE_SUPABASE_REST_DB` | `true` (or omit — `fly.toml` sets it) |
-   | `REDIS_DISABLED` | `true` (or omit) |
+   | `REDIS_URL` | Upstash `rediss://…` + `REDIS_DISABLED=false` for snapshots/recovery |
+   | `REDIS_DISABLED` | `true` if no Redis (default without URL) |
+   | `HELIUS_API_KEY` / `SOLANA_RPC_URL` | Dedicated RPC (never rely on public mainnet in prod) |
    | `DATABASE_URL` | **Do not set** unless you use Prisma Postgres with a **working** password |
 
    If you previously set a broken `DATABASE_URL` on Fly, remove it:
@@ -203,10 +208,16 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 
    Health should return `"supabase":true` and `"pumpportalKey":true` when secrets are set.
 
-6. **Keep one machine** (two machines = two PumpPortal connections):
+6. **Machine count** — keep **one `app` machine** (two app machines = duplicate PumpPortal WS):
 
    ```bash
-   fly scale count 1 -a pump-funautotrader
+   fly scale count app=1 -a pump-funautotrader
+   ```
+
+   Optional **persist worker** (async Supabase only, requires `REDIS_URL`):
+
+   ```bash
+   fly scale count persist=1 -a pump-funautotrader
    ```
 
 ## Architecture

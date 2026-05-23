@@ -7,6 +7,16 @@ export type PumpPortalPool =
   | 'bonk'
   | 'auto'
 
+export type TokenLifecycleState =
+  | 'NEW'
+  | 'DISCOVERING'
+  | 'MOMENTUM'
+  | 'BREAKOUT'
+  | 'MIGRATION_WATCH'
+  | 'MIGRATED'
+  | 'DEAD'
+  | 'RUGGED'
+
 export interface PumpToken {
   mint: string
   name: string
@@ -38,6 +48,15 @@ export interface PumpToken {
   mcapChange5m?: number
   isActive?: boolean
   isWatchlisted?: boolean
+  /** Stream registry intelligence */
+  lifecycle?: TokenLifecycleState
+  migrationProbability?: number
+  burstIgnition?: number
+  updatedAt?: number
+  tradeCount?: number
+  top1Pct?: number
+  top5Pct?: number
+  coordinationPenalty?: number
 }
 
 export interface AutoTradeRules {
