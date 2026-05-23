@@ -6,20 +6,28 @@ import { createServer } from 'http'
 import type { Response } from 'express'
 import { AppModule } from './app.module'
 import { PersistWorkerModule } from './persist-worker.module'
-import { getProcessRole } from './process-role'
+import { resolveBootRole } from './process-role'
 
-/** Fly http_service.internal_port is 8080; secrets sync often copies local PORT=3001. */
+/** Fly http_service.internal_port is 8080; ignore PORT secrets that point at local dev. */
 function resolveListenPort(): number {
-  if (process.env.FLY_APP_NAME) return 8080
+  if (process.env.FLY_APP_NAME && resolveBootRole() === 'api') return 8080
   const n = Number(process.env.PORT)
   return Number.isFinite(n) && n >= 1 ? n : 8080
+}
+
+/** Fly proxy requires 0.0.0.0 — HOST from secrets sync can be 127.0.0.1. */
+function resolveListenHost(): string {
+  if (process.env.FLY_APP_NAME && resolveBootRole() === 'api') return '0.0.0.0'
+  return process.env.HOST?.trim() || '0.0.0.0'
 }
 
 function logBootConfig() {
   const flags = {
     NODE_ENV: process.env.NODE_ENV,
     PORT: process.env.PORT,
-    processRole: getProcessRole(),
+    FLY_PROCESS_GROUP: process.env.FLY_PROCESS_GROUP,
+    PHRONIS_PROCESS_ROLE: process.env.PHRONIS_PROCESS_ROLE,
+    bootRole: resolveBootRole(),
     USE_SUPABASE_REST_DB: process.env.USE_SUPABASE_REST_DB,
     REDIS_DISABLED: process.env.REDIS_DISABLED,
     BULL_DISABLED: process.env.BULL_DISABLED,
@@ -52,64 +60,68 @@ async function bootstrapPersistWorker() {
 
 async function bootstrapApi() {
   logBootConfig()
-  const host = process.env.HOST || '0.0.0.0'
+  const host = resolveListenHost()
   const port = resolveListenPort()
 
   if (process.env.FLY_APP_NAME && String(process.env.PORT) !== String(port)) {
     console.warn(
-      `[boot] Fly: ignoring PORT=${process.env.PORT} — proxy expects ${port}. Remove PORT from fly secrets.`,
+      `[boot] Fly: ignoring PORT=${process.env.PORT} — proxy expects ${port}. Unset PORT in fly secrets.`,
     )
   }
 
   const expressApp = express()
+  const healthJson = () => ({
+    ok: true,
+    service: 'phronis-api',
+    booting: true,
+    bootRole: resolveBootRole(),
+    flyProcessGroup: process.env.FLY_PROCESS_GROUP,
+    at: new Date().toISOString(),
+  })
+
   expressApp.get(['/api/health', '/health'], (_req, res: Response) => {
-    res.status(200).json({
-      ok: true,
-      service: 'phronis-api',
-      booting: true,
-      processRole: getProcessRole(),
-      at: new Date().toISOString(),
-    })
+    res.status(200).json(healthJson())
   })
   expressApp.get('/', (_req, res: Response) => {
-    res.status(200).json({
-      service: 'phronis-api',
-      ok: true,
-      health: '/api/health',
-      booting: true,
-      processRole: getProcessRole(),
-    })
+    res.status(200).json({ ...healthJson(), health: '/api/health' })
   })
 
   const httpServer = createServer(expressApp)
   await listenHttp(httpServer, host, port)
   console.log(`[boot] HTTP bound on http://${host}:${port} (Fly health can pass while Nest loads)`)
 
-  const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
-    logger: ['error', 'warn', 'log'],
-    abortOnError: false,
-  })
-  app.setGlobalPrefix('api')
-  app.enableCors({ origin: true, credentials: true })
-  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
-
-  expressApp.get('/', (_req: unknown, res: Response) => {
-    res.json({
-      service: 'phronis-api',
-      ok: true,
-      health: '/api/health',
-      pumpportalStatus: '/api/pumpportal/status',
-      processRole: getProcessRole(),
-      note: 'React UI is on Vercel; all API routes live under /api',
+  try {
+    const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), {
+      logger: ['error', 'warn', 'log'],
+      abortOnError: false,
     })
-  })
+    app.setGlobalPrefix('api')
+    app.enableCors({ origin: true, credentials: true })
+    app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }))
 
-  await app.init()
-  console.log(`[ready] Phronis API initialized on http://${host}:${port} (role=${getProcessRole()})`)
+    expressApp.get('/', (_req: unknown, res: Response) => {
+      res.json({
+        service: 'phronis-api',
+        ok: true,
+        health: '/api/health',
+        pumpportalStatus: '/api/pumpportal/status',
+        bootRole: resolveBootRole(),
+        note: 'React UI is on Vercel; all API routes live under /api',
+      })
+    })
+
+    await app.init()
+    console.log(`[ready] Phronis API initialized on http://${host}:${port} (role=${resolveBootRole()})`)
+  } catch (err) {
+    console.error(
+      '[boot] Nest init failed — keeping HTTP alive for Fly health checks:',
+      err instanceof Error ? err.stack ?? err.message : err,
+    )
+  }
 }
 
 async function bootstrap() {
-  const role = getProcessRole()
+  const role = resolveBootRole()
   if (role === 'persist') {
     await bootstrapPersistWorker()
     return

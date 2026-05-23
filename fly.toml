@@ -1,5 +1,6 @@
-# Fly.io API — deploy from repo root (uses ./Dockerfile)
-# https://fly.io/docs/reference/configuration/
+# Fly.io API — deploy from repo root: fly deploy -a pump-funautotrader
+# Do NOT deploy with --image deployment-... (skips fresh build).
+# Do NOT set fly secrets PORT or PHRONIS_PROCESS_ROLE (use fly.toml + process groups).
 
 app = 'pump-funautotrader'
 primary_region = 'dfw'
@@ -14,16 +15,12 @@ primary_region = 'dfw'
   PHRONIS_PROCESS_ROLE = 'api'
   USE_SUPABASE_REST_DB = 'true'
   DATABASE_OPTIONAL = 'true'
-  # Prisma client expects DATABASE_URL even when using Supabase REST only
   DATABASE_URL = 'postgresql://noop:noop@127.0.0.1:5432/noop'
   PUMP_FUN_API_URL = 'https://frontend-api.pump.fun'
   PUMPPORTAL_WS_URL = 'wss://pumpportal.fun/api/data'
   PUMPPORTAL_TRADE_URL = 'https://pumpportal.fun/api/trade-local'
   PUMPPORTAL_TRADE_SUB_ROTATE_MS = '20000'
-  # BullMQ blocks HTTP bind if Redis is slow — realtime uses PumpPortal WS + PersistenceQueue
   BULL_DISABLED = 'true'
-  # Set REDIS_URL (Upstash) via fly secrets — enables snapshots + optional persist worker fan-out
-  # REDIS_DISABLED = 'false' when REDIS_URL is set
 
 [processes]
   app = 'node dist/main.js'
@@ -35,20 +32,19 @@ primary_region = 'dfw'
   auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
-  # One API machine avoids rolling deploy fighting a second stopped VM
   processes = ['app']
 
   [[http_service.checks]]
-    grace_period = '60s'
-    interval = '20s'
+    grace_period = '90s'
+    interval = '15s'
     method = 'GET'
     path = '/api/health'
-    timeout = '15s'
+    timeout = '10s'
 
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
 
-# Optional second process group for async Supabase drain (scale with: fly scale count persist=1)
-# Requires REDIS_URL — api publishes jobs, persist worker consumes phronis:persist:jobs
+# After first healthy deploy: fly scale count app=1 persist=0 -a pump-funautotrader
+# Persist workers have no HTTP listener — only scale persist=1 when you need async drain.

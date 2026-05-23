@@ -3,7 +3,7 @@ import { PERSIST_DRAIN_BATCH, PERSIST_QUEUE_MAX } from '@phronis/trading'
 import type { PersistJob } from './persistence.types'
 import { RedisService } from '../redis/redis.service'
 import { REDIS_KEYS } from '../redis/redis-keys'
-import { getProcessRole } from '../process-role'
+import { isApiProcess } from '../process-role'
 
 type DrainHandler = (job: PersistJob) => Promise<void>
 
@@ -34,7 +34,7 @@ export class PersistenceQueueService implements OnModuleDestroy {
     this.queue.push(job)
     this.scheduleDrain()
 
-    if (this.redis.enabled && getProcessRole() === 'api') {
+    if (this.redis.enabled && isApiProcess()) {
       void this.redis.publish(REDIS_KEYS.persistChannel, JSON.stringify(job)).catch(() => undefined)
     }
   }

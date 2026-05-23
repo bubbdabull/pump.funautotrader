@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { SupabasePersistenceService } from '../supabase/supabase-persistence.service'
 import { PersistenceQueueService } from './persistence-queue.service'
 import type { PersistJob } from './persistence.types'
-import { getProcessRole } from '../process-role'
+import { isPersistProcess, resolveBootRole } from '../process-role'
 import { RedisService } from '../redis/redis.service'
 import { REDIS_KEYS } from '../redis/redis-keys'
 
@@ -18,12 +18,12 @@ export class PersistenceWorkerService implements OnModuleInit {
 
   onModuleInit() {
     this.queue.registerHandler((job) => this.handleSafe(job))
-    const role = getProcessRole()
+    const role = resolveBootRole()
     this.logger.log(
       `Persistence worker active (role=${role}, supabase=${this.supabasePersist.enabled})`,
     )
 
-    if (this.redis.enabled && getProcessRole() === 'persist') {
+    if (this.redis.enabled && isPersistProcess()) {
       void this.redis.subscribe(REDIS_KEYS.persistChannel, (raw) => {
         try {
           const job = JSON.parse(raw) as PersistJob

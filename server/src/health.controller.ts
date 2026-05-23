@@ -5,7 +5,7 @@ import { RedisService } from './redis/redis.service'
 import { RedisWriteQueueService } from './redis/redis-write-queue.service'
 import { PersistenceQueueService } from './persistence/persistence-queue.service'
 import { SolanaRpcService } from './rpc/solana-rpc.service'
-import { getProcessRole } from './process-role'
+import { resolveBootRole } from './process-role'
 
 @Controller()
 export class HealthController {
@@ -28,7 +28,8 @@ export class HealthController {
       ok: true,
       service: 'phronis-api',
       at: new Date().toISOString(),
-      processRole: getProcessRole(),
+      processRole: resolveBootRole(),
+      flyProcessGroup: process.env.FLY_PROCESS_GROUP,
       supabase: this.supabase.enabled,
       supabaseKeyConfigured: keyConfigured,
       pumpportalKey: Boolean(this.config.get('PUMPPORTAL_API_KEY')?.trim()),

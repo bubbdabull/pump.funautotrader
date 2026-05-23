@@ -157,7 +157,9 @@ Check [fly.io/docs/about/pricing](https://fly.io/docs/about/pricing). You may ne
 | Health check failing | `fly logs` — app needs ~5–10s to boot; grace period is 60s in `fly.toml` |
 | Vercel still blank | Set `VITE_WS_URL` to `*.fly.dev`, not Vercel domain |
 | App name taken | Change `app` in `fly.toml` and redeploy |
-| **502 / not listening on 8080** | **Do not set `PORT` in fly secrets** — `fly secrets sync` can copy `PORT=3001` from `server/.env` and break health checks. Run `fly secrets unset PORT -a pump-funautotrader` then redeploy. App binds `0.0.0.0:8080` on Fly automatically. |
+| **502 / not listening on 8080** | **Do not set `PORT` or `HOST` in fly secrets** — `fly secrets sync` can copy `PORT=3001` or `HOST=127.0.0.1` from `server/.env`. Run `fly secrets unset PORT HOST -a pump-funautotrader` then redeploy. App binds `0.0.0.0:8080` on Fly automatically. |
+| **Deploy: not listening on 8080** | **Do not set `PHRONIS_PROCESS_ROLE=persist` as a global secret** — that makes `app` machines run the persist worker (no HTTP). Use process groups in `fly.toml` only: `fly secrets unset PHRONIS_PROCESS_ROLE -a pump-funautotrader`. |
+| **Deploy uses `--image deployment-…`** | That skips a fresh Docker build. Deploy from repo root: `fly deploy -a pump-funautotrader` (no `--image`). |
 | 502 / not responding | `fly status` + `fly logs`; ensure secrets are set |
 
 ### Crash loop (machines restarting)
